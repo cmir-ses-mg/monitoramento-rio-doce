@@ -1047,10 +1047,10 @@ function sv(el){
   if(!el.name)return;
   if(el.dataset.store==='mun')municipio[el.name]=el.value;
   else if(el.dataset.store==='acq')acq()[el.name]=el.value;
-  if(el.name==='municipio'||el.name==='bimestre'||el.name==='ano'){
+  if(el.name==='municipio'||el.name==='bimestre'){
     renderAll();
-
   }
+  // 'ano' só re-renderiza ao perder o foco (onblur no campo), não a cada tecla
   if(el.name==='acao_idx')onAcaoChange(el.value);
 }
 
