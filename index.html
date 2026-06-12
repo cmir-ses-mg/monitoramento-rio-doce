@@ -1379,7 +1379,7 @@ function contentHTML(){
       </div>
     </div>
     ${renderSessionHistoryCard()}
-    <div class="step-head"><h2>Instrumento e Ação</h2><p>Selecione a ação no painel abaixo e confirme o tipo de monitoramento.</p></div>
+    <div class="step-head"><h2>Instrumento e Ação</h2><p>Selecione a ação no menu lateral para iniciar o preenchimento.</p></div>
     <div class="instrumento-card">
       <div class="card-title">Ação selecionada</div>
       ${a.acao_tipo?`
@@ -1859,22 +1859,24 @@ function gerarPDFBase64(){
     doc.setFontSize(9);doc.setFont('helvetica','normal');
     doc.text(`${municipio.municipio||'—'} · ${municipio.bimestre||''} ${municipio.ano||''}  ·  Emitido em ${new Date().toLocaleDateString('pt-BR')}`,14,19);
     doc.setFontSize(8);doc.setTextColor(GL[0],GL[1],GL[2]);
-    doc.text(`${aquisicoes.length} aquisição${aquisicoes.length>1?'es':''} · Responsável: ${municipio.responsavel||'—'}`,14,25);
+    doc.text(`${aquisicoes.filter(a=>a.acao_tipo).length===1?'1 aquisição':''+aquisicoes.filter(a=>a.acao_tipo).length+' aquisições'} · Responsável: ${municipio.responsavel||'—'}`,14,25);
     y=36;
     sec('IDENTIFICAÇÃO DO MUNICÍPIO');
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
     row('Responsável:',municipio.responsavel);row('Cargo:',municipio.cargo);row('E-mail:',municipio.email);row('Telefone:',municipio.telefone);
     aquisicoes.forEach(function(a,i){
-      const ob=a.modalidade_objeto==='obra';
+      const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
+    const ob=_tipoAuto==='obra';
+    const servico=_tipoAuto==='servico';
       y+=4;chk(16);
       if(ob){doc.setFillColor(...GO);}else{doc.setFillColor(...GD);}
       doc.rect(10,y-4,190,11,'F');
       doc.setFontSize(10);doc.setFont('helvetica','bold');doc.setTextColor(...WH);
-      doc.text('AÇÃO '+(i+1)+(aquisicoes.length>1?' DE '+aquisicoes.length:'')+' ['+(ob?'OBRA':'EQUIP')+'] — '+(a.acao_tipo||'Sem descrição').substring(0,46),14,y+3);y+=14;
+      doc.text('AÇÃO '+(i+1)+(aquisicoes.filter(a=>a.acao_tipo).length>1?' DE '+aquisicoes.filter(a=>a.acao_tipo).length:'')+' ['+(ob?'OBRA':servico?'SERV':'EQUIP')+'] — '+(a.acao_tipo||'Sem descrição').substring(0,46),14,y+3);y+=14;
       sec('AÇÃO DO PLANO RIO DOCE');
       row('Instrumento:',(a.acao_instrumento||'').replace(/_/g,' '));row('Tipo de Aplicação:',a.acao_tipo);
       row('Ação do Plano:',a.acao_descricao);row('Eixo:',a.acao_eixo);
-      row('Tipo monitoramento:',ob?'Obra/Construção':'Equipamentos');
+      row('Tipo monitoramento:',ob?'Obra/Construção':servico?'Serviços':'Equipamentos');
       sec('DADOS DA AQUISIÇÃO');
       row('Detalhamento:',a.descricao_item);if(!ob)row('Quantidade:',a.quantidade);
       row('Valor Executado:',a.valor_executado?'R$ '+a.valor_executado:'');
@@ -1952,9 +1954,8 @@ async function concludeAction(){
   let titulo='', corpo='', icone='', okLabel='', okColor='';
   if(!jaEnviada){
     titulo='Confirmar conclusão desta ação?';
-    corpo='Os dados serão registrados.'
-      +(status==='partial'?'\n\n⚠️ Esta ação está parcialmente preenchida. Recomendamos completar todos os campos.':'')
-      +'\n\nApós concluir, os campos ficam bloqueados para edição. Você pode reabrir e corrigir — o registro anterior será substituído automaticamente.';
+    const _aviso=status==='partial'?'\n\n⚠️ Esta ação está parcialmente preenchida.\nConfira se todos os dados necessários foram incluídos. Se alguma etapa ainda não tiver sido executada, você pode enviar assim mesmo.':'';
+    corpo='Os dados serão registrados.'+_aviso+'\n\nApós concluir, os campos ficam bloqueados para edição. Você pode reabrir e corrigir — o registro anterior será substituído automaticamente.';
     icone='📊'; okLabel='Concluir ação'; okColor='var(--g600)';
   } else {
     const vl=vezes>0?(vezes+' correção'+(vezes>1?'ões':'')):'1 envio anterior';
@@ -2109,7 +2110,14 @@ function listSessions(){
 function resumeSession(){
   const key=sessionKey();
   const savedAt=loadSession(key);
-  if(savedAt)renderAll();
+  if(savedAt){
+    aquisicoes.forEach(function(a){
+      if(a.acao_instrumento||a.acao_tipo){
+        a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
+      }
+    });
+    renderAll();
+  }
 }
 
 function discardSession(){
@@ -2120,6 +2128,12 @@ function discardSession(){
 
 function loadAndResume(key){
   loadSession(key);
+  // Re-aplicar detecção automática de tipo para sessões antigas
+  aquisicoes.forEach(function(a){
+    if(a.acao_instrumento||a.acao_tipo){
+      a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
+    }
+  });
   renderAll();
 }
 
@@ -2201,7 +2215,7 @@ function renderSessionHistoryCard(){
     html+=`<div style="background:var(--g50);border:1.5px solid var(--g300);border-radius:var(--r);padding:13px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;animation:fadeUp .3s ease">
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--g800)">🔄 Preenchimento em andamento</div>
-        <div style="font-size:12px;color:var(--g600);margin-top:2px">${thisBim.total} ação${thisBim.total!==1?'ões':''} preenchida${thisBim.total!==1?'s':''}${thisBim.sent?' · '+thisBim.sent+' enviada'+(thisBim.sent!==1?'s':''):''}  · salvo ${dt}</div>
+        <div style="font-size:12px;color:var(--g600);margin-top:2px">${thisBim.total===1?'1 ação preenchida':thisBim.total+' ações preenchidas'}${thisBim.sent?' · '+thisBim.sent+' enviada'+(thisBim.sent!==1?'s':''):''}  · salvo ${dt}</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
         <button onclick="resumeSession()" style="padding:6px 14px;font-size:12px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:6px;background:var(--g600);color:#fff;cursor:pointer">▶ Continuar</button>
@@ -2219,7 +2233,7 @@ function renderSessionHistoryCard(){
         return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2);gap:10px">
           <div>
             <div style="font-size:13px;font-weight:600;color:var(--ink)">${s.bim} / ${s.ano}</div>
-            <div style="font-size:11px;color:var(--ink3)">${s.total} ação${s.total!==1?'ões':''} · ${s.sent?' '+s.sent+' enviada'+(s.sent!==1?'s':''):'nenhuma enviada'} · ${dt}</div>
+            <div style="font-size:11px;color:var(--ink3)">${s.total===1?'1 ação':s.total+' ações'} · ${s.sent?s.sent+(s.sent===1?' enviada':' enviadas'):'nenhuma enviada'} · ${dt}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="loadAndResume('${s.key}')" style="padding:5px 12px;font-size:12px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:6px;background:var(--g800);color:#fff;cursor:pointer">Abrir</button>
@@ -2377,7 +2391,9 @@ async function doSubmit(){
   document.getElementById('successAcqsList').innerHTML=
     `<div class="sac-title">${aquisicoes.filter(a=>a.modalidade_objeto).length} de ${_planAll2.length} ações preenchidas</div>`+
     aquisicoes.filter(a=>a.acao_tipo).map((a,i)=>{
-      const ob=a.modalidade_objeto==='obra';
+      const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
+    const ob=_tipoAuto==='obra';
+    const servico=_tipoAuto==='servico';
       return`<div class="sac-row"><span class="sac-n${ob?' obra':''}">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':'📦 '}${a.acao_tipo}</span><span style="flex-shrink:0;font-size:11px;color:var(--ink3);margin-left:8px">${a.status_aquisicao||'—'}</span></div>`;
     }).join('');
   document.getElementById('successWrap').style.display='block';
