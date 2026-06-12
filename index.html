@@ -647,12 +647,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <div class="success-wrap" id="successWrap">
   <div class="success-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0A3323" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
   <h2>Enviado com sucesso!</h2>
-  <p>Os dados foram registrados. Exporte o PDF e anexe-o ao e-mail a ser encaminhado à URS adscrita, com cópia para <span class="ciencia-email">cmir@saude.mg.gov.br</span></p>
+  <p>Os dados foram registrados. Exporte o PDF para seguir com os encaminhamentos ao dar ciência abaixo</p>
   <div class="success-acqs" id="successAcqsList"></div>
   <div class="ciencia-box" id="ciencia-box">
     <label class="ciencia-label" onclick="toggleCiencia()">
       <span class="ciencia-chk"></span>
-      <span class="ciencia-text">Estou ciente de que devo encaminhar o PDF gerado por e-mail à <strong>URS adscrita</strong>, com cópia obrigatória para <span class="ciencia-email">cmir@saude.mg.gov.br</span>, para fins de registro e acompanhamento.</span>
+      <span class="ciencia-text">Estou ciente de que devo encaminhar <strong>por ofício</strong> o PDF gerado por e-mail à <strong>URS adscrita</strong>, com cópia obrigatória para <span class="ciencia-email">cmir@saude.mg.gov.br</span>, para fins de registro e acompanhamento.</span>
     </label>
   </div>
   <div class="success-btns" style="margin-top:20px">
@@ -697,10 +697,10 @@ function isObra(tipo){
 const PHASES_EQUIP=[{label:'Identificação'},{label:'Instrumento'},{label:'Contratação'},{label:'Entrega/Serv.'},{label:'Observações'},{label:'Revisão e Envio'}];
 const PHASES_OBRA=[{label:'Identificação'},{label:'Instrumento'},{label:'Contratação'},{label:'Execução Física'},{label:'Observações'},{label:'Revisão e Envio'}];
 
-let phase=0,municipio={},aquisicoes=[{}],acqIdx=0;
+let phase=0,municipio={},aquisicoes=[],acqIdx=0;
 const arquivos={};
 
-function acq(){return aquisicoes[acqIdx];}
+function acq(){return aquisicoes[acqIdx]||(aquisicoes[acqIdx]={});}
 function aKey(k){return `${acqIdx}_${k}`;}
 function isAcqObra(a){return (a||acq()).modalidade_objeto==='obra';}
 function phases(){return isAcqObra()?PHASES_OBRA:PHASES_EQUIP;} // servico uses EQUIP phases
@@ -838,7 +838,7 @@ function getOrCreateAcq(instrumento, tipo, planItem){
   let idx=aquisicoes.findIndex(a=>a._key===key);
   if(idx===-1){
     // Pré-preencher com dados do plano
-    const sugerido=isObra(planItem.tipo)?'obra':'equipamento';
+    const sugerido=detectarTipoMonitoramento(instrumento,planItem.tipo);
     aquisicoes.push({
       _key:key,
       acao_instrumento:instrumento,
@@ -922,7 +922,7 @@ function renderAcqBar(){
   const container=document.getElementById('sidebarAcqList');
   if(!container)return;
   const sidebar=document.getElementById('sidebarWrap');
-  if(phase<=1){if(sidebar)sidebar.style.display='none';container.innerHTML='';return;}
+  if(phase===0){if(sidebar)sidebar.style.display='none';container.innerHTML='';return;}
   if(sidebar)sidebar.style.display='';
 
   const ben=municipio.municipio||'';
@@ -1083,7 +1083,7 @@ function onAcaoChange(idx){
       acq().acao_descricao=item.acao;acq().acao_instrumento=item.instrumento;
       acq().acao_valor=item.valor;acq().acao_tipo=item.tipo;acq().acao_eixo=item.eixo;acq().acao_idx=idx;
       // Sugerir modo baseado no tipo
-      const sugerido=isObra(item.tipo)?'obra':'equipamento'; // 'servico' set manually
+      const sugerido=detectarTipoMonitoramento(item.instrumento,item.tipo);
       if(!acq().modalidade_objeto)acq().modalidade_objeto=sugerido;
       if(info){
         info.style.display='block';
@@ -1391,23 +1391,19 @@ function contentHTML(){
         </div>
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border2)">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin-bottom:10px">Tipo de monitoramento <span class="req">*</span></div>
-          <div class="mode-selector">
-            <div class="mode-card${modoAtual==='equipamento'?' selected-equip':''}" id="mode-card-equip" onclick="selectMode('equipamento')">
-              <div class="mode-card-icon">📦</div>
-              <div class="mode-card-title">Equipamentos</div>
-              <div class="mode-card-desc">Aquisição de equipamentos, materiais permanentes e mobiliários. Inclui nota fiscal, patrimônio e situação de uso.</div>
-            </div>
-            <div class="mode-card${modoAtual==='obra'?' selected-obra':''}" id="mode-card-obra" onclick="selectMode('obra')">
-              <div class="mode-card-icon">🏗️</div>
-              <div class="mode-card-title">Obra / Construção</div>
-              <div class="mode-card-desc">Construção, reforma ou ampliação de unidades. Inclui % de execução, boletins de medição e cronograma.</div>
-            </div>
-            <div class="mode-card${modoAtual==='servico'?' selected-equip':''}" id="mode-card-servico" onclick="selectMode('servico')">
-              <div class="mode-card-icon">🛠️</div>
-              <div class="mode-card-title">Serviços</div>
-              <div class="mode-card-desc">Contratação de serviços especializados, técnicos ou de apoio. Inclui relatórios e comprovações de execução.</div>
-            </div>
-          </div>
+          ${(()=>{
+            const _tipo=a.modalidade_objeto||'equipamento';
+            const _icons={'equipamento':'📦','obra':'🏗️','servico':'🛠️'};
+            const _labels={'equipamento':'Equipamentos','obra':'Obra / Construção','servico':'Serviços'};
+            const _cores={'equipamento':'var(--g300)','obra':'#FFCC80','servico':'var(--g300)'};
+            return`<div style="background:var(--g50);border:1.5px solid ${_cores[_tipo]};border-radius:var(--r);padding:14px 16px;display:flex;align-items:center;gap:12px">
+              <span style="font-size:22px">${_icons[_tipo]}</span>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--ink)">${_labels[_tipo]}</div>
+                <div style="font-size:11px;color:var(--ink3);margin-top:2px">Tipo definido automaticamente pelo instrumento e tipo da ação</div>
+              </div>
+            </div>`;
+          })()}
         </div>`
       :`<div id="inline-action-list" style="margin-top:4px">${renderInlineActionList()}</div>`}
     </div>
@@ -1956,14 +1952,14 @@ async function concludeAction(){
   let titulo='', corpo='', icone='', okLabel='', okColor='';
   if(!jaEnviada){
     titulo='Confirmar conclusão desta ação?';
-    corpo='📊 Os dados serão gravados na planilha do Google Sheets.'
+    corpo='Os dados serão registrados.'
       +(status==='partial'?'\n\n⚠️ Esta ação está parcialmente preenchida. Recomendamos completar todos os campos.':'')
       +'\n\nApós concluir, os campos ficam bloqueados para edição. Você pode reabrir e corrigir — o registro anterior será substituído automaticamente.';
     icone='📊'; okLabel='Concluir ação'; okColor='var(--g600)';
   } else {
     const vl=vezes>0?(vezes+' correção'+(vezes>1?'ões':'')):'1 envio anterior';
     titulo='Ação já enviada à planilha';
-    corpo='Esta ação já foi enviada ('+vl+'). O registro anterior na planilha será substituído automaticamente pelo novo.'
+    corpo='Esta ação já foi registrada ('+vl+'). O registro anterior será substituído automaticamente pelo novo.'
       +'\n\nApós concluir, os campos ficam bloqueados para edição.';
     icone='⚠️'; okLabel='Enviar correção'; okColor='#E64A19';
   }
@@ -1998,7 +1994,7 @@ async function concludeAction(){
   renderAll();
   const info=document.getElementById('navInfo');
   if(info){
-    const lbl=jaEnviada?'✅ Correção registrada na planilha!':'✅ Ação concluída e registrada!';
+    const lbl=jaEnviada?'✅ Correção registrada!':'✅ Ação concluída e registrada!';
     const prev=info.innerHTML;
     info.innerHTML='<span style="color:var(--g600)">'+lbl+'</span>';
     setTimeout(function(){info.innerHTML=prev;},2500);
@@ -2023,6 +2019,10 @@ async function enviarAcaoSheet(a, tipoRegistro){
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
+      // Arrays estruturados para as abas auxiliares
+      _empresas_array:(a._empresas||[]).map(function(em){return{nome:em.nome||'',cnpj:em.cnpj||'',valor:em.valor||'',homologacao:em.homologacao||'',prazo:em.prazo||'',prev_entrega:em.prev_entrega||''};}).filter(function(em){return em.nome;}),
+      _nfs_array:obra?[]:(a._nfs||[]).map(function(n){return{num:n.num||'',data:n.data||'',valor:n.valor||''};}).filter(function(n){return n.num;}),
+      _medicoes_array:obra?(a._medicoes||[]).map(function(m){return{num:m.num||'',data:m.data||'',valor:m.valor||''};}).filter(function(m){return m.num;}):[],
       empresas_resumido:emps,nf_resumido:nfRes,medicoes_resumido:medRes,docs_marcados:docsOk,
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
@@ -2069,7 +2069,7 @@ function loadSession(key){
     Object.assign(municipio,data.municipio||{});
     aquisicoes.length=0;
     (data.aquisicoes||[{}]).forEach(a=>aquisicoes.push(a));
-    if(!aquisicoes.length)aquisicoes.push({});
+    // aquisicoes can be empty — getOrCreateAcq will populate on action select
     phase=data.phase||0;
     acqIdx=Math.min(data.acqIdx||0,aquisicoes.length-1);
     return data.savedAt||true;
@@ -2114,7 +2114,7 @@ function resumeSession(){
 
 function discardSession(){
   clearSession(sessionKey());
-  aquisicoes.length=0;aquisicoes.push({});acqIdx=0;
+  aquisicoes.length=0;acqIdx=0;
   renderAll();
 }
 
@@ -2233,10 +2233,46 @@ function renderSessionHistoryCard(){
   return html;
 }
 
+
+// ── TIPO DE MONITORAMENTO AUTOMÁTICO ─────────────────────────────────────────
+// Retorna 'equipamento' | 'obra' | 'servico' baseado no instrumento e tipo da ação
+function detectarTipoMonitoramento(instrumento, tipo){
+  // Contrato → sempre serviço
+  if(instrumento==='Contrato') return 'servico';
+
+  // RES_Custeio → sempre serviço
+  if(instrumento==='RES_Custeio') return 'servico';
+
+  const t=(tipo||'').toLowerCase();
+
+  // Veículos e móveis → equipamento (mesmo que tenha "móvel")
+  if(t.includes('móvel')||t.includes('movel')||t.includes('veículo')||t.includes('veiculo')) return 'equipamento';
+
+  // Obras: palavras-chave de construção/reforma
+  const obrasKw=['construção','construcao','construir','obra','reform','ampliação','ampliacao','ampliar',
+    'adequa','implant','polo','caps','ubs','centro','unidade','base samu','ponto de apoio',
+    'serviço de atenção especializada','sae'];
+  if(obrasKw.some(k=>t.includes(k))) return 'obra';
+
+  // Equipamentos: palavras-chave explícitas
+  const equipKw=['equipamento','material permanente','mobiliário','mobiliario','tomógrafo','tomografo',
+    'ultrassom','ressonância','ressonancia','endoscopia','raios','arco cirúrgico','foco cirúrgico'];
+  if(equipKw.some(k=>t.includes(k))) return 'equipamento';
+
+  // Default por instrumento
+  if(instrumento==='RES_Investimento') return 'equipamento';
+  if(instrumento==='Convenio') return 'obra';
+
+  return 'equipamento';
+}
+
 function renderAll(){
   renderPhaseBar();renderAcqBar();renderBadge();renderMain();renderNav();
   window.scrollTo({top:0,behavior:'smooth'});
-  saveSession(); // auto-save on every state change
+  // Só salva sessão se há dados relevantes preenchidos
+  if(municipio.municipio&&municipio.bimestre&&municipio.ano){
+    saveSession();
+  }
 }
 function renderMain(){
   const html=contentHTML();
@@ -2340,9 +2376,9 @@ async function doSubmit(){
   const _planAll2=getAllPlanActions(municipio.municipio||'');
   document.getElementById('successAcqsList').innerHTML=
     `<div class="sac-title">${aquisicoes.filter(a=>a.modalidade_objeto).length} de ${_planAll2.length} ações preenchidas</div>`+
-    aquisicoes.map((a,i)=>{
+    aquisicoes.filter(a=>a.acao_tipo).map((a,i)=>{
       const ob=a.modalidade_objeto==='obra';
-      return`<div class="sac-row"><span class="sac-n${ob?' obra':''}">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':'📦 '}${a.acao_tipo||'Sem descrição'}</span><span style="flex-shrink:0;font-size:11px;color:var(--ink3);margin-left:8px">${a.status_aquisicao||'—'}</span></div>`;
+      return`<div class="sac-row"><span class="sac-n${ob?' obra':''}">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':'📦 '}${a.acao_tipo}</span><span style="flex-shrink:0;font-size:11px;color:var(--ink3);margin-left:8px">${a.status_aquisicao||'—'}</span></div>`;
     }).join('');
   document.getElementById('successWrap').style.display='block';
 }
@@ -2364,15 +2400,20 @@ function exportPDF(){
 
 
 function resetApp(){
+  // Limpar sessão atual antes de zerar o estado
   clearSession(sessionKey());
+  // Zerar todo o estado
   Object.keys(municipio).forEach(k=>delete municipio[k]);
-  aquisicoes.length=0;aquisicoes.push({});acqIdx=0;phase=0;cienciaAceita=false;
+  aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
   Object.keys(arquivos).forEach(k=>delete arquivos[k]);
+  // Mostrar UI principal, esconder tela de sucesso
   ['mainContent','navBar','phaseBarWrap'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});
   const al=document.querySelector('.app-layout');if(al)al.style.display='';
   document.getElementById('successWrap').style.display='none';
-  hideSessions();
+  // Ir para fase 0 (identificação)
   renderAll();
+  // Rolar para o topo
+  window.scrollTo({top:0,behavior:'instant'});
 }
 
 // ── EMPRESAS CONTRATADAS ──────────────────────────────────────────────────────
