@@ -2116,7 +2116,12 @@ function resumeSession(){
         a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
       }
     });
+    phase=1; // Voltar para instrumento para garantir renderização correta
     renderAll();
+    setTimeout(function(){
+      restoreInputs();
+      applyConditionals();
+    },100);
   }
 }
 
@@ -2134,7 +2139,14 @@ function loadAndResume(key){
       a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
     }
   });
+  // Ir para fase 1 para o usuário escolher a ação — garante que o DOM esteja pronto
+  phase=1;
   renderAll();
+  // Segundo render com delay para garantir que os inputs sejam restaurados corretamente
+  setTimeout(function(){
+    restoreInputs();
+    applyConditionals();
+  },100);
 }
 
 function deleteSession(key){
