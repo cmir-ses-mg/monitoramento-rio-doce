@@ -1744,7 +1744,7 @@ function showConfirmModal(title, body, okLabel, icon, okColor){
   return new Promise(resolve=>{
     _confirmResolve=resolve;
     document.getElementById('confirm-modal-title').textContent=title;
-    document.getElementById('confirm-modal-body').textContent=body;
+    document.getElementById('confirm-modal-body').innerHTML=body.replace(/\n/g,'<br>');
     document.getElementById('confirm-modal-icon').textContent=icon||'✓';
     document.getElementById('confirm-modal-icon').style.background=icon==='⚠️'?'#FFF3E0':icon==='🗑️'?'#FFEBEE':'var(--g100)';
     const okBtn=document.getElementById('confirm-modal-ok');
