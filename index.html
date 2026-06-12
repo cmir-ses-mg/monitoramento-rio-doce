@@ -4,6 +4,30 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Monitoramento Bimestral — Plano Rio Doce Saúde</title>
+<script>
+(function(){
+  // Criar favicon dinâmico a partir do logo
+  const img=new Image();
+  img.onload=function(){
+    const c=document.createElement('canvas');c.width=64;c.height=64;
+    const ctx=c.getContext('2d');
+    // Fundo verde escuro (cor da topbar)
+    ctx.fillStyle='#061F16';ctx.fillRect(0,0,64,64);
+    // Logo centralizado
+    const s=Math.min(64/img.width,64/img.height)*0.85;
+    const w=img.width*s,h=img.height*s;
+    ctx.drawImage(img,(64-w)/2,(64-h)/2,w,h);
+    const link=document.createElement('link');
+    link.rel='icon';link.type='image/png';link.href=c.toDataURL('image/png');
+    document.head.appendChild(link);
+  };
+  img.src=typeof LOGO_SRC!=='undefined'?LOGO_SRC:'';
+  // Fallback: aguardar LOGO_SRC ser definido
+  if(typeof LOGO_SRC==='undefined'){
+    window.addEventListener('load',function(){img.src=LOGO_SRC||'';});
+  }
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -652,7 +676,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   <div class="ciencia-box" id="ciencia-box">
     <label class="ciencia-label" onclick="toggleCiencia()">
       <span class="ciencia-chk"></span>
-      <span class="ciencia-text">Estou ciente de que devo encaminhar <strong>por ofício</strong> o PDF gerado por e-mail à URS adscrita, com cópia obrigatória para <span class="ciencia-email">cmir@saude.mg.gov.br</span>, para fins de registro e acompanhamento.</span>
+      <span class="ciencia-text">Estou ciente de que devo encaminhar <strong>por ofício</strong> o PDF gerado por e-mail à <strong>URS adscrita</strong>, com cópia obrigatória para <span class="ciencia-email">cmir@saude.mg.gov.br</span>, para fins de registro e acompanhamento.</span>
     </label>
   </div>
   <div class="success-btns" style="margin-top:20px">
@@ -1954,7 +1978,7 @@ async function concludeAction(){
   let titulo='', corpo='', icone='', okLabel='', okColor='';
   if(!jaEnviada){
     titulo='Confirmar conclusão desta ação?';
-    const _aviso=status==='partial'?'\n\n⚠️ Esta ação está parcialmente preenchida.\n\n<strong>Confira se todos os dados necessários foram incluídos.</strong>/n Se alguma etapa ainda não tiver sido executada, você pode enviar assim mesmo.':'';
+    const _aviso=status==='partial'?'\n\n⚠️ Esta ação está parcialmente preenchida.\nConfira se todos os dados necessários foram incluídos. Se alguma etapa ainda não tiver sido executada, você pode enviar assim mesmo.':'';
     corpo='Os dados serão registrados.'+_aviso+'\n\nApós concluir, os campos ficam bloqueados para edição. Você pode reabrir e corrigir — o registro anterior será substituído automaticamente.';
     icone='📊'; okLabel='Concluir ação'; okColor='var(--g600)';
   } else {
@@ -2091,9 +2115,10 @@ function listSessions(){
       try{
         const d=JSON.parse(localStorage.getItem(k));
         const parts=k.replace('rdoce__','').split('__');
-        const mun=parts[0].replace(/_/g,' ');
-        const bim=parts[1].replace(/_/g,' ');
-        const ano=parts[2]||'';
+        // Usar o nome real do JSON se disponível (evita problema com chars especiais)
+        const mun=(d.municipio&&d.municipio.municipio)||parts[0].replace(/_/g,' ');
+        const bim=(d.municipio&&d.municipio.bimestre)||parts[1].replace(/_/g,' ');
+        const ano=(d.municipio&&d.municipio.ano)||parts[2]||'';
         const total=(d.aquisicoes||[]).filter(a=>a.modalidade_objeto).length;
         const sent=(d.aquisicoes||[]).filter(a=>a._sent).length;
         sessions.push({key:k,mun,bim,ano,total,sent,savedAt:d.savedAt});
@@ -2256,7 +2281,7 @@ function renderSessionHistoryCard(){
   // Listar outras sessões do mesmo beneficiário (bimestres anteriores)
   const allSessions=listSessions();
   const thisBim=allSessions.find(s=>s.key===key);
-  const otherSessions=allSessions.filter(s=>s.key!==key&&s.mun===(municipio.municipio||''));
+  const otherSessions=allSessions.filter(s=>s.key!==key&&s.mun.trim().toLowerCase()===(municipio.municipio||'').trim().toLowerCase());
 
   let html='';
 
