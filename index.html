@@ -2131,22 +2131,61 @@ function discardSession(){
   renderAll();
 }
 
-function loadAndResume(key){
+async function loadAndResume(key){
   loadSession(key);
-  // Re-aplicar detecção automática de tipo para sessões antigas
+  // Re-aplicar detecção automática de tipo
   aquisicoes.forEach(function(a){
     if(a.acao_instrumento||a.acao_tipo){
       a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
     }
   });
-  // Ir para fase 1 para o usuário escolher a ação — garante que o DOM esteja pronto
   phase=1;
   renderAll();
-  // Segundo render com delay para garantir que os inputs sejam restaurados corretamente
-  setTimeout(function(){
-    restoreInputs();
-    applyConditionals();
-  },100);
+
+  // Se a sessão local está vazia ou tem poucas ações, buscar da planilha
+  const acqComDados = aquisicoes.filter(function(a){return a.acao_tipo;});
+  if(acqComDados.length===0 && municipio.municipio && municipio.bimestre && municipio.ano){
+    // Mostrar loading
+    const mc = document.getElementById('mainContent');
+    if(mc){
+      const loadDiv = document.createElement('div');
+      loadDiv.id='load-planilha';
+      loadDiv.style.cssText='text-align:center;padding:40px;font-size:13px;color:var(--ink3)';
+      loadDiv.innerHTML='⏳ Buscando registros anteriores...';
+      mc.prepend(loadDiv);
+    }
+    const registros = await buscarRegistrosPlanilha(municipio.municipio, municipio.bimestre, municipio.ano);
+    const loadDiv = document.getElementById('load-planilha');
+    if(loadDiv) loadDiv.remove();
+
+    if(registros && registros.length > 0){
+      // Popular aquisicoes com dados da planilha
+      aquisicoes.length=0;
+      registros.forEach(function(reg){
+        aquisicoes.push(registroParaAcq(reg));
+      });
+      acqIdx=0;
+      renderAll();
+      setTimeout(function(){ restoreInputs(); applyConditionals(); }, 100);
+      // Mostrar toast
+      const info=document.getElementById('navInfo');
+      if(info){
+        const prev=info.innerHTML;
+        info.innerHTML='<span style="color:var(--g600)">✓ '+registros.length+' registro'+(registros.length>1?'s':'')+' carregado'+(registros.length>1?'s':'')+' da planilha</span>';
+        setTimeout(function(){info.innerHTML=prev;},3000);
+      }
+    } else {
+      // Nenhum registro encontrado
+      const info=document.getElementById('navInfo');
+      if(info){
+        const prev=info.innerHTML;
+        info.innerHTML='<span style="color:var(--ink3)">Nenhum registro encontrado para este período</span>';
+        setTimeout(function(){info.innerHTML=prev;},3000);
+      }
+    }
+  } else {
+    setTimeout(function(){ restoreInputs(); applyConditionals(); }, 100);
+  }
 }
 
 function deleteSession(key){
@@ -2290,6 +2329,72 @@ function detectarTipoMonitoramento(instrumento, tipo){
   if(instrumento==='Convenio') return 'obra';
 
   return 'equipamento';
+}
+
+
+// ── CONSULTA À PLANILHA ───────────────────────────────────────────────────────
+async function buscarRegistrosPlanilha(mun, bim, ano){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return null;
+  try{
+    const url = APPS_SCRIPT_URL
+      + '?acao=consultar'
+      + '&municipio=' + encodeURIComponent(mun)
+      + '&bimestre='  + encodeURIComponent(bim)
+      + '&ano='       + encodeURIComponent(ano);
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if(data.status==='ok' && data.registros && data.registros.length > 0){
+      return data.registros;
+    }
+    return null;
+  }catch(e){
+    console.warn('buscarRegistrosPlanilha:', e);
+    return null;
+  }
+}
+
+// Mapeia um registro da planilha para o objeto de aquisição do formulário
+function registroParaAcq(reg){
+  const tipo = reg.tipo_monitoramento || 'equipamento';
+  const a = {
+    acao_instrumento:      reg.acao_instrumento || '',
+    acao_descricao:        reg.acao_descricao   || '',
+    acao_tipo:             reg.acao_tipo        || '',
+    acao_eixo:             reg.acao_eixo        || '',
+    modalidade_objeto:     tipo,
+    descricao_item:        reg.descricao_item   || '',
+    quantidade:            String(reg.quantidade || ''),
+    valor_executado:       String(reg.valor_executado || ''),
+    valor_proprio:         String(reg.valor_proprio || ''),
+    valor_total_utilizado: String(reg.valor_total_utilizado || ''),
+    fonte_recurso:         reg.fonte_recurso    || '',
+    status_aquisicao:      reg.status_aquisicao || '',
+    modalidade:            reg.modalidade       || '',
+    num_processo:          reg.num_processo     || '',
+    link_publicacao:       reg.link_publicacao  || '',
+    fase_contratacao:      reg.fase_contratacao || '',
+    data_inicio:           reg.data_inicio      || '',
+    data_conclusao:        reg.data_conclusao   || '',
+    // Tipo específico
+    situacao_entrega:      reg.situacao_entrega || '',
+    data_entrega:          reg.data_entrega     || '',
+    houve_atraso:          reg.houve_atraso     || '',
+    pct_execucao:          reg.pct_execucao     || '',
+    andamento_cronograma:  reg.andamento_cronograma || '',
+    problemas:             reg.problemas        || '',
+    medidas:               reg.medidas          || '',
+    impactos:              reg.impactos         || '',
+    obs_gerais:            reg.obs_gerais       || '',
+    // Empresas
+    _empresas: (reg._empresas||[]).map(function(e){ return Object.assign({},e); }),
+    // Flags
+    _sent:    true,
+    _locked:  reg.tipo_registro==='Conclusao'||reg.tipo_registro==='Conclusão',
+    _key:     (reg.acao_instrumento||'')+'__'+(reg.acao_tipo||''),
+  };
+  // Calcular _key igual ao getOrCreateAcq
+  a._key = acqKey(reg.acao_instrumento, reg.acao_tipo);
+  return a;
 }
 
 function renderAll(){
