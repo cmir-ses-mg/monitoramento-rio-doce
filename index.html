@@ -3793,66 +3793,6 @@ async function doLogin(){
 }
 
 // ── Login com Google via popup Apps Script ────────────────────────────────────
-function doLoginGoogle(){
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER')){
-    mostrarErroLogin('Apps Script não configurado.');return;
-  }
-  // Abrir popup que autentica via Apps Script (Session.getActiveUser())
-  const popupUrl = APPS_SCRIPT_URL + '?acao=authGoogle';
-  const popup = window.open(popupUrl,'_googleAuth',
-    'width=480,height=560,top='+(screen.height/2-280)+',left='+(screen.width/2-240)+',toolbar=0,menubar=0,location=0');
-
-  // Mostrar feedback visual
-  const btn = document.querySelector('.login-btn-google');
-  if(btn){btn.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#999" stroke-width="2" fill="none" stroke-dasharray="30" stroke-dashoffset="0"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/></circle></svg> Aguardando autenticação...';btn.disabled=true;}
-
-  // Escutar mensagem do popup
-  function onMessage(evt){
-    // Aceitar mensagem de qualquer origem (popup do Apps Script)
-    const d = evt.data;
-    if(!d||d.type!=='rdoce_google_auth')return;
-    window.removeEventListener('message',onMessage);
-    if(btn){btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg> Entrar com Google';btn.disabled=false;}
-
-    if(d.error){mostrarErroLogin(d.error);return;}
-    if(!d.email){mostrarErroLogin('Não foi possível obter o e-mail Google.');return;}
-
-    // Buscar dados do usuário na planilha com o e-mail retornado
-    const email = d.email.toLowerCase().trim();
-    fetch(APPS_SCRIPT_URL+'?acao=loginGoogle&email='+encodeURIComponent(email))
-      .then(r=>r.json())
-      .then(function(data){
-        const sessao = {
-          email: email,
-          nome: (data.usuario&&data.usuario.nome)||d.nome||email.split('@')[0],
-          municipio: (data.usuario&&data.usuario.municipio)||'',
-          cargo: (data.usuario&&data.usuario.cargo)||'',
-          tipo: 'google',
-          admin: !!(data.usuario&&data.usuario.admin)
-        };
-        _sessaoUsuario = sessao;
-        localStorage.setItem('rdoce_sessao', JSON.stringify(sessao));
-        aplicarSessao(sessao);
-      })
-      .catch(function(){
-        // Offline: usar só o e-mail do Google
-        const sessao = {email:email, nome:d.nome||email.split('@')[0], municipio:'', cargo:'', tipo:'google'};
-        _sessaoUsuario = sessao;
-        localStorage.setItem('rdoce_sessao', JSON.stringify(sessao));
-        aplicarSessao(sessao);
-      });
-  }
-  window.addEventListener('message', onMessage);
-
-  // Timeout se popup for fechado sem resposta
-  const timer = setInterval(function(){
-    if(popup&&popup.closed){
-      clearInterval(timer);
-      window.removeEventListener('message',onMessage);
-      if(btn){btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg> Entrar com Google';btn.disabled=false;}
-    }
-  },500);
-}
 
 // ── Aplicar sessão: preenche dados e fecha tela de login ─────────────────────
 // E-mails com acesso admin (veem todos os municípios, campo não bloqueado)
@@ -4111,4 +4051,53 @@ renderAll();
 </div>
 
 </body>
-</html>
+</html// ── Login com Google via Apps Script popup + polling ─────────────────────────
+function doLoginGoogle(){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER')){
+    mostrarErroLogin('URL do servidor não configurada.');return;
+  }
+  // Gerar token único para esta tentativa de login
+  const token = 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
+  const popupUrl = APPS_SCRIPT_URL + '?acao=authGoogle&token=' + encodeURIComponent(token);
+  const popup = window.open(popupUrl,'_googleAuth',
+    'width=480,height=560,top='+(screen.height/2-280)+',left='+(screen.width/2-240)+',scrollbars=yes');
+  if(!popup){
+    mostrarErroLogin('Popup bloqueado. Permita popups para este site e tente novamente.');return;
+  }
+  const btn = document.querySelector('.login-btn-google');
+  const originalBtnHTML = btn ? btn.innerHTML : '';
+  if(btn){btn.innerHTML='<span style="display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:var(--g600);border-radius:50%;animation:spin .7s linear infinite"></span> Aguardando autenticação...';btn.disabled=true;}
+
+  // Polling: verificar se o token foi validado no servidor
+  let attempts = 0;
+  const maxAttempts = 120; // 2 minutos
+  const interval = setInterval(async function(){
+    attempts++;
+    if(attempts > maxAttempts || (popup && popup.closed && attempts > 3)){
+      clearInterval(interval);
+      if(btn){btn.innerHTML=originalBtnHTML;btn.disabled=false;}
+      if(attempts > maxAttempts) mostrarErroLogin('Tempo esgotado. Tente novamente.');
+      return;
+    }
+    try{
+      const url = APPS_SCRIPT_URL + '?acao=checkGoogleToken&token=' + encodeURIComponent(token);
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if(data.status==='ok'&&data.usuario){
+        clearInterval(interval);
+        if(btn){btn.innerHTML=originalBtnHTML;btn.disabled=false;}
+        const sess={
+          email:data.usuario.email,
+          nome:data.usuario.nome||data.usuario.email.split('@')[0],
+          municipio:data.usuario.municipio||'',
+          cargo:data.usuario.cargo||'',
+          tipo:'google'
+        };
+        _sessaoUsuario=sess;
+        localStorage.setItem('rdoce_sessao',JSON.stringify(sess));
+        aplicarSessao(sess);
+      }
+      // se status==='pending', continuar polling
+    }catch(e){/* ignorar erros de rede temporários */}
+  }, 1000);
+}
