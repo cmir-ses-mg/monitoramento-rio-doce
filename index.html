@@ -1087,6 +1087,45 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
 </html// ── Login com Google via Apps Script popup + polling ─────────────────────────
 
+
+<!-- Modal Seletor de Período -->
+<div id="periodo-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;max-width:380px;width:92%;padding:24px;box-shadow:0 20px 60px rgba(6,31,22,.25)">
+    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:16px">📅 Período do monitoramento</div>
+    <div class="row2" style="gap:12px;margin-bottom:16px">
+      <div class="field" style="margin-bottom:0">
+        <label style="font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:5px">Bimestre</label>
+        <select id="periodo-bimestre" style="width:100%;padding:9px 11px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:7px;outline:none">
+          <option value="">Selecione...</option>
+          <option value="1º Bimestre">1º Bimestre</option>
+          <option value="2º Bimestre">2º Bimestre</option>
+          <option value="3º Bimestre">3º Bimestre</option>
+          <option value="4º Bimestre">4º Bimestre</option>
+          <option value="5º Bimestre">5º Bimestre</option>
+          <option value="6º Bimestre">6º Bimestre</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label style="font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:5px">Ano</label>
+        <select id="periodo-ano" style="width:100%;padding:9px 11px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:7px;outline:none">
+          <option value="">Selecione...</option>
+          <option value="2026">2026</option>
+          <option value="2027">2027</option>
+          <option value="2028">2028</option>
+          <option value="2029">2029</option>
+          <option value="2030">2030</option>
+          <option value="2031">2031</option>
+          <option value="2032">2032</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="fecharSeletorPeriodo()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
+      <button onclick="confirmarPeriodo()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Colar Lista -->
 
 
@@ -1811,7 +1850,9 @@ function contentHTML(){
       <div style="font-size:22px;flex-shrink:0">🏥</div>
       <div style="flex:1">
         <div style="font-size:13px;font-weight:700;color:var(--g900)">${municipio.municipio||'Beneficiário'}</div>
-        <div style="font-size:12px;color:var(--g600);margin-top:2px">${municipio.bimestre||''} ${municipio.ano||''} · ${(function(){const _n=getAllPlanActions(municipio.municipio||'').length;return _n===1?'1 ação no plano':_n+' ações no plano';}())} · Responsável: ${municipio.responsavel||'—'}</div>
+        <div style="font-size:12px;color:var(--g600);margin-top:2px">
+          <span onclick="abrirSeletorPeriodo()" title="Alterar período" style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted">${municipio.bimestre||'— Bimestre'} ${municipio.ano||''}</span>
+          · ${(function(){const _n=getAllPlanActions(municipio.municipio||'').length;return _n===1?'1 ação no plano':_n+' ações no plano';}())} · Responsável: ${municipio.responsavel||'—'}</div>
       </div>
     </div>
     ${renderSessionHistoryCard()}
@@ -2127,7 +2168,7 @@ function nextPhase(){
   saveAllInputs();
   // Validar seleção de modo na fase 1
   if(phase===1&&!acq().acao_tipo){
-    showAlertModal('Selecione uma ação no menu para continuar.','⚠️');
+    showAlertModal('Selecione uma ação no menu lateral para continuar.','⚠️');
     return;
   }
   // Fase 1: verificar se há ação selecionada
@@ -4113,6 +4154,39 @@ function doLoginGoogle(){
 
 
 
+
+// ── SELETOR DE PERÍODO ────────────────────────────────────────────────────────
+function abrirSeletorPeriodo(){
+  const modal = document.getElementById('periodo-modal');
+  if(!modal) return;
+  // Pré-selecionar valores atuais
+  const selBim = document.getElementById('periodo-bimestre');
+  const selAno = document.getElementById('periodo-ano');
+  if(selBim && municipio.bimestre) selBim.value = municipio.bimestre;
+  if(selAno && municipio.ano)      selAno.value = municipio.ano;
+  // Ano padrão = atual se não definido
+  if(selAno && !selAno.value){
+    selAno.value = String(new Date().getFullYear());
+  }
+  modal.style.display = 'flex';
+}
+function fecharSeletorPeriodo(){
+  const modal = document.getElementById('periodo-modal');
+  if(modal) modal.style.display = 'none';
+}
+function confirmarPeriodo(){
+  const bim = document.getElementById('periodo-bimestre')?.value;
+  const ano = document.getElementById('periodo-ano')?.value;
+  if(!bim || !ano){
+    return;
+  }
+  municipio.bimestre = bim;
+  municipio.ano = ano;
+  // Limpar aquisições se o período mudou (novo bimestre = novo preenchimento)
+  fecharSeletorPeriodo();
+  saveSession();
+  renderAll();
+}
 
 renderAll();
 
