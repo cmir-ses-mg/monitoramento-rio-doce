@@ -1109,9 +1109,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <label style="font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:5px">Ano</label>
         <select id="periodo-ano" style="width:100%;padding:9px 11px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:7px;outline:none">
           <option value="">Selecione...</option>
-          <option value="2024">2024</option>
-          <option value="2025">2025</option>
-          <option value="2026">2026</option>
+                    <option value="2026">2026</option>
           <option value="2027">2027</option>
           <option value="2028">2028</option>
           <option value="2029">2029</option>
@@ -1861,7 +1859,23 @@ function contentHTML(){
           · ${(function(){const _n=getAllPlanActions(municipio.municipio||'').length;return _n===1?'1 ação no plano':_n+' ações no plano';}())} · Responsável: ${municipio.responsavel||'—'}</div>
       </div>
     </div>
-    ${renderSessionHistoryCard()}
+    ${(!municipio.bimestre||!municipio.ano)?(
+      '<div style="background:#FFF8E1;border:1.5px solid #F9A825;border-radius:var(--r);padding:14px 16px;margin-bottom:12px">'
+      +'<div style="font-size:12px;font-weight:700;color:#7C4A0A;margin-bottom:10px">📅 Selecione o período do monitoramento</div>'
+      +'<div class="row2" style="gap:10px">'
+        +'<div><label style="font-size:10.5px;font-weight:700;color:#7C4A0A;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Bimestre</label>'
+        +'<select onchange="municipio.bimestre=this.value;renderAll()" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1.5px solid #F9A825;border-radius:7px;background:#fff">'
+        +'<option value="">Selecione...</option>'
+        +['1º Bimestre','2º Bimestre','3º Bimestre','4º Bimestre','5º Bimestre','6º Bimestre'].map(function(b){return '<option value="'+b+'"'+(municipio.bimestre===b?' selected':'')+'>'+b+'</option>';}).join('')
+        +'</select></div>'
+        +'<div><label style="font-size:10.5px;font-weight:700;color:#7C4A0A;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Ano</label>'
+        +'<select onchange="municipio.ano=this.value;renderAll()" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1.5px solid #F9A825;border-radius:7px;background:#fff">'
+        +'<option value="">Selecione...</option>'
+        +[2026,2027,2028,2029,2030,2031,2032].map(function(a){return '<option value="'+a+'"'+(municipio.ano==a?' selected':'')+'>'+a+'</option>';}).join('')
+        +'</select></div>'
+      +'</div></div>'
+    ):''}
+        ${renderSessionHistoryCard()}
     <div class="step-head"><h2>Instrumento e Ação</h2><p>Selecione a ação no menu lateral para iniciar o preenchimento.</p></div>
     <div class="instrumento-card">
       <div class="card-title">Ação selecionada</div>
@@ -2142,7 +2156,7 @@ function renderNav(){
     return;
   }
   if(phase>=1&&phase<=4){
-    info.innerHTML=`<strong>${filled}/${planTotal||'?'}</strong> ações · Etapa <strong>${phase+1}</strong>/6`;
+    info.innerHTML=`<strong>${filled}/${planTotal||'?'}</strong> ações · Etapa <strong>${phase}</strong>/5`;
     const isLast=phase===4;
     const curStatus=calcAcqStatus(aquisicoes[acqIdx]);
     const isLocked=curStatus==='locked';
@@ -2150,15 +2164,15 @@ function renderNav(){
     const isLockedNow=!!(curA&&curA._locked);
     if(isLast){
       if(isLockedNow){
-        btns.innerHTML=`<button class="btn" onclick="prevPhase()">${iL} Anterior</button>
+        btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}
           <button class="btn btn-primary" onclick="unlockAcq(acqIdx)">✏️ Reabrir para edição</button>`;
       } else {
-        btns.innerHTML=`<button class="btn" onclick="prevPhase()">${iL} Anterior</button>
+        btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}
           <button class="btn" onclick="saveAndContinueLater()">💾 Salvar parcial</button>
           <button class="btn btn-primary" style="background:var(--g500);border-color:var(--g500)" onclick="concludeAction()">✓ Concluir ação</button>`;
       }
     } else {
-      btns.innerHTML=`<button class="btn" onclick="prevPhase()">${iL} Anterior</button>
+      btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}
         <button class="btn" onclick="saveAndContinueLater()">💾 Salvar parcial</button>
         <button class="btn btn-primary" onclick="nextPhase()">Próxima ${iR}</button>`;
     }
@@ -2166,7 +2180,7 @@ function renderNav(){
   }
   if(phase===5){
     info.innerHTML=`<strong>${filled}/${planTotal||'?'}</strong> ações preenchidas`;
-    btns.innerHTML=`<button class="btn" onclick="prevPhase()">${iL} Anterior</button><button class="btn btn-send" onclick="submitForm()">${iS} Enviar tudo</button>`;
+    btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}<button class="btn btn-send" onclick="submitForm()">${iS} Enviar tudo</button>`;
   }
 }
 
