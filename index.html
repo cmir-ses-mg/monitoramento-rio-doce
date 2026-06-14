@@ -70,6 +70,8 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
 .sacq-item.s-complete:hover{background:var(--g100)}
 .sacq-item.s-locked{border-left-color:var(--g500);background:var(--g100);opacity:.85}
 .sacq-item.s-locked:hover{opacity:1;background:var(--g200)}
+.sacq-item.servico{background:#EFF6FF;border-left-color:#3B82F6}
+.sacq-item.servico:hover{background:#DBEAFE}
 .sacq-item.active{outline:2px solid var(--g400);outline-offset:-2px;z-index:1}
 .sacq-item.active.s-empty{outline-color:#E57373}
 .sacq-item.active.s-partial{outline-color:#F9A825}
@@ -1379,7 +1381,12 @@ function renderAcqBar(){
       const aIdx=aquisicoes.findIndex(a=>a._key===key);
       const a=aIdx>=0?aquisicoes[aIdx]:null;
       const isActive=aIdx>=0&&aIdx===acqIdx;
-      const obra=a?isAcqObra(a):isObra(item.tipo);
+      // Detectar tipo correto: considerar instrumento (custeio/contrato = serviço)
+      const _tipoSidebar = typeof detectarTipoMonitoramento==='function'
+        ? detectarTipoMonitoramento(item.instrumento||'', item.tipo||'')
+        : (isObra(item.tipo)?'obra':'equipamento');
+      const obra = _tipoSidebar==='obra';
+      const servico = _tipoSidebar==='servico';
       const status=calcAcqStatus(a);// 'empty'|'partial'|'complete'|'locked'
       const locked=status==='locked';
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
@@ -1392,11 +1399,13 @@ function renderAcqBar(){
         else if(done)cls=obra?'obra-done':'done';
         return`<span class="sacq-step ${cls}"></span>`;
       }).join('');
-      html+=`<div class="sacq-item s-${status}${isActive?' active':''}${obra?' obra':''}"
+      const _sidebarColor=obra?'#7C4A0A':servico?'#1E40AF':'var(--ink2)';
+      const _sidebarCls=obra?' obra':servico?' servico':'';
+      html+=`<div class="sacq-item s-${status}${isActive?' active':''}${_sidebarCls}"
         onclick="selectPlanAction('${inst}','${safeType}')"
         title="${item.acao}">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
-          <div style="font-size:11px;font-weight:600;color:${obra?'#7C4A0A':'var(--ink2)'};line-height:1.35;flex:1">${displayType}</div>
+          <div style="font-size:11px;font-weight:600;color:${_sidebarColor};line-height:1.35;flex:1">${displayType}</div>
           <span style="font-size:10px;flex-shrink:0;margin-top:1px">${STATUS_DOT[status]}</span>
         </div>
         <div style="font-size:10px;color:var(--ink3);margin-top:2px">${item.eixo}</div>
@@ -2117,9 +2126,8 @@ function renderNav(){
 function nextPhase(){
   saveAllInputs();
   // Validar seleção de modo na fase 1
-  if(phase===1&&!acq().modalidade_objeto){
-    showAlertModal('Por favor, selecione o tipo de monitoramento: Equipamentos, Obra/Construção ou Serviços.','⚠️');
-    document.querySelector('.mode-selector')?.scrollIntoView({behavior:'smooth',block:'center'});
+  if(phase===1&&!acq().acao_tipo){
+    showAlertModal('Selecione uma ação no menu para continuar.','⚠️');
     return;
   }
   // Fase 1: verificar se há ação selecionada
@@ -2708,7 +2716,12 @@ function renderInlineActionList(){
       const aIdx=aquisicoes.findIndex(a=>a._key===key);
       const a=aIdx>=0?aquisicoes[aIdx]:null;
       const st=calcAcqStatus(a);
-      const obra=a?isAcqObra(a):isObra(item.tipo);
+      // Detectar tipo correto: considerar instrumento (custeio/contrato = serviço)
+      const _tipoSidebar = typeof detectarTipoMonitoramento==='function'
+        ? detectarTipoMonitoramento(item.instrumento||'', item.tipo||'')
+        : (isObra(item.tipo)?'obra':'equipamento');
+      const obra = _tipoSidebar==='obra';
+      const servico = _tipoSidebar==='servico';
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
       const displayType=item.tipo.replace(/\n.*/,'');
       out+=`<div onclick="selectInlineAction('${inst}','${safeType}')"
