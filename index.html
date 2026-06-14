@@ -2015,7 +2015,14 @@ function contentHTML(){
       const a=aIdx>=0?aquisicoes[aIdx]:null;
       const ob=a?isAcqObra(a):isObra(item.tipo);
       const hasData=!!(a&&a.modalidade_objeto);
-      const icon=ob?'🏗️':(a&&a.modalidade_objeto==='servico'?'🛠️':'📦');
+      // Detectar tipo automaticamente para o ícone
+      const _tipoDetect=a&&a.acao_tipo
+        ? (typeof detectarTipoMonitoramento==='function'
+            ? detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'')
+            : (a.modalidade_objeto||'equipamento'))
+        : (item.instrumento==='RES_Custeio'||item.instrumento==='Contrato'?'servico'
+           :(isObra(item.tipo)?'obra':'equipamento'));
+      const icon=_tipoDetect==='obra'?'🏗️':(_tipoDetect==='servico'?'🛠️':'📦');
       const safeType=item.tipo.replace(/'/g,"\\'" ).replace(/\n/g,' ');
       return`<div class="acq-ov${ob?' obra':''}" style="${!hasData?'opacity:.6':''}">
         <div class="acq-ov-main" onclick="${hasData&&aIdx>=0?`goToAcq(${aIdx})`:`selectPlanAction('${item.instrumento}','${safeType}')`}">
