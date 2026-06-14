@@ -2793,7 +2793,7 @@ function renderInlineActionList(){
         style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:6px;cursor:pointer;background:${obra?'#FFF8F0':'var(--white)'};transition:all .15s"
         onmouseover="this.style.borderColor='var(--g400)';this.style.background='var(--g50)'"
         onmouseout="this.style.borderColor='var(--border)';this.style.background='${obra?'#FFF8F0':'var(--white)'}'">
-        <span style="font-size:16px;flex-shrink:0">${obra?'🏗️':'📦'}</span>
+        <span style="font-size:16px;flex-shrink:0">${obra?'🏗️':servico?'🛠️':'📦'}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${displayType}</div>
           <div style="font-size:11px;color:var(--ink3);margin-top:2px">R$ ${item.valor?Number(item.valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'} · ${item.eixo}</div>
