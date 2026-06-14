@@ -1329,9 +1329,10 @@ function renderPhaseBar(){
   const ph=phases();
   const inner=document.getElementById('phaseBar');
   if(!inner)return;
+  const pi=Math.max(0,phase-1); // phase 1=Instrumento → barra índice 0
   inner.innerHTML=ph.map((p,i)=>`
-    <div class="phase-item ${i<phase?'done':i===phase?'active':''}" ${i<=phase?`onclick="navToPhase(${i})"`:''} style="${i<=phase?'cursor:pointer':''}">
-      <span class="phase-dot">${i<phase?'✓':i+1}</span>${p.label}
+    <div class="phase-item ${i<pi?'done':i===pi?'active':''}" ${i<=pi?`onclick="navToPhase(${i+1})"`:''} style="${i<=pi?'cursor:pointer':''}">
+      <span class="phase-dot">${i<pi?'✓':i+1}</span>${p.label}
     </div>`).join('');
 }
 function navToPhase(i){saveAllInputs();phase=i;renderAll();}
@@ -2192,7 +2193,7 @@ function nextPhase(){
     return;
   }
   if(phase===1&&!acq().acao_tipo){
-    showAlertModal('Selecione uma ação no menu para continuar.','⚠️');
+    showAlertModal('Selecione uma ação no menu lateral para continuar.','⚠️');
     return;
   }
   // Fase 1: verificar se há ação selecionada
@@ -4033,9 +4034,7 @@ function aplicarSessao(sess){
   const admin = isAdmin(sess);
   if(!admin && sess.municipio){
     municipio.municipio = sess.municipio;
-    const agora = new Date();
-    if(!municipio.bimestre) municipio.bimestre = Math.ceil((agora.getMonth()+1)/2)+'º Bimestre';
-    if(!municipio.ano)      municipio.ano = String(agora.getFullYear());
+    // Não preencher bimestre/ano automaticamente — usuário escolhe na fase 1
     phase = 1;
   } else {
     // Admin ou usuário sem município: fase 0 com município livre
