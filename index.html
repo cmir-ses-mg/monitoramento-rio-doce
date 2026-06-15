@@ -950,7 +950,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 </nav>
 <div id="colar-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:14px;max-width:560px;width:92%;padding:24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
-    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">📋 Colar lista de equipamentos</div>
+    <div id="colar-modal-title" style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">📋 Colar lista de equipamentos</div>
     <div style="font-size:12.5px;color:var(--ink2);margin-bottom:12px">Abra a planilha no Excel, selecione as linhas de dados (sem título), copie com Ctrl+C e cole abaixo com Ctrl+V.</div>
     <textarea id="colar-textarea" rows="10" placeholder="Cole aqui os dados copiados do Excel (Ctrl+V)..." style="width:100%;font-family:var(--mono);font-size:11.5px;border:1.5px solid var(--border);border-radius:8px;padding:10px;resize:vertical;outline:none;line-height:1.5" onpaste="setTimeout(()=>this.style.borderColor='var(--g400)',50)"></textarea>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
@@ -2823,13 +2823,11 @@ async function selectInlineAction(instrumento, tipo){
 
 
 function renderSessionHistoryCard(){
-  // Mostra apenas sessões do mesmo beneficiário+bimestre+ano
   const key=sessionKey();
-  if(!key)return '';
-  // Listar outras sessões do mesmo beneficiário (bimestres anteriores)
   const allSessions=listSessions();
-  const thisBim=allSessions.find(s=>s.key===key);
-  const otherSessions=allSessions.filter(s=>s.key!==key&&s.mun.trim().toLowerCase()===(municipio.municipio||'').trim().toLowerCase());
+  const thisBim=key?allSessions.find(s=>s.key===key):null;
+  const munNorm=(municipio.municipio||'').trim().toLowerCase();
+  const otherSessions=allSessions.filter(s=>s.key!==key&&s.mun.trim().toLowerCase()===munNorm);
 
   let html='';
 
@@ -3152,6 +3150,8 @@ function _renderLotesCardDOM(){
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Colar lista
         </button>
+      \'<a onclick="_baixarModeloXLSX()" style="display:flex;align-items:center;gap:4px;padding:5px 10px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:var(--g50);color:var(--g700);cursor:pointer;font-family:var(--font)">⬇️ Baixar modelo</a>\'
+      +(acq()._pool&&acq()._pool.length?\'<label style="display:flex;align-items:center;gap:4px;padding:5px 10px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">➕ Segunda lista<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadSegundaLista(this)"/></label>\':\'\')
       </div>`:''}
       <!-- Lista de itens disponíveis para seleção -->
       <div style="padding:12px 14px;background:#fff" id="pool-area">
@@ -3325,37 +3325,32 @@ function colarTabela(li,texto){
   processarDadosPool(linhas);
 }
 
-function processarDadosPool(data){
+function processarDadosPool(data,modo){
   let startRow=0;
-  for(let i=0;i<Math.min(data.length,10);i++){
-    const row=data[i].map(c=>String(c||'').toUpperCase());
-    if(row.some(c=>c.includes('EQUIPAMENTO')||c.includes('DESCRI'))){startRow=i+1;break;}
-  }
-  const itens=[];
-  let pid=Date.now();
+  for(let i=0;i<Math.min(data.length,10);i++){const row=data[i].map(c=>String(c||'').toUpperCase());if(row.some(c=>c.includes('EQUIPAMENTO')||c.includes('DESCRI'))){startRow=i+1;break;}}
+  const itens=[];let pid=Date.now();
   for(let i=startRow;i<data.length;i++){
-    const row=data[i];
-    const nome=String(row[1]||row[0]||'').trim();
+    const row=data[i],nome=String(row[1]||row[0]||'').trim();
     if(!nome||nome.toUpperCase().includes('TOTAL'))continue;
     const cod=String(row[0]||'').trim();
-    const vStr=String(row[2]||'0').replace(/[R$\s.]/g,'').replace(',','.');
-    const qStr=String(row[3]||'1').replace(/[^0-9,\.]/g,'').replace(',','.');
-    const vUnit=parseFloat(vStr)||0;
-    const qtde=parseFloat(qStr)||1;
+    const vUnit=parseFloat(String(row[2]||'0').replace(/[R$\s.]/g,'').replace(',','.'))||0;
+    const qtde=parseFloat(String(row[3]||'1').replace(/[^0-9,.]/g,'').replace(',','.'))||1;
     itens.push({_pid:pid++,cod,nome,qtde,valor_unit:vUnit,total:vUnit*qtde});
   }
   if(!itens.length){alert('Nenhum item encontrado.');return;}
-  acq()._pool=itens;
-  // Limpar itens de lotes não confirmados
-  (acq()._lotes||[]).forEach(function(l){if(!l.confirmado)l.itens=[];});
+  if(modo==='adicionar'&&acq()._pool&&acq()._pool.length){
+    const existCods=new Set(acq()._pool.map(it=>it.cod).filter(Boolean));
+    const novos=itens.filter(it=>!it.cod||!existCods.has(it.cod));
+    acq()._pool=acq()._pool.concat(novos);
+  } else {
+    acq()._pool=itens;
+    (acq()._lotes||[]).forEach(l=>{if(!l.confirmado)l.itens=[];});
+  }
   _renderLotesCardDOM();
   const info=document.getElementById('navInfo');
-  if(info){const prev=info.innerHTML;info.innerHTML=`<span style="color:var(--g600)">✓ ${itens.length} itens carregados</span>`;setTimeout(()=>info.innerHTML=prev,2500);}
+  if(info){const prev=info.innerHTML;info.innerHTML='<span style="color:var(--g600)">\u2713 '+itens.length+' itens '+(modo==='adicionar'?'adicionados':'carregados')+'</span>';setTimeout(()=>info.innerHTML=prev,2500);}
 }
 
-
-// Modal para colar lista
-let _colarLoteIdx=-1;
 function abrirColarModal(li){
   _colarLoteIdx=li;
   document.getElementById('colar-modal').style.display='flex';
@@ -4209,6 +4204,83 @@ function confirmarPeriodo(){
   fecharSeletorPeriodo();
   saveSession();
   renderAll();
+}
+
+// ── MODELO XLSX PARA DOWNLOAD ─────────────────────────────────────────────────
+function _getModeloXLSXB64(){
+  // Gerar um xlsx simples com as colunas esperadas
+  try {
+    if(typeof XLSX === 'undefined') return '';
+    const wb = XLSX.utils.book_new();
+    const data = [
+      ['COD','EQUIPAMENTO','VALOR','UNI','TOTAL'],
+      ['001','Exemplo de equipamento','1000.00','1','1000.00'],
+      ['002','Outro equipamento','500.00','2','1000.00']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    // Largura das colunas
+    ws['!cols'] = [{wch:8},{wch:50},{wch:12},{wch:8},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws, 'Equipamentos');
+    return XLSX.write(wb, {type:'base64', bookType:'xlsx'});
+  } catch(e){ return ''; }
+}
+
+// ── SEGUNDA LISTA (adicionar mais itens ao pool) ──────────────────────────────
+function abrirSegundaLista(){
+  // Reutiliza o modal de colar, mas em modo "adicionar" (não substitui)
+  _colarModo = 'adicionar';
+  _colarLoteIdx = -1;
+  document.getElementById('colar-modal').style.display = 'flex';
+  document.getElementById('colar-modal-title').textContent = '📋 Adicionar mais itens à lista';
+  const ta = document.getElementById('colar-textarea');
+  if(ta){ta.value='';ta.focus();}
+}
+
+function uploadSegundaLista(input){
+  const file = input.files[0]; if(!file)return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      if(typeof XLSX !== 'undefined'){
+        const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        processarDadosPool(data, true); // true = modo adicionar
+      }
+    }catch(err){alert('Erro ao ler o arquivo.');}
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+let _colarModo = 'substituir';
+
+
+function _baixarModeloXLSX(){
+  try{
+    if(typeof XLSX==='undefined'){alert('Aguarde carregar a biblioteca Excel.');return;}
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([
+      ['COD','EQUIPAMENTO','VALOR','UNI','TOTAL'],
+      ['001','Nome do equipamento','1000.00','1','1000.00'],
+      ['002','Outro equipamento','500.00','2','1000.00']
+    ]);
+    ws['!cols']=[{wch:8},{wch:50},{wch:12},{wch:8},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,ws,'Equipamentos');
+    XLSX.writeFile(wb,'modelo_lista_equipamentos.xlsx');
+  }catch(e){alert('Erro ao gerar modelo: '+e.message);}
+}
+function uploadSegundaLista(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      if(typeof XLSX!=='undefined'){
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        processarDadosPool(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}),'adicionar');
+      }
+    }catch(err){alert('Erro ao ler o arquivo.');}
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 renderAll();
