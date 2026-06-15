@@ -1802,7 +1802,7 @@ function renderNav(){
   const planTotal=getAllPlanActions(municipio.municipio||'').length;
   const filled=aquisicoes.filter(a=>a.modalidade_objeto).length;
   if(phase===0){
-    info.innerHTML=`Identificação`;
+    info.innerHTML=`Selecione o município e período`;
     btns.innerHTML=`<button class="btn btn-primary" onclick="nextPhase()">Avançar ${iR}</button>`;
     return;
   }
@@ -1837,6 +1837,12 @@ function renderNav(){
 
 function nextPhase(){
   saveAllInputs();
+  // Fase 0: admin deve selecionar município, bimestre e ano
+  if(phase===0){
+    if(!municipio.municipio){showAlertModal('Selecione o município.','⚠️');return;}
+    if(!municipio.bimestre||!municipio.ano){showAlertModal('Selecione o bimestre e o ano.','⚠️');return;}
+    phase=1;renderAll();return;
+  }
   // Validar seleção de modo na fase 1
   if(phase===1&&(!municipio.bimestre||!municipio.ano)){
     showAlertModal('Selecione o bimestre e o ano antes de continuar.','⚠️');return;
