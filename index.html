@@ -3150,8 +3150,13 @@ function renderAll(){
   }
 }
 function renderMain(){
-  const html=contentHTML();
+  let html='';
+  try{html=contentHTML();}catch(err){
+    console.error('contentHTML error:',err);
+    html='<div style="padding:20px;color:red">Erro ao renderizar: '+err.message+'</div>';
+  }
   const mc=document.getElementById('mainContent');
+  if(!mc){console.error('mainContent not found');return;}
   mc.innerHTML=html;
   if(aquisicoes[acqIdx]&&aquisicoes[acqIdx]._locked)mc.classList.add('locked-form');
   else mc.classList.remove('locked-form');
