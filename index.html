@@ -1494,6 +1494,11 @@ function contentHTML(){
     const a=acq();
     const modoAtual=a.modalidade_objeto||'';
     const ILBL={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
+    const _tipoAcq=typeof detectarTipoMonitoramento==='function'&&(a.acao_instrumento||a.acao_tipo)
+      ? detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'')
+      : (a.modalidade_objeto||'equipamento');
+    const obra=_tipoAcq==='obra';
+    const servico=_tipoAcq==='servico';
     return`
     ${lockedBanner}
     <div style="background:var(--g100);border:1.5px solid var(--g300);border-radius:var(--r);padding:13px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
