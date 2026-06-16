@@ -3090,27 +3090,25 @@ function renderContratacaoLotes(lotes,lockedBanner,modeBadge){
     var cur=lote._status||'Planejamento';
     var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
     var borderColor=isContr?'var(--g400)':'var(--border)';
-    var especifico=_campoEspecifico(lote,li);
-
+    var esp=_campoEspecifico(lote,li);
+    var pills=_statusPills(cur,'_setSL'+li);
     return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
-        +'<div style="width:30px;height:30px;border-radius:50%;background:var(--g800);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">L'+(li+1)+'</div>'
-        +'<div style="flex:1;min-width:0">'
-          +'<div style="font-size:14px;font-weight:700;color:var(--ink)">'+mod+'</div>'
-          +'<div style="font-size:11.5px;color:var(--ink3)">'+(lote.num_processo?'Proc. '+lote.num_processo+' \u00b7 ':'')+''+(lote.itens?lote.itens.length+' itens':'')+'  \u00b7  Total: R$ '+(lote._total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+        +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">L'+(li+1)+'</div>'
+        +'<div style="flex:1;min-width:0;overflow:hidden">'
+          +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+mod+'</div>'
+          +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap">'+(lote.num_processo?'Proc. '+lote.num_processo+' · ':'')+''+(lote.itens?lote.itens.length+' itens':'')+' · R$ '+(lote._total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
         +'</div>'
-        +'<div style="display:flex;gap:5px;flex-wrap:wrap">'+_statusPills(cur,'function(s){setLoteStatus('+li+',s)}')+'</div>'
       +'</div>'
-      +(especifico?'<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border2)">'+especifico+'</div>':'')
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2)">'+pills+'</div>'
+      +(esp?'<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2)">'+esp+'</div>':'')
       +_camposContrato(lote,isContr,li)
-      +'</div>';
+    +'</div>';
   }).join('');
-
-  return ''+
-    lockedBanner+
-    '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+modeBadge+'</h2>'+
-    '<p>Um card por modalidade de licitação configurada na etapa anterior.</p></div>'+
-    cards;
+  return (lockedBanner||'')
+    +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+(modeBadge||'')+'</h2>'
+    +'<p>Um card por modalidade de licitação configurada na etapa anterior.</p></div>'
+    +cards;
 }
 
 function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
