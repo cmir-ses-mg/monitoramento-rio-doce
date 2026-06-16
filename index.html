@@ -2795,8 +2795,9 @@ function _renderLotesCardDOM(){
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Colar lista
         </button>
+        <a onclick="_baixarModeloXLSX()" style="display:flex;align-items:center;gap:4px;padding:5px 10px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:var(--g50);color:var(--g700);cursor:pointer;font-family:var(--font);text-decoration:none;margin-left:auto">⬇️ Baixar modelo</a>
       </div>`:''}
-      ${(acq()._pool&&acq()._pool.length&&!pool.length)?'<div style="padding:6px 14px 10px;background:var(--g50);border-bottom:1px solid var(--border2)"><label style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">➕ Adicionar outra lista<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadSegundaLista(this)"/></label></div>':''}
+      ${(acq()._pool&&acq()._pool.length>0)?'<div style="padding:6px 14px 10px;background:var(--g50);border-bottom:1px solid var(--border2)"><label style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">➕ Adicionar outra lista<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadSegundaLista(this)"/></label></div>':''}
       <!-- Lista de itens disponíveis para seleção -->
       <div style="padding:12px 14px;background:#fff" id="pool-area">
         ${poolDisp.length?renderPoolHTML(editIdx):`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Importe a lista de itens do município para começar.</div>`}
