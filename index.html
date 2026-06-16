@@ -2745,7 +2745,7 @@ function _renderLotesCardDOM(){
         <div style="width:26px;height:26px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:700;color:var(--g800)">${lote.modalidade||'Lote '+(realIdx+1)}</div>
-          <div style="font-size:11px;color:var(--ink3)">${lote.num_processo?'Proc. '+lote.num_processo+' · ':''} ${lote.itens.length} itens · Vl. executado: R$ ${parseBRL(lote.valor_executado||'0').toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          <div style="font-size:11px;color:var(--ink3)">${lote.num_processo?'Proc. '+lote.num_processo+' · ':''} ${lote.itens.length} itens · R$ ${(lote._total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         </div>
         <div style="font-size:13px;font-weight:700;color:var(--g700)">R$ ${totLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <button onclick="editarLote(${realIdx})" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">✏️ Editar</button>
@@ -2774,13 +2774,6 @@ function _renderLotesCardDOM(){
         <input type="text" placeholder="Nº processo / licitação" value="${lote.num_processo||''}"
           style="width:140px;padding:6px 10px;font-size:12px;border:none;border-radius:6px;font-family:var(--font)"
           oninput="acq()._lotes[${editIdx}].num_processo=this.value"/>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-          <span style="font-size:11px;color:rgba(255,255,255,.8);white-space:nowrap">Vl. executado</span>
-          <input type="text" placeholder="0,00" value="${lote.valor_executado||''}"
-            style="width:90px;padding:6px 10px;font-size:12px;border:none;border-radius:6px;font-family:var(--font);font-weight:600"
-            oninput="this.value=this.value.replace(/[^0-9,]/g,'')"
-            onblur="acq()._lotes[${editIdx}].valor_executado=this.value;calcExecutadoLotes()"/>
-        </div>
       </div>
       <!-- Área de importação (só aparece se pool vazio) -->
       ${!poolDisp.length?`
