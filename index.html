@@ -1615,7 +1615,7 @@ function contentHTML(){
     </div>`;
 
   // Phase 3 — EQUIPAMENTO
-  if(phase===3&&!obra) return`
+  if(phase===3&&!obra) return (acq()._lotes||[]).filter(l=>l.confirmado).length===0 ? `
     ${lockedBanner}<div class="step-head"><h2>${servico?'Execução do Serviço':'Entrega e Patrimônio'} <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>${servico?'Situação do serviço prestado, comprovações e relatórios.':'Situação da entrega, notas fiscais e incorporação patrimonial.'}</p></div>
     <div class="card">
       <div class="card-title">Execução da entrega</div>
@@ -1623,7 +1623,7 @@ function contentHTML(){
     </div>
     <div class="card" id="card-data-entrega" style="display:none">
       <div class="card-title">Data(s) da entrega / prestação de serviço</div>
-      ${fld('Data da entrega ou período de prestação do serviço','data_entrega','text','Ex: 15/03/2025 | Para serviços: Jan/2025 a Mar/2025')}
+      ${fld('Data da entrega ou período','data_entrega','text','Ex: 15/03/2025')}
       ${chipsHTML('Houve atraso?','houve_atraso',['Sim','Não'])}
       ${fld('Se houve atraso, justificar','justificativa_atraso','textarea','Descreva o motivo do atraso...')}
     </div>
@@ -1631,51 +1631,42 @@ function contentHTML(){
       <div class="card">
         <div class="card-title">Comprovação fiscal</div>
         ${chipsHTML('Notas fiscais / recibos apresentados?','notas_fiscais',['Sim','Não'])}
-      ${chipsHTML('Avaliação da qualidade da entrega / prestação do serviço','qualidade_entrega',['Conforme','Não conforme','Parcialmente conforme'])}
-      ${fld('Observações sobre a qualidade','obs_qualidade_entrega','textarea','Descreva se há problemas de qualidade, inconformidades ou pontos positivos.')}
+        ${chipsHTML('Avaliação da qualidade','qualidade_entrega',['Conforme','Não conforme','Parcialmente conforme'])}
+        ${fld('Observações sobre a qualidade','obs_qualidade_entrega','textarea','')}
       </div>
       <div class="card" id="card-nf-detalhes" style="display:none">
-        <div class="card-title">Notas fiscais e comprovantes de entrega</div>
+        <div class="card-title">Notas fiscais e comprovantes</div>
         <div id="nf-list-container"></div>
         <button class="btn-add-nf" onclick="addNF()">+ Adicionar outra nota fiscal</button>
-        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border2)">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin-bottom:8px">Comprovantes de entrega</div>
-          <input type="file" style="display:none" id="file_comp_entrega" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('comp_entrega',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('comp_entrega')">
-            <div class="upload-zone-text"><strong>Clique para anexar</strong> comprovantes de entrega (fotos de equipamentos instalados, relatórios de prestação de serviço, relatórios de obra, medições)</div>
-          </div>
-          <div class="file-list" id="files_comp_entrega">${renderFilePills('comp_entrega')}</div>
-        </div>
       </div>
-    </div>
-    <div class="card" id="card-patrimonio" style="display:none">
-      <div class="card-title">Incorporação patrimonial</div>
-      ${chipsHTML('Bem incorporado ao patrimônio público?','incorporado_patrimonio',['Sim','Não'])}
-      <div id="card-patrimonio-detalhes" style="display:none">
-        <div class="row2" style="margin-top:12px">
-          ${fld('Nº registro patrimonial','num_patrimonio','text','00123')}
-          ${fld('Data de incorporação','data_incorporacao','date')}
-        </div>
-        ${chipsHTML('O item está em uso?','item_em_uso',['Sim','Não','Parcialmente'])}
-        ${fld('Data de início do uso','data_inicio_uso','date')}
-        ${chipsHTML('Instalação / treinamento realizado?','instalacao_treinamento',['Sim','Não','Não se aplica'])}
-        ${fld('Observações sobre uso e instalação','obs_uso','textarea','Descreva como o item está sendo utilizado...')}
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">Documentos comprobatórios</div>
-      <p class="hint" style="margin-bottom:12px">Clique em cada documento para marcá-lo e anexar o arquivo.</p>
-      <div class="doc-list">${docsListHTML()}</div>
-    </div>
-    <div class="card" id="card-fotos" style="border-left:3px solid var(--g400)">
-      <div class="card-title">Registro fotográfico</div>
-      <p class="hint" style="margin-bottom:12px">Recomendamos fortemente o envio de fotos dos equipamentos instalados, do estado da obra ou da prestação de serviços.</p>
-      <input type="file" style="display:none" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_acao',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('fotos_acao')">
-        <div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>
-      </div>
-      <div class="file-list" id="files_fotos_acao">${renderFilePills('fotos_acao')}</div>
-    </div>`;
+    </div>`
+  : lockedBanner
+    +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Patrimônio')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
+    +'<p>Situação da entrega por lote — notas fiscais e incorporação patrimonial.</p></div>'
+    +(acq()._lotes||[]).filter(function(l){return l.confirmado;}).map(function(lote,li){
+      const concluido=(lote.situacao_entrega||'')==='Total / Concluído';
+      const borderColor=concluido?'var(--g400)':'var(--border)';
+      return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+          +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">L'+(li+1)+'</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+(lote.modalidade||'Lote '+(li+1))+'</div>'
+            +'<div style="font-size:11px;color:var(--ink3)">'+(lote.itens?lote.itens.length+' itens':'')+(lote._total?' \u00b7 R$ '+lote._total.toLocaleString('pt-BR',{minimumFractionDigits:2}):'')+'</div>'
+          +'</div>'
+        +'</div>'
+        +chipsHTML('Situação da entrega','situacao_entrega_l'+li,['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'],lote)
+        +'<div class="row2" style="margin-top:10px">'
+          +_spField(lote,'data_entrega','Data da entrega','text','dd/mm/aaaa',li)
+          +_spField(lote,'prazo_entrega','Prazo (dias)','text','Ex: 60',li)
+        +'</div>'
+        +chipsHTML('Houve atraso?','houve_atraso_l'+li,['Sim','Não'],lote)
+      +'</div>';
+    }).join('')
+    +'<div class="card"><div class="card-title">Comprovação geral</div>'
+    +chipsHTML('Notas fiscais / recibos apresentados?','notas_fiscais',['Sim','Não'])
+    +chipsHTML('Avaliação da qualidade','qualidade_entrega',['Conforme','Não conforme','Parcialmente conforme'])
+    +fld('Observações sobre a qualidade','obs_qualidade_entrega','textarea','')
+    +'</div>'
 
   if(phase===4) return`
     ${lockedBanner}<div class="step-head"><h2>Observações <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Pendências, riscos e observações sobre esta aquisição.</p></div>
@@ -1858,7 +1849,7 @@ function showConfirmModal(title, body, okLabel, icon, okColor){
   return new Promise(resolve=>{
     _confirmResolve=resolve;
     document.getElementById('confirm-modal-title').textContent=title;
-    document.getElementById('confirm-modal-body').innerHTML=body.replace(/\n/g,'<br>');
+    document.getElementById('confirm-modal-body').innerHTML=body;
     document.getElementById('confirm-modal-icon').textContent=icon||'✓';
     document.getElementById('confirm-modal-icon').style.background=icon==='⚠️'?'#FFF3E0':icon==='🗑️'?'#FFEBEE':'var(--g100)';
     const okBtn=document.getElementById('confirm-modal-ok');
@@ -2987,7 +2978,29 @@ function setStatusContrat(s){acq()._status_contrat=s;renderMain();}
 
 function maskCNPJ(el){let v=el.value.replace(/\D/g,'').substring(0,14);if(v.length>12)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/,'$1.$2.$3/$4-$5');else if(v.length>8)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4}).*/,'$1.$2.$3/$4');else if(v.length>5)v=v.replace(/^(\d{2})(\d{3})(\d{0,3}).*/,'$1.$2.$3');else if(v.length>2)v=v.replace(/^(\d{2})(\d{0,3}).*/,'$1.$2');el.value=v;el.dispatchEvent(new Event('change'));}
 function maskMoeda(el){let v=el.value.replace(/\D/g,'');if(!v){el.value='';el.dispatchEvent(new Event('change'));return;}v=(parseInt(v,10)/100).toFixed(2);el.value=v.replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');el.dispatchEvent(new Event('change'));}
-function calcDataPrevEntrega(el,idx){const a=acq();const lote=idx!==undefined?(a._lotes&&a._lotes[idx]):a;if(!lote)return;const dataAss=lote.data_assinatura;const prazo=parseInt(lote.prazo_entrega||'0',10);if(!dataAss||!prazo)return;const d=new Date(dataAss);if(isNaN(d.getTime()))return;d.setDate(d.getDate()+prazo);const dataPrev=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');lote.data_prev_entrega=dataPrev;renderMain();}
+function calcDataPrevEntrega(el,idx){
+  // Salvar valor no objeto antes de calcular
+  const a=acq();
+  const lote=idx!==undefined?(a._lotes&&a._lotes[idx]):a;
+  if(!lote)return;
+  // Pegar prazo do campo atual OU do objeto
+  const prazoVal=el?(el.value.replace(/[^0-9]/g,'')||'0'):String(lote.prazo_entrega||'0');
+  if(lote&&el)lote.prazo_entrega=prazoVal;
+  const dataAss=lote.data_assinatura;
+  const prazo=parseInt(prazoVal,10);
+  if(!dataAss||!prazo)return;
+  const d=new Date(dataAss);if(isNaN(d.getTime()))return;
+  // Pular fins de semana
+  let dias=prazo;let cur=new Date(d);
+  while(dias>0){cur.setDate(cur.getDate()+1);const dw=cur.getDay();if(dw!==0&&dw!==6)dias--;}
+  const dataPrev=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0');
+  lote.data_prev_entrega=dataPrev;
+  // Atualizar campo no DOM diretamente sem re-renderizar
+  const selector=idx!==undefined?'[data-field="data_prev_entrega"][data-idx="'+idx+'"]':'[data-field="data_prev_entrega"]';
+  const input=document.querySelector(selector);
+  if(input){input.value=dataPrev;}
+  else{renderMain();}
+}
 function _spField(storeObj,field,label,type,ph,idx){
   const val=(storeObj[field]||'').toString().replace(/"/g,'&quot;');
   const onChange=idx!==undefined
@@ -3652,44 +3665,113 @@ async function carregarHistoricoBimestreAnterior(instrumento, tipo){
 
 async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!registros || !registros.length) return;
-
-  // Pegar o registro mais recente (último enviado)
   const reg = registros[registros.length-1];
 
-  // 1. Pré-preencher dados da empresa se não preenchidos
+  // 1. Empresa e contrato
   if(!acqObj.empresa_nome && reg.empresa_nome) acqObj.empresa_nome = reg.empresa_nome;
   if(!acqObj.empresa_cnpj && reg.empresa_cnpj) acqObj.empresa_cnpj = reg.empresa_cnpj;
   if(!acqObj.num_contrato && reg.num_contrato) acqObj.num_contrato = reg.num_contrato;
   if(!acqObj.valor_contratado && reg.valor_contratado) acqObj.valor_contratado = reg.valor_contratado;
+  if(!acqObj.data_assinatura && reg.data_assinatura) acqObj.data_assinatura = reg.data_assinatura;
+  if(!acqObj.prazo_entrega && reg.prazo_entrega) acqObj.prazo_entrega = reg.prazo_entrega;
 
-  // 2. Pré-preencher modalidade e processo
+  // 2. Tipo e modalidade
   if(!acqObj.modalidade_objeto && reg.tipo_monitoramento) acqObj.modalidade_objeto = reg.tipo_monitoramento;
+  if(!acqObj.modalidade && reg.modalidade) acqObj.modalidade = reg.modalidade;
+  if(!acqObj.num_processo && reg.num_processo) acqObj.num_processo = reg.num_processo;
 
-  // 3. Se o registro anterior estava concluído, guardar como histórico executado
-  if(reg.tipo_registro === 'Conclusao' || reg.tipo_registro === 'Conclusão'){
-    const valExec = parseFloat((reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
-    if(valExec > 0 && !acqObj._executado_historico){
-      acqObj._executado_historico = valExec;
-    }
-  }
-
-  // 4. Pré-preencher status de contratação
-  if(!acqObj._status_contrat && reg.fase_contratacao){
-    // Não muda para Concluído — o bimestre atual começa do estado atual
+  // 3. Status de contratação (não concluir automaticamente)
+  if(!acqObj._status_contrat && reg.fase_contratacao && reg.fase_contratacao !== 'Concluído'){
     acqObj._status_contrat = reg.fase_contratacao;
   }
 
-  // 5. Mostrar banner informativo
+  // 4. Valor executado histórico
+  if(reg.tipo_registro === 'Conclusao' || reg.tipo_registro === 'Conclusão'){
+    const valExec = parseFloat((reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+    if(valExec > 0 && !acqObj._executado_historico) acqObj._executado_historico = valExec;
+  }
+
+  // 5. Tentar carregar lotes da sessão anterior salva no localStorage
+  // Procurar sessões salvas com o mesmo município+ação de bimestres anteriores
+  const bimAtual = parseInt((municipio.bimestre||'1').replace(/[^0-9]/g,''))||1;
+  const anoAtual = parseInt(municipio.ano)||2026;
+  const bimAnterior = bimAtual > 1 ? bimAtual-1 : 6;
+  const anoAnterior = bimAtual > 1 ? anoAtual : anoAtual-1;
+  const keyAnterior = 'rdoce__'+(municipio.municipio||'').replace(/\s+/g,'_')+'__'+bimAnterior+'º_Bimestre__'+anoAnterior;
+  const keyAnterior2 = 'rdoce__'+(municipio.municipio||'').replace(/\s+/g,'_')+'__'+bimAnterior+'º_Bimestre__'+anoAnterior;
+
+  // Tentar carregar lotes do localStorage do bimestre anterior
+  let lotesAnteriores = null;
+  // Buscar também com espaços originais
+  const keyAnterior3 = 'rdoce__'+(municipio.municipio||'')+'__'+bimAnterior+'º Bimestre__'+anoAnterior;
+  const keyAnterior4 = 'rdoce__'+(municipio.municipio||'')+'__'+bimAnterior+'%BA Bimestre__'+anoAnterior;
+  for(const k of [keyAnterior, keyAnterior2, keyAnterior3, keyAnterior4]){
+    try{
+      const saved = localStorage.getItem(k);
+      if(saved){
+        const sessAnterior = JSON.parse(saved);
+        const acqAnterior = (sessAnterior.aquisicoes||[]).find(function(a){
+          return (a.acao_instrumento||'').toLowerCase() === (acqObj.acao_instrumento||'').toLowerCase()
+            && (a.acao_tipo||'').toLowerCase() === (acqObj.acao_tipo||'').toLowerCase();
+        });
+        if(acqAnterior && acqAnterior._lotes && acqAnterior._lotes.length){
+          lotesAnteriores = acqAnterior._lotes;
+          break;
+        }
+      }
+    }catch(e){}
+  }
+
+  // Fallback: buscar em TODAS as chaves do localStorage
+  if(!lotesAnteriores){
+    const munLower=(municipio.municipio||'').toLowerCase();
+    const bimStr=String(bimAnterior);
+    const anoStr=String(anoAnterior);
+    for(const k of Object.keys(localStorage)){
+      if(k.toLowerCase().includes('rdoce')&&k.includes(bimStr)&&k.includes(anoStr)){
+        try{
+          const s=localStorage.getItem(k);if(!s)continue;
+          const parsed=JSON.parse(s);
+          const acqAnt=(parsed.aquisicoes||[]).find(a=>
+            (a.acao_instrumento||'').toLowerCase().trim()===(acqObj.acao_instrumento||'').toLowerCase().trim()&&
+            (a.acao_tipo||'').toLowerCase().trim()===(acqObj.acao_tipo||'').toLowerCase().trim()
+          );
+          if(acqAnt&&acqAnt._lotes&&acqAnt._lotes.length){lotesAnteriores=acqAnt._lotes;break;}
+        }catch(e){}
+      }
+    }
+  }
+
+  if(lotesAnteriores && (!acqObj._lotes || !acqObj._lotes.length)){
+    // Copiar lotes do bimestre anterior, resetando o status de entrega
+    acqObj._lotes = lotesAnteriores.map(function(l){
+      const novo = Object.assign({}, l);
+      // Manter itens, modalidade, empresa, contrato
+      // Mas resetar situação de entrega para o novo bimestre
+      delete novo.situacao_entrega;
+      delete novo.data_entrega;
+      delete novo.houve_atraso;
+      delete novo.justificativa_atraso;
+      // Manter status de contratação (já estava contratado)
+      return novo;
+    });
+    // Também copiar o pool se existir
+    if(!acqObj._pool && lotesAnteriores[0] && lotesAnteriores[0].itens){
+      acqObj._pool = [];
+    }
+  }
+
+  // 6. Banner informativo
   const mc = document.getElementById('mainContent');
   if(mc){
     document.getElementById('historico-banner-temp')?.remove();
     const banner = document.createElement('div');
     banner.id = 'historico-banner-temp';
     banner.style.cssText = 'background:#EFF6FF;border:1.5px solid #93C5FD;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12.5px;color:#1E40AF';
-    const bimAnterior = parseInt((municipio.bimestre||'1').replace(/[^0-9]/g,''))-1;
-    const bimLabel = bimAnterior > 0 ? bimAnterior+'º Bimestre' : '6º Bimestre';
-    banner.innerHTML = `<strong>📋 Dados do ${bimLabel} carregados</strong> — empresa, contrato e status foram pré-preenchidos com base no histórico anterior. Revise e complete os campos do bimestre atual.
-      <button onclick="document.getElementById('historico-banner-temp')?.remove()" style="float:right;background:none;border:none;cursor:pointer;color:#1E40AF;font-size:16px;line-height:1">×</button>`;
+    const bimLabel = bimAnterior+'º Bimestre';
+    const itensCarregados = lotesAnteriores ? ' · '+lotesAnteriores.length+' lote(s) carregado(s)' : '';
+    banner.innerHTML = '<strong>📋 Dados do '+bimLabel+' carregados</strong>'+itensCarregados+' — empresa, contrato e lotes foram pré-preenchidos com base no histórico anterior. Revise e complete os campos do bimestre atual.'
+      +'<button onclick="document.getElementById(&apos;historico-banner-temp&apos;)?.remove()" style="float:right;background:none;border:none;cursor:pointer;color:#1E40AF;font-size:16px;line-height:1">×</button>';
     const sh = mc.querySelector('.step-head');
     if(sh) mc.insertBefore(banner, sh); else mc.prepend(banner);
   }
