@@ -3021,12 +3021,24 @@ function setLoteStatus(li,status){
 // ── CONTRATAÇÃO — funções de render ──────────────────────────────────────────
 const _STAT_CONT=['Planejamento','Processo aberto','Contratado','Em entrega','Concluído'];
 const _STAT_COLORS={
-  'Planejamento':    'background:#EEF2FF;color:#3730A3',
-  'Processo aberto': 'background:#FFF7ED;color:#C2410C',
-  'Contratado':      'background:#F0FDF4;color:#166534',
-  'Em entrega':      'background:#EFF6FF;color:#1E40AF',
-  'Conclu\u00eddo':      'background:#F0FDF4;color:#14532D'
+  'Planejamento':    'background:#FFF3E0;color:#7C4A0A',
+  'Processo aberto': 'background:#FFF8E1;color:#8B5E00',
+  'Contratado':      'background:#E8F5E9;color:#1B5E20',
+  'Em entrega':      'background:#C8E6C9;color:#1B5E20',
+  'Concluído':      'background:#1B3A2B;color:#ffffff'
 };
+
+function _setSL0(s){setLoteStatus(0,s);}
+function _setSL1(s){setLoteStatus(1,s);}
+function _setSL2(s){setLoteStatus(2,s);}
+function _setSL3(s){setLoteStatus(3,s);}
+function _setSL4(s){setLoteStatus(4,s);}
+function _setSL5(s){setLoteStatus(5,s);}
+function _setSL6(s){setLoteStatus(6,s);}
+function _setSL7(s){setLoteStatus(7,s);}
+function _setSL8(s){setLoteStatus(8,s);}
+function _setSL9(s){setLoteStatus(9,s);}
+function setStatusContrat(s){acq()._status_contrat=s;renderMain();}
 
 function _spField(storeObj,field,label,type,ph,idx){
   const val=(storeObj[field]||'').toString().replace(/"/g,'&quot;');
@@ -3123,7 +3135,7 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
 
   var card='<div class="card">'
     +'<div class="card-title">Status da contratação</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'function(s){acq()._status_contrat=s;renderMain()}')+'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'setStatusContrat')+'</div>'
     +modSel
     +_spField(a,'num_processo','Nº do processo / licitação','text','Ex: 001/2025',undefined)
     +_camposContrato(a,isContr,undefined)
