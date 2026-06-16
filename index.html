@@ -719,10 +719,6 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <nav class="nav" id="navBar">
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-btns" id="navBtns"></div>
-  <div id="nav-user" style="display:none;align-items:center;gap:8px;margin-left:12px;flex-shrink:0">
-    <span id="nav-user-name" style="font-size:12px;color:rgba(255,255,255,.8);font-weight:600"></span>
-    <button onclick="doLogout()" style="padding:4px 12px;font-size:12px;font-weight:600;font-family:var(--font);border:1.5px solid rgba(255,255,255,.3);border-radius:6px;background:transparent;color:#fff;cursor:pointer">Sair</button>
-  </div>
 </nav>
 
 <!-- ══ TELA DE LOGIN ══════════════════════════════════════════════════════ -->
@@ -1144,9 +1140,18 @@ function addAcqBtn(){saveAllInputs();aquisicoes.push({});acqIdx=aquisicoes.lengt
 
 function renderBadge(){
   const el=document.getElementById('topBadge');
-  if(municipio.municipio){el.textContent=`${municipio.municipio} · ${municipio.bimestre||''} ${municipio.ano||''}`.trim();el.classList.add('visible');}
-  else el.classList.remove('visible');
-
+  if(!el) return;
+  if(municipio.municipio||_sessaoUsuario){
+    const mun = municipio.municipio||'';
+    const periodo = (municipio.bimestre||'') + (municipio.ano?' · '+municipio.ano:'');
+    const nome = _sessaoUsuario ? (_sessaoUsuario.nome||_sessaoUsuario.email||'').split(' ')[0] : '';
+    el.innerHTML = (mun?(mun+(periodo?' · '+periodo:'')):(nome||''))
+      + '<button onclick="doLogout()" style="margin-left:10px;padding:3px 10px;font-size:11px;font-weight:600;font-family:var(--font);border:1.5px solid rgba(255,255,255,.35);border-radius:5px;background:transparent;color:#fff;cursor:pointer;vertical-align:middle">Sair</button>';
+    el.classList.add('visible');
+  } else {
+    el.innerHTML='';
+    el.classList.remove('visible');
+  }
 }
 
 function saveAllInputs(){
@@ -1797,15 +1802,6 @@ function goToPhase(p){saveAllInputs();phase=p;renderAll();}
 function deleteAcqReview(i){} // não usado no novo modelo
 
 function renderNav(){
-  // Mostrar/esconder info do usuário logado
-  const navUser=document.getElementById('nav-user');
-  const navUserName=document.getElementById('nav-user-name');
-  if(navUser&&_sessaoUsuario){
-    navUser.style.display='flex';
-    if(navUserName) navUserName.textContent=(_sessaoUsuario.nome||_sessaoUsuario.email||'').split(' ')[0]+' · '+(municipio.municipio||'');
-  } else if(navUser){
-    navUser.style.display='none';
-  }
   const info=document.getElementById('navInfo');
   const btns=document.getElementById('navBtns');
   const iL=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>`;
