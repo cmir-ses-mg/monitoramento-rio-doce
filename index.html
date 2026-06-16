@@ -2423,6 +2423,8 @@ function renderInlineActionList(){
       const a=aIdx>=0?aquisicoes[aIdx]:null;
       const st=calcAcqStatus(a);
       const obra=a?isAcqObra(a):isObra(item.tipo);
+      const _tipoIAL=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(item.instrumento||'',item.tipo||''):(obra?'obra':'equipamento');
+      const servico=_tipoIAL==='servico';
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
       const displayType=item.tipo.replace(/\n.*/,'');
       out+=`<div onclick="selectInlineAction('${inst}','${safeType}')"
