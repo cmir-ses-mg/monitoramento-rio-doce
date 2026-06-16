@@ -3067,8 +3067,8 @@ function _campoEspecifico(lote,li){
 function _statusPills(cur,onclickFn){
   return _STAT_CONT.map(function(s){
     var active=s===cur;
-    var col=active?_STAT_COLORS[s]:'background:var(--g50);color:var(--ink3)';
-    return '<span onclick="'+onclickFn+'(\''+s+'\')" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:20px;cursor:pointer;'+col+';transition:all .15s">'+s+'</span>';
+    var col=active?(_STAT_COLORS[s]||'background:var(--g600);color:#fff'):'background:var(--g50);color:var(--ink3)';
+    return '<span onclick="'+onclickFn+'(&apos;'+s+'&apos;)" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:20px;cursor:pointer;'+col+';transition:all .15s">'+s+'</span>';
   }).join('');
 }
 
