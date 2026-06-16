@@ -725,7 +725,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <div id="login-screen" style="display:none">
   <div class="login-box">
     <div class="login-logo">
-      <img id="login-logo-img" src="" style="width:64px;height:64px;border-radius:10px;object-fit:contain;flex-shrink:0;background:#fff;padding:2px"/>
+      <img id="login-logo-img" src="" style="width:64px;height:64px;border-radius:10px;object-fit:contain;flex-shrink:0;background:#fff;padding:2px" onerror="this.style.display='none'"/>
       <div class="login-logo-text">Plano de Ação em Saúde do Rio Doce<span>Monitoramento Bimestral · SES-MG</span></div>
     </div>
 
@@ -1306,8 +1306,8 @@ function renderNFList(){
         <div class="field" style="margin:0"><label>Data</label><input type="date" value="${nf.data||''}" oninput="getNFs()[${i}].data=this.value"/></div>
         <div class="field" style="margin:0"><label>Valor (R$)</label><input type="text" value="${nf.valor||''}" placeholder="0,00" oninput="onMoneyInput(this)" onblur="getNFs()[${i}].valor=fmtBRL(this.value);this.value=getNFs()[${i}].valor"/></div>
       </div>
+      <input type="file" id="file_nf_${i}" multiple accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handleFiles('nf_${i}',this.files)"/>
       <div class="upload-zone" onclick="triggerUpload('nf_${i}')">
-        <input type="file" id="file_nf_${i}" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('nf_${i}',this.files)"/>
         <div class="upload-zone-text"><strong>Clique para anexar</strong> o arquivo da NF</div>
       </div>
       <div class="file-list" id="files_nf_${i}">${renderFilePills('nf_'+i)}</div>
@@ -1330,8 +1330,9 @@ function renderMedList(){
       <div class="field" style="margin-bottom:10px"><label>Valor medido (R$)</label>
         <input type="text" value="${m.valor||''}" placeholder="0,00" oninput="onMoneyInput(this)" onblur="getMeds()[${i}].valor=fmtBRL(this.value);this.value=getMeds()[${i}].valor"/>
       </div>
-      <div class="upload-zone" onclick="triggerUpload('med_${i}')">
-        <input type="file" id="file_med_${i}" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('med_${i}',this.files)"/>
+      <div <input type="file" style="display:none" id="file_med_${i}" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('med_${i}',this.files)"/>
+      class="upload-zone" onclick="triggerUpload('med_${i}')">
+        
         <div class="upload-zone-text"><strong>Clique para anexar</strong> o boletim</div>
       </div>
       <div class="file-list" id="files_med_${i}">${renderFilePills('med_'+i)}</div>
@@ -1451,9 +1452,10 @@ function docsListHTML(){
       <div class="doc-toggle" onclick="toggleDoc('${d.key}',this)">
         <span class="doc-chkbox"></span><span class="doc-label">${d.label}</span>
       </div>
-      <div class="doc-upload-area">
+      <div class="doc<input type="file" style="display:none" id="file_doc_${d.key}" multiple accept=".pdf,.jpg,.jpeg,.png,.docx" onchange="handleFiles('doc_${d.key}',this.files)"/>
+      -upload-area">
         <div class="upload-zone" onclick="triggerUpload('doc_${d.key}')">
-          <input type="file" id="file_doc_${d.key}" multiple accept=".pdf,.jpg,.jpeg,.png,.docx" onchange="handleFiles('doc_${d.key}',this.files)"/>
+          
           <div class="upload-zone-text"><strong>Clique para anexar</strong> (PDF, imagem, Word)</div>
         </div>
         <div class="file-list" id="files_doc_${d.key}">${renderFilePills('doc_'+d.key)}</div>
@@ -1523,12 +1525,12 @@ function contentHTML(){
       +'<div style="font-size:12px;font-weight:700;color:#7C4A0A;margin-bottom:10px">📅 Selecione o período do monitoramento</div>'
       +'<div class="row2" style="gap:10px">'
         +'<div><label style="font-size:10.5px;font-weight:700;color:#7C4A0A;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Bimestre</label>'
-        +'<select onchange="municipio.bimestre=this.value;renderAll()" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1.5px solid #F9A825;border-radius:7px;background:#fff">'
+        +'<select onchange="municipio.bimestre=this.value;renderAll();_verificarSessaoExistente()" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1.5px solid #F9A825;border-radius:7px;background:#fff">'
         +'<option value="">Selecione...</option>'
         +['1º Bimestre','2º Bimestre','3º Bimestre','4º Bimestre','5º Bimestre','6º Bimestre'].map(function(b){return '<option value="'+b+'"'+(municipio.bimestre===b?' selected':'')+'>'+b+'</option>';}).join('')
         +'</select></div>'
         +'<div><label style="font-size:10.5px;font-weight:700;color:#7C4A0A;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Ano</label>'
-        +'<select onchange="municipio.ano=this.value;renderAll()" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1.5px solid #F9A825;border-radius:7px;background:#fff">'
+        +'<select onchange="municipio.ano=this.value;renderAll();_verificarSessaoExistente()" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1.5px solid #F9A825;border-radius:7px;background:#fff">'
         +'<option value="">Selecione...</option>'
         +[2026,2027,2028,2029,2030,2031,2032].map(function(a){return '<option value="'+a+'"'+(municipio.ano==a?' selected':'')+'>'+a+'</option>';}).join('')
         +'</select></div>'
@@ -1657,8 +1659,8 @@ function contentHTML(){
     <div class="card" id="card-fotos" style="border-left:3px solid var(--orange)">
       <div class="card-title obra">Registro fotográfico</div>
       <p class="hint" style="margin-bottom:12px">Recomendamos fortemente o envio de fotos dos equipamentos instalados, do estado da obra ou da prestação de serviços.</p>
+      <input type="file" style="display:none" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_acao',this.files)"/>
       <div class="upload-zone" onclick="triggerUpload('fotos_acao')">
-        <input type="file" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_acao',this.files)"/>
         <div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>
       </div>
       <div class="file-list" id="files_fotos_acao">${renderFilePills('fotos_acao')}</div>
@@ -1690,8 +1692,8 @@ function contentHTML(){
         <button class="btn-add-nf" onclick="addNF()">+ Adicionar outra nota fiscal</button>
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border2)">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin-bottom:8px">Comprovantes de entrega</div>
-          <div class="upload-zone" onclick="triggerUpload('comp_entrega')">
-            <input type="file" id="file_comp_entrega" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('comp_entrega',this.files)"/>
+          <input type="file" style="display:none" id="file_comp_entrega" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('comp_entrega',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('comp_entrega')">
             <div class="upload-zone-text"><strong>Clique para anexar</strong> comprovantes de entrega (fotos de equipamentos instalados, relatórios de prestação de serviço, relatórios de obra, medições)</div>
           </div>
           <div class="file-list" id="files_comp_entrega">${renderFilePills('comp_entrega')}</div>
@@ -1720,8 +1722,8 @@ function contentHTML(){
     <div class="card" id="card-fotos" style="border-left:3px solid var(--g400)">
       <div class="card-title">Registro fotográfico</div>
       <p class="hint" style="margin-bottom:12px">Recomendamos fortemente o envio de fotos dos equipamentos instalados, do estado da obra ou da prestação de serviços.</p>
+      <input type="file" style="display:none" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_acao',this.files)"/>
       <div class="upload-zone" onclick="triggerUpload('fotos_acao')">
-        <input type="file" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_acao',this.files)"/>
         <div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>
       </div>
       <div class="file-list" id="files_fotos_acao">${renderFilePills('fotos_acao')}</div>
@@ -2465,7 +2467,7 @@ async function selectInlineAction(instrumento, tipo){
   // Permanecer na fase 1 mas atualizar o card de ação selecionada
   renderAll();
 }
-
+  setTimeout(carregarExecutadoHistorico, 800);
 
 function renderSessionHistoryCard(){
   const key=sessionKey();
@@ -3042,15 +3044,29 @@ function setStatusContrat(s){acq()._status_contrat=s;renderMain();}
 
 function _spField(storeObj,field,label,type,ph,idx){
   const val=(storeObj[field]||'').toString().replace(/"/g,'&quot;');
+  const idxStr=idx!==undefined?String(idx):'';
   const onChange=idx!==undefined
     ? 'onchange="(acq()._lotes||[])['+idx+'][\''+field+'\']=this.value"'
     : 'onchange="acq()[\''+field+'\']=this.value"';
+  // Máscara especial por campo
+  let extraAttr='';
+  if(field==='empresa_cnpj'){
+    extraAttr=' oninput="maskCNPJ(this)" maxlength="18"';
+  } else if(field==='valor_contratado'||field==='valor_proprio'||field==='valor_executado'){
+    extraAttr=' oninput="maskMoeda(this)"';
+  } else if(field==='prazo_entrega'){
+    extraAttr=' oninput="this.value=this.value.replace(/[^0-9]/g,\'\');calcDataPrevEntrega(this,'+(idx!==undefined?idx:'undefined')+')" type="number" min="1"';
+    type='number';
+  } else if(field==='data_assinatura'){
+    extraAttr=' onchange="'+onChange.slice(9,-1)+';calcDataPrevEntrega(this,'+(idx!==undefined?idx:'undefined')+')"';
+    onChange=''; // já está no extraAttr
+  }
   if(type==='textarea'){
     return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
       +'<textarea placeholder="'+(ph||'')+'" style="width:100%;min-height:72px;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none;resize:vertical" '+onChange+'>'+val+'</textarea></div>';
   }
   return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
-    +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+'/></div>';
+    +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+extraAttr+'/></div>';
 }
 
 function _campoEspecifico(lote,li){
@@ -3773,11 +3789,13 @@ function initLogin(){
   // Sem sessão — mostrar login
   document.getElementById('login-screen').style.display = 'flex';
   // Usar LOGO_SRC como imagem do login
-  try{
+  function _setLoginLogo(){
     const img=document.getElementById('login-logo-img');
-    if(img&&typeof LOGO_SRC!=='undefined')img.src=LOGO_SRC;
-    else if(img) setTimeout(function(){if(typeof LOGO_SRC!=='undefined')img.src=LOGO_SRC;},200);
-  }catch(e){}
+    if(!img) return;
+    if(typeof LOGO_SRC!=='undefined'&&LOGO_SRC){img.src=LOGO_SRC;return;}
+    setTimeout(_setLoginLogo, 100);
+  }
+  _setLoginLogo();
 }
 
 // Botão Sair no navBar
@@ -3899,4 +3917,74 @@ div>
 
 
 </body>
-</html>
+</html
+// ── MÁSCARAS DE CAMPO ─────────────────────────────────────────────────────────
+function maskCNPJ(el){
+  let v=el.value.replace(/\D/g,'').substring(0,14);
+  if(v.length>12) v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/,'$1.$2.$3/$4-$5');
+  else if(v.length>8) v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4}).*/,'$1.$2.$3/$4');
+  else if(v.length>5) v=v.replace(/^(\d{2})(\d{3})(\d{0,3}).*/,'$1.$2.$3');
+  else if(v.length>2) v=v.replace(/^(\d{2})(\d{0,3}).*/,'$1.$2');
+  el.value=v;
+  el.dispatchEvent(new Event('change'));
+}
+
+function maskMoeda(el){
+  let v=el.value.replace(/\D/g,'');
+  if(!v){el.value='';el.dispatchEvent(new Event('change'));return;}
+  v=(parseInt(v,10)/100).toFixed(2);
+  el.value=v.replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  el.dispatchEvent(new Event('change'));
+}
+
+function calcDataPrevEntrega(el, idx){
+  // Calcular data prevista de entrega a partir da data de assinatura + prazo em dias
+  const a = acq();
+  const lote = idx!==undefined ? (a._lotes&&a._lotes[idx]) : a;
+  if(!lote) return;
+  const dataAss = lote.data_assinatura;
+  const prazo = parseInt(lote.prazo_entrega||'0', 10);
+  if(!dataAss||!prazo) return;
+  const d = new Date(dataAss);
+  if(isNaN(d.getTime())) return;
+  d.setDate(d.getDate() + prazo);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const dataPrev = yyyy+'-'+mm+'-'+dd;
+  if(lote) lote.data_prev_entrega = dataPrev;
+  // Atualizar campo no DOM
+  const sel = idx!==undefined
+    ? 'input[onchange*="_lotes\\']['+idx+'\\'][\\\'data_prev_entrega"]'
+    : 'input[onchange*="data_prev_entrega"]';
+  // Rerender para refletir
+  renderMain();
+}
+
+// ── VERIFICAR SESSÃO EXISTENTE AO SELECIONAR PERÍODO ─────────────────────────
+function _verificarSessaoExistente(){
+  if(!municipio.municipio||!municipio.bimestre||!municipio.ano) return;
+  const key = sessionKey();
+  if(!key) return;
+  const saved = localStorage.getItem(key);
+  if(!saved) return;
+  try{
+    const sess = JSON.parse(saved);
+    if(!sess||!sess.aquisicoes||!sess.aquisicoes.length) return;
+    // Mostrar banner de sessão existente
+    const mc = document.getElementById('mainContent');
+    if(!mc) return;
+    const banner = document.createElement('div');
+    banner.id = 'sessao-banner-temp';
+    banner.style.cssText = 'background:#E8F5E9;border:1.5px solid var(--g400);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px;animation:fadeUp .2s ease';
+    banner.innerHTML = '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--g800)">📋 Preenchimento salvo encontrado</div>'
+      + '<div style="font-size:12px;color:var(--g600)">' + municipio.bimestre + ' ' + municipio.ano + ' · ' + (sess.aquisicoes.length) + ' ações</div></div>'
+      + '<button onclick="loadAndResume(''+key+'')" style="padding:6px 16px;font-size:12px;font-weight:700;font-family:var(--font);border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">Continuar →</button>'
+      + '<button onclick="document.getElementById('sessao-banner-temp')?.remove()" style="padding:6px 10px;font-size:12px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink3);cursor:pointer;font-family:var(--font)">×</button>';
+    // Inserir antes do step-head
+    const stepHead = mc.querySelector('.step-head');
+    if(stepHead) mc.insertBefore(banner, stepHead);
+    else mc.prepend(banner);
+  }catch(e){}
+}
+>
