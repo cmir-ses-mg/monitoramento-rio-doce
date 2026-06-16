@@ -1062,8 +1062,22 @@ async function selectPlanAction(instrumento, tipo){
     aquisicoes[idx]._locked=false;
   }
   acqIdx=idx;
-  phase=1; // sempre começa pela etapa Instrumento
+  phase=1;
   renderAll();
+  // Carregar histórico do bimestre anterior se a ação ainda não foi preenchida
+  const _acqAtual = aquisicoes[idx];
+  if(_acqAtual && !_acqAtual._sent && !_acqAtual.modalidade_objeto){
+    carregarHistoricoBimestreAnterior(instrumento, item.tipo).then(function(regs){
+      if(regs && regs.length){
+        aplicarHistoricoNaAcao(regs, _acqAtual).then(function(){
+          renderAll();
+          setTimeout(carregarExecutadoHistorico, 500);
+        });
+      }
+    });
+  } else {
+    setTimeout(carregarExecutadoHistorico, 500);
+  }
 }
 
 
@@ -1381,18 +1395,27 @@ const DOCS_OBRA=[
 
 function docsListHTML(){
   const docs=isAcqObra()?DOCS_OBRA:DOCS_EQUIP;
-  return docs.map(d=>{
+  return docs.map(function(d){
     const on=getDocChecked(d.key)?' on':'';
-    return`<div class="doc-item${on}" id="docitem_${d.key}">
+    const key='doc_'+d.key;
+    const files=arquivos[aKey(key)]||[];
+    const fc=files.length;
+    const pills=renderFilePills(key);
+    const badge=fc>0?`<span style="margin-left:auto;font-size:11px;font-weight:700;color:var(--g600);background:var(--g100);padding:2px 8px;border-radius:20px">${fc} arquivo${fc>1?'s':''}</span>`:'';
+    const preview=fc>0?`<div style="padding:6px 13px 8px;background:var(--g50);border-top:1px solid var(--border2)"><div class="file-list">${pills}</div></div>`:'';
+    return `<div class="doc-item${on}" id="docitem_${d.key}">
       <div class="doc-toggle" onclick="toggleDoc('${d.key}',this)">
-        <span class="doc-chkbox"></span><span class="doc-label">${d.label}</span>
+        <span class="doc-chkbox"></span>
+        <span class="doc-label">${d.label}</span>
+        ${badge}
       </div>
+      ${preview}
       <div class="doc-upload-area">
         <input type="file" style="display:none" id="file_doc_${d.key}" multiple accept=".pdf,.jpg,.jpeg,.png,.docx" onchange="handleFiles('doc_${d.key}',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('doc_${d.key}')">
+        <div class="upload-zone" onclick="triggerUpload('doc_${d.key}')">
           <div class="upload-zone-text"><strong>Clique para anexar</strong> (PDF, imagem, Word)</div>
         </div>
-        <div class="file-list" id="files_doc_${d.key}">${renderFilePills('doc_'+d.key)}</div>
+        <div class="file-list" id="files_doc_${d.key}">${pills}</div>
       </div>
     </div>`;
   }).join('');
@@ -2388,8 +2411,15 @@ async function selectInlineAction(instrumento, tipo){
     aquisicoes[idx]._locked=false;
   }
   acqIdx=idx;
-  // Permanecer na fase 1 mas atualizar o card de ação selecionada
   renderAll();
+  // Carregar histórico do bimestre anterior se ação ainda não preenchida
+  const _acqSIA=aquisicoes[idx];
+  if(_acqSIA&&!_acqSIA._sent&&!_acqSIA.modalidade_objeto){
+    carregarHistoricoBimestreAnterior(instrumento,tipo).then(function(regs){
+      if(regs&&regs.length){aplicarHistoricoNaAcao(regs,_acqSIA).then(function(){renderAll();setTimeout(carregarExecutadoHistorico,500);});}
+      else{setTimeout(carregarExecutadoHistorico,800);}
+    });
+  }else{setTimeout(carregarExecutadoHistorico,800);}
 }
 
 
@@ -2970,7 +3000,7 @@ function _spField(storeObj,field,label,type,ph,idx){
   var extraAttr='';
   if(field==='empresa_cnpj') extraAttr=' oninput="maskCNPJ(this)" maxlength="18"';
   else if(field==='valor_contratado'||field==='valor_proprio') extraAttr=' oninput="maskMoeda(this)"';
-  else if(field==='prazo_entrega'){extraAttr=' oninput="this.value=this.value.replace(/[^0-9]/g,\'\');calcDataPrevEntrega(this,'+(idx!==undefined?String(idx):'undefined')+')"';type='number';}
+  else if(field==='prazo_entrega'){extraAttr=' oninput="this.value=this.value.replace(/[^0-9]/g,\'\');calcDataPrevEntrega(this,'+(idx!==undefined?String(idx):'undefined')+')" inputmode="numeric" placeholder="Ex: 60"';}
   return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
     +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+extraAttr+'/></div>';
 }
@@ -3584,6 +3614,86 @@ async function carregarExecutadoHistorico(){
   if(val>0){a._executado_historico=val;calcExecutadoLotes();}
 }
 
+
+// ── CARREGAMENTO DE HISTÓRICO DO BIMESTRE ANTERIOR ────────────────────────────
+async function carregarHistoricoBimestreAnterior(instrumento, tipo){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return null;
+  if(!municipio.municipio||!municipio.ano) return null;
+
+  // Calcular bimestre anterior
+  const bimAtual = parseInt((municipio.bimestre||'1').replace(/[^0-9]/g,''))||1;
+  const anoAtual = parseInt(municipio.ano)||2026;
+  let bimAnterior, anoAnterior;
+  if(bimAtual > 1){
+    bimAnterior = bimAtual - 1;
+    anoAnterior = anoAtual;
+  } else {
+    bimAnterior = 6;
+    anoAnterior = anoAtual - 1;
+  }
+
+  try{
+    const url = APPS_SCRIPT_URL
+      + '?acao=consultar'
+      + '&municipio=' + encodeURIComponent(municipio.municipio)
+      + '&bimestre=' + encodeURIComponent(bimAnterior + 'º Bimestre')
+      + '&ano=' + encodeURIComponent(anoAnterior);
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if(data.status !== 'ok' || !data.registros?.length) return null;
+
+    // Filtrar registros da mesma ação
+    return data.registros.filter(r =>
+      (r.acao_instrumento||'').toLowerCase().trim() === instrumento.toLowerCase().trim() &&
+      (r.acao_tipo||'').toLowerCase().trim() === tipo.toLowerCase().trim()
+    );
+  }catch(e){ return null; }
+}
+
+async function aplicarHistoricoNaAcao(registros, acqObj){
+  if(!registros || !registros.length) return;
+
+  // Pegar o registro mais recente (último enviado)
+  const reg = registros[registros.length-1];
+
+  // 1. Pré-preencher dados da empresa se não preenchidos
+  if(!acqObj.empresa_nome && reg.empresa_nome) acqObj.empresa_nome = reg.empresa_nome;
+  if(!acqObj.empresa_cnpj && reg.empresa_cnpj) acqObj.empresa_cnpj = reg.empresa_cnpj;
+  if(!acqObj.num_contrato && reg.num_contrato) acqObj.num_contrato = reg.num_contrato;
+  if(!acqObj.valor_contratado && reg.valor_contratado) acqObj.valor_contratado = reg.valor_contratado;
+
+  // 2. Pré-preencher modalidade e processo
+  if(!acqObj.modalidade_objeto && reg.tipo_monitoramento) acqObj.modalidade_objeto = reg.tipo_monitoramento;
+
+  // 3. Se o registro anterior estava concluído, guardar como histórico executado
+  if(reg.tipo_registro === 'Conclusao' || reg.tipo_registro === 'Conclusão'){
+    const valExec = parseFloat((reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+    if(valExec > 0 && !acqObj._executado_historico){
+      acqObj._executado_historico = valExec;
+    }
+  }
+
+  // 4. Pré-preencher status de contratação
+  if(!acqObj._status_contrat && reg.fase_contratacao){
+    // Não muda para Concluído — o bimestre atual começa do estado atual
+    acqObj._status_contrat = reg.fase_contratacao;
+  }
+
+  // 5. Mostrar banner informativo
+  const mc = document.getElementById('mainContent');
+  if(mc){
+    document.getElementById('historico-banner-temp')?.remove();
+    const banner = document.createElement('div');
+    banner.id = 'historico-banner-temp';
+    banner.style.cssText = 'background:#EFF6FF;border:1.5px solid #93C5FD;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12.5px;color:#1E40AF';
+    const bimAnterior = parseInt((municipio.bimestre||'1').replace(/[^0-9]/g,''))-1;
+    const bimLabel = bimAnterior > 0 ? bimAnterior+'º Bimestre' : '6º Bimestre';
+    banner.innerHTML = `<strong>📋 Dados do ${bimLabel} carregados</strong> — empresa, contrato e status foram pré-preenchidos com base no histórico anterior. Revise e complete os campos do bimestre atual.
+      <button onclick="document.getElementById('historico-banner-temp')?.remove()" style="float:right;background:none;border:none;cursor:pointer;color:#1E40AF;font-size:16px;line-height:1">×</button>`;
+    const sh = mc.querySelector('.step-head');
+    if(sh) mc.insertBefore(banner, sh); else mc.prepend(banner);
+  }
+}
 
 initLogin();
 
