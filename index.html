@@ -3086,8 +3086,13 @@ function renderAll(){
   if(municipio.municipio&&municipio.bimestre&&municipio.ano){saveSession();}
 }
 function renderMain(){
-  const html=contentHTML();
+  let html='';
+  try{html=contentHTML();}catch(err){
+    console.error('contentHTML error:',err);
+    html='<div style="padding:24px;color:#B91C1C;font-size:14px;background:#FEF2F2;margin:20px;border-radius:8px">Erro ao renderizar: <strong>'+err.message+'</strong><br><small>'+err.stack?.split('\n')[1]+'</small></div>';
+  }
   const mc=document.getElementById('mainContent');
+  if(!mc){console.error('mainContent not found');return;}
   mc.innerHTML=html;
   if(aquisicoes[acqIdx]&&aquisicoes[acqIdx]._locked)mc.classList.add('locked-form');
   else mc.classList.remove('locked-form');
