@@ -719,6 +719,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <nav class="nav" id="navBar">
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-btns" id="navBtns"></div>
+  <div id="nav-user" style="display:none;align-items:center;gap:8px;margin-left:12px;flex-shrink:0">
+    <span id="nav-user-name" style="font-size:12px;color:rgba(255,255,255,.8);font-weight:600"></span>
+    <button onclick="doLogout()" style="padding:4px 12px;font-size:12px;font-weight:600;font-family:var(--font);border:1.5px solid rgba(255,255,255,.3);border-radius:6px;background:transparent;color:#fff;cursor:pointer">Sair</button>
+  </div>
 </nav>
 
 <!-- ══ TELA DE LOGIN ══════════════════════════════════════════════════════ -->
@@ -1793,7 +1797,15 @@ function goToPhase(p){saveAllInputs();phase=p;renderAll();}
 function deleteAcqReview(i){} // não usado no novo modelo
 
 function renderNav(){
-  renderNavLogout();
+  // Mostrar/esconder info do usuário logado
+  const navUser=document.getElementById('nav-user');
+  const navUserName=document.getElementById('nav-user-name');
+  if(navUser&&_sessaoUsuario){
+    navUser.style.display='flex';
+    if(navUserName) navUserName.textContent=(_sessaoUsuario.nome||_sessaoUsuario.email||'').split(' ')[0]+' · '+(municipio.municipio||'');
+  } else if(navUser){
+    navUser.style.display='none';
+  }
   const info=document.getElementById('navInfo');
   const btns=document.getElementById('navBtns');
   const iL=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -3882,16 +3894,7 @@ if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded"
 </div>
 
 <!-- Modal Colar Lista -->
-<div id="colar-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;max-width:560px;width:92%;padding:24px;box-shadow:0 20px 60px rgba(6,31,22,.25)">
-    <div id="colar-modal-title" style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">📋 Colar lista de equipamentos</div>
-    <div style="font-size:12.5px;color:var(--ink2);margin-bottom:12px">Abra a planilha no Excel, selecione as linhas (sem título), copie com Ctrl+C e cole abaixo.</div>
-    <textarea id="colar-textarea" rows="10" placeholder="Cole aqui os dados copiados do Excel (Ctrl+V)..." style="width:100%;font-family:var(--mono);font-size:11.5px;border:1.5px solid var(--border);border-radius:8px;padding:10px;resize:vertical;outline:none;line-height:1.5"></textarea>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-      <button onclick="fecharColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
-      <button onclick="confirmarColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">✓ Importar itens</button>
-    </div>
-  </div>
+div>
 </div>
 
 
