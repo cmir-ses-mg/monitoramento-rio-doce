@@ -2681,8 +2681,9 @@ function getLotes(){
 }
 
 function addLote(){
-  getLotes().push({modalidade:'',num_processo:'',itens:[]});
-  renderLotesCard();
+  getLotes().push({modalidade:'',num_processo:'',itens:[],_listaId:null,confirmado:false});
+  if(typeof renderLotesCard==='function')renderLotesCard();
+  else _renderLotesCardDOM();
   setTimeout(()=>document.getElementById('lotes-container')?.lastElementChild?.scrollIntoView({behavior:'smooth',block:'start'}),50);
 }
 
@@ -2787,8 +2788,15 @@ function _renderLotesCardDOM(){
   const c=document.getElementById('lotes-container');
   if(!c)return;
   const a=acq();
-  if(!a._pool)a._pool=[];  // pool de itens disponíveis
-  if(!a._lotes||!a._lotes.length)a._lotes=[{modalidade:'',num_processo:'',valor_executado:'',itens:[],confirmado:false}];
+  // Migração: se ainda usa _pool antigo (lista única), converte para _listas[]
+  if(!a._listas){
+    a._listas=[];
+    if(a._pool&&a._pool.length){
+      a._listas.push({id:'lista_'+Date.now(),nome:'Lista 1',itens:a._pool});
+    }
+    delete a._pool;
+  }
+  if(!a._lotes||!a._lotes.length)a._lotes=[{modalidade:'',num_processo:'',valor_executado:'',itens:[],confirmado:false,_listaId:null}];
 
   c.innerHTML='';
 
@@ -2796,6 +2804,7 @@ function _renderLotesCardDOM(){
   a._lotes.filter(l=>l.confirmado).forEach(function(lote,li){
     const realIdx=a._lotes.indexOf(lote);
     const totLote=lote.itens.reduce(function(s,it){return s+(it.total||0);},0);
+    const listaOrigem=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
     const div=document.createElement('div');
     div.style.cssText='border:1.5px solid var(--g300);border-radius:10px;overflow:hidden;margin-bottom:10px';
     div.innerHTML=`
@@ -2803,7 +2812,7 @@ function _renderLotesCardDOM(){
         <div style="width:26px;height:26px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:700;color:var(--g800)">${lote.modalidade||'Lote '+(realIdx+1)}</div>
-          <div style="font-size:11px;color:var(--ink3)">${lote.num_processo?'Proc. '+lote.num_processo+' · ':''} ${lote.itens.length} itens · R$ ${(lote._total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          <div style="font-size:11px;color:var(--ink3)">${lote.num_processo?'Proc. '+lote.num_processo+' · ':''} ${lote.itens.length} itens${listaOrigem?' · de '+listaOrigem.nome:''} · R$ ${(lote._total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         </div>
         <div style="font-size:13px;font-weight:700;color:var(--g700)">R$ ${totLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <button onclick="editarLote(${realIdx})" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">✏️ Editar</button>
@@ -2815,7 +2824,11 @@ function _renderLotesCardDOM(){
   const editIdx=a._lotes.findIndex(l=>!l.confirmado);
   if(editIdx>=0){
     const lote=a._lotes[editIdx];
-    const poolDisp=a._pool; // itens disponíveis (não alocados)
+    // Garantir que o lote tenha uma lista vinculada (se houver listas e nenhuma vinculada ainda)
+    if(!lote._listaId && a._listas.length===1){ lote._listaId=a._listas[0].id; }
+
+    const listaAtual=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
+    const poolDisp=listaAtual?listaAtual.itens:[];
 
     const div=document.createElement('div');
     div.id='lote-editor';
@@ -2833,8 +2846,18 @@ function _renderLotesCardDOM(){
           style="width:140px;padding:6px 10px;font-size:12px;border:none;border-radius:6px;font-family:var(--font)"
           oninput="acq()._lotes[${editIdx}].num_processo=this.value"/>
       </div>
-      <!-- Área de importação (só aparece se pool vazio) -->
-      ${!poolDisp.length?`
+
+      <!-- Seletor de lista (se houver mais de uma lista cadastrada) -->
+      ${a._listas.length>1?`
+      <div style="padding:10px 14px;background:#FFF8E1;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:10px">
+        <span style="font-size:12px;font-weight:600;color:#7C4A0A">📋 Montar este lote a partir de:</span>
+        <select onchange="selecionarListaParaLote(${editIdx},this.value)" style="flex:1;max-width:280px;padding:6px 10px;font-size:12.5px;border:1.5px solid #F9A825;border-radius:6px;font-family:var(--font);background:#fff">
+          ${a._listas.map(function(ls){return `<option value="${ls.id}"${ls.id===lote._listaId?' selected':''}>${ls.nome} (${ls.itens.length} itens)</option>`;}).join('')}
+        </select>
+      </div>`:''}
+
+      <!-- Área de importação (só aparece se NENHUMA lista existe ainda) -->
+      ${a._listas.length===0?`
       <div style="padding:12px 14px;background:var(--g50);border-bottom:1px solid var(--border2);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <span style="font-size:12px;color:var(--ink2);margin-right:4px">Importar lista de itens:</span>
         <label style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g400);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">
@@ -2851,9 +2874,10 @@ function _renderLotesCardDOM(){
           Baixar modelo
         </a>
       </div>`:''}
-      <!-- Lista de itens disponíveis para seleção -->
+
+      <!-- Lista de itens disponíveis para seleção (só da lista vinculada a este lote) -->
       <div style="padding:12px 14px;background:#fff" id="pool-area">
-        ${poolDisp.length?renderPoolHTML(editIdx):`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Importe a lista de itens do município para começar.</div>`}
+        ${poolDisp.length?renderPoolHTML(editIdx):(a._listas.length>0?`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Todos os itens desta lista já foram distribuídos em lotes.</div>`:`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Importe a lista de itens do município para começar.</div>`)}
       </div>
     `;
     c.appendChild(div);
@@ -2868,13 +2892,38 @@ function _renderLotesCardDOM(){
     c.appendChild(btn);
   }
 
+  // ── RESUMO DE LISTAS IMPORTADAS (cada uma isolada) ──────────────────────────
+  if(a._listas.length>0){
+    const listasDiv=document.createElement('div');
+    listasDiv.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)';
+    listasDiv.innerHTML='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin-bottom:8px">Listas importadas (isoladas entre si)</div>'
+      +a._listas.map(function(ls,li){
+        const distribuidos=a._lotes.filter(function(l){return l._listaId===ls.id&&l.confirmado;}).reduce(function(s,l){return s+l.itens.length;},0);
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--g50);border-radius:8px;margin-bottom:6px">'
+          +'<span style="font-size:12.5px;font-weight:600;color:var(--ink2);flex:1">📋 '+ls.nome+'</span>'
+          +'<span style="font-size:11px;color:var(--ink3)">'+ls.itens.length+' disponíveis · '+distribuidos+' em lotes</span>'
+          +'</div>';
+      }).join('');
+    c.appendChild(listasDiv);
+  }
+
   // Atualizar totais
   calcExecutadoLotes();
 }
 
+
+// Helper: retorna o array de itens da lista vinculada ao lote em edição
+function _getPoolDoLote(editIdx){
+  const a=acq();
+  const lote=a._lotes[editIdx];
+  if(!lote||!lote._listaId)return [];
+  const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
+  return lista?lista.itens:[];
+}
+
 function renderPoolHTML(editIdx){
   const a=acq();
-  const pool=a._pool||[];
+  const pool=_getPoolDoLote(editIdx);
   if(!pool.length) return '<div style="text-align:center;padding:20px;color:var(--ink3);font-size:13px">Nenhum item disponível.</div>';
 
   const lote=a._lotes[editIdx];
@@ -2923,7 +2972,7 @@ function renderPoolHTML(editIdx){
 function onPoolCheck(editIdx, cb){
   const a=acq();
   const pid=cb.dataset.pid;
-  const poolIt=a._pool.find(it=>it._pid==pid);
+  const poolIt=_getPoolDoLote(editIdx).find(it=>it._pid==pid);
   if(!poolIt)return;
   const lote=a._lotes[editIdx];
   if(cb.checked){
@@ -2943,10 +2992,11 @@ function onPoolCheck(editIdx, cb){
 function togglePoolAll(editIdx, checked){
   const a=acq();
   const lote=a._lotes[editIdx];
+  const pool=_getPoolDoLote(editIdx);
   document.querySelectorAll('.pool-check').forEach(cb=>{
     cb.checked=checked;
     const pid=cb.dataset.pid;
-    const poolIt=a._pool.find(it=>it._pid==pid);
+    const poolIt=pool.find(it=>it._pid==pid);
     if(!poolIt)return;
     if(checked){if(!lote.itens.find(it=>it._pid==pid))lote.itens.push(poolIt);}
     else{lote.itens=lote.itens.filter(it=>it._pid!=pid);}
@@ -2967,9 +3017,13 @@ function confirmarLote(editIdx){
   const a=acq();
   const lote=a._lotes[editIdx];
   if(!lote.itens.length){alert('Selecione ao menos um item para este lote.');return;}
-  // Remover do pool os itens já alocados a este lote
-  const allocPids=new Set(lote.itens.map(it=>it._pid));
-  a._pool=a._pool.filter(it=>!allocPids.has(it._pid));
+  if(!lote._listaId){alert('Selecione de qual lista este lote deve ser montado.');return;}
+  // Remover da lista de origem os itens já alocados a este lote
+  const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
+  if(lista){
+    const allocPids=new Set(lote.itens.map(it=>it._pid));
+    lista.itens=lista.itens.filter(it=>!allocPids.has(it._pid));
+  }
   lote.confirmado=true;
   lote._total=lote.itens.reduce(function(s,it){return s+(it.total||0);},0);
   _renderLotesCardDOM();
@@ -2979,10 +3033,13 @@ function confirmarLote(editIdx){
 function editarLote(realIdx){
   const a=acq();
   const lote=a._lotes[realIdx];
-  // Devolver itens do lote ao pool temporariamente
-  lote.itens.forEach(function(it){
-    if(!a._pool.find(p=>p._pid==it._pid))a._pool.push(it);
-  });
+  // Devolver itens do lote à lista de origem temporariamente
+  const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
+  if(lista){
+    lote.itens.forEach(function(it){
+      if(!lista.itens.find(function(p){return p._pid==it._pid;}))lista.itens.push(it);
+    });
+  }
   lote.confirmado=false;
   _renderLotesCardDOM();
 }
@@ -3023,7 +3080,7 @@ function colarTabela(li,texto){
   processarDadosPool(linhas);
 }
 
-function processarDadosPool(data,modo){
+function processarDadosPool(data,modo,nomeListaForcado){
   let startRow=0;
   for(let i=0;i<Math.min(data.length,10);i++){
     const row=data[i].map(c=>String(c||'').toUpperCase());
@@ -3043,18 +3100,21 @@ function processarDadosPool(data,modo){
     itens.push({_pid:pid++,cod,nome,qtde,valor_unit:vUnit,total:vUnit*qtde});
   }
   if(!itens.length){alert('Nenhum item encontrado.');return;}
+  const a=acq();
+  if(!a._listas)a._listas=[];
+
   if(modo==='substituir'){
-    // Lista independente: substitui completamente o pool atual
-    acq()._pool=itens;
-    (acq()._lotes||[]).forEach(function(l){if(!l.confirmado)l.itens=[];});
+    // Substitui TODAS as listas existentes por uma única lista nova
+    a._listas=[{id:'lista_'+Date.now(),nome:nomeListaForcado||'Lista 1',itens:itens}];
+    (a._lotes||[]).forEach(function(l){if(!l.confirmado){l.itens=[];l._listaId=null;}});
   }else if(modo==='adicionar'){
-    const existentes=acq()._pool||[];
-    const codsExistentes=new Set(existentes.map(function(i){return i.cod;}).filter(Boolean));
-    const novos=itens.filter(function(i){return !i.cod||!codsExistentes.has(i.cod);});
-    acq()._pool=existentes.concat(novos);
+    // Cria uma NOVA lista isolada — não mistura com as existentes
+    const novoNome=nomeListaForcado||('Lista '+(a._listas.length+1));
+    a._listas.push({id:'lista_'+Date.now(),nome:novoNome,itens:itens});
   }else{
-    acq()._pool=itens;
-    (acq()._lotes||[]).forEach(function(l){if(!l.confirmado)l.itens=[];});
+    // Primeira lista (sem listas anteriores)
+    a._listas=[{id:'lista_'+Date.now(),nome:nomeListaForcado||'Lista 1',itens:itens}];
+    (a._lotes||[]).forEach(function(l){if(!l.confirmado){l.itens=[];l._listaId=null;}});
   }
   _renderLotesCardDOM();
   const info=document.getElementById('navInfo');
@@ -3902,6 +3962,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   const keyAnterior3 = 'rdoce__'+(municipio.municipio||'')+'__'+bimAnterior+'º Bimestre__'+anoAnterior;
   const keyAnterior4 = 'rdoce__'+(municipio.municipio||'')+'__'+bimAnterior+'%BA Bimestre__'+anoAnterior;
   let poolAnterior = null;
+  let listasAnteriores = null;
   for(const k of [keyAnterior, keyAnterior2, keyAnterior3, keyAnterior4]){
     try{
       const saved = localStorage.getItem(k);
@@ -3913,8 +3974,9 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
         });
         if(acqAnterior){
           if(acqAnterior._lotes && acqAnterior._lotes.length){ lotesAnteriores = acqAnterior._lotes; }
-          if(acqAnterior._pool && acqAnterior._pool.length){ poolAnterior = acqAnterior._pool; }
-          if(lotesAnteriores || poolAnterior) break;
+          if(acqAnterior._listas && acqAnterior._listas.length){ listasAnteriores = acqAnterior._listas; }
+          else if(acqAnterior._pool && acqAnterior._pool.length){ poolAnterior = acqAnterior._pool; }
+          if(lotesAnteriores || listasAnteriores || poolAnterior) break;
         }
       }
     }catch(e){}
@@ -3936,17 +3998,23 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
           );
           if(acqAnt){
             if(acqAnt._lotes&&acqAnt._lotes.length){lotesAnteriores=acqAnt._lotes;}
-            if(acqAnt._pool&&acqAnt._pool.length){poolAnterior=acqAnt._pool;}
-            if(lotesAnteriores||poolAnterior)break;
+            if(acqAnt._listas&&acqAnt._listas.length){listasAnteriores=acqAnt._listas;}
+            else if(acqAnt._pool&&acqAnt._pool.length){poolAnterior=acqAnt._pool;}
+            if(lotesAnteriores||listasAnteriores||poolAnterior)break;
           }
         }catch(e){}
       }
     }
   }
 
-  // Copiar pool (itens ainda não distribuídos) — lista persiste até esgotar
-  if(poolAnterior && poolAnterior.length && (!acqObj._pool || !acqObj._pool.length)){
-    acqObj._pool = poolAnterior.slice();
+  // Copiar listas (itens ainda não distribuídos) — cada lista persiste isolada até esgotar
+  if(listasAnteriores && listasAnteriores.length && (!acqObj._listas || !acqObj._listas.length)){
+    acqObj._listas = listasAnteriores.map(function(ls){
+      return {id:ls.id, nome:ls.nome, itens:(ls.itens||[]).slice()};
+    });
+  } else if(poolAnterior && poolAnterior.length && (!acqObj._listas || !acqObj._listas.length)){
+    // Compatibilidade com estrutura antiga (_pool único)
+    acqObj._listas = [{id:'lista_'+Date.now(), nome:'Lista 1', itens:poolAnterior.slice()}];
   }
 
   if(lotesAnteriores && (!acqObj._lotes || !acqObj._lotes.length)){
@@ -3978,7 +4046,8 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     const bimLabel = bimAnterior+'º Bimestre';
     const partes=[];
     if(lotesAnteriores) partes.push(lotesAnteriores.length+' lote(s)');
-    if(poolAnterior) partes.push(poolAnterior.length+' item(ns) na lista pendente');
+    if(listasAnteriores) partes.push(listasAnteriores.length+' lista(s) pendente(s)');
+    else if(poolAnterior) partes.push(poolAnterior.length+' item(ns) na lista pendente');
     const itensCarregados = partes.length ? ' · '+partes.join(' · ') : '';
     banner.innerHTML = '<strong>📋 Dados do '+bimLabel+' carregados</strong>'+itensCarregados+' — empresa, contrato, lotes e lista de itens foram pré-preenchidos. Revise e complete os campos do bimestre atual.'
       +'<button onclick="document.getElementById(&apos;historico-banner-temp&apos;)?.remove()" style="float:right;background:none;border:none;cursor:pointer;color:#1E40AF;font-size:16px;line-height:1">×</button>';
@@ -4001,22 +4070,32 @@ function _baixarModeloXLSX(){
   }
 }
 
-// Carregar nova lista — pergunta se quer adicionar (manter itens antigos) ou substituir
+// Carregar nova lista — pergunta se quer manter as listas existentes (isoladas) ou substituir tudo
 async function uploadNovaLista(input){
   const file=input.files[0];
   if(!file)return;
   const a=acq();
-  const poolAtual=(a._pool||[]).length;
+  const listasAtuais=a._listas||[];
+  const totalItensAtuais=listasAtuais.reduce(function(s,ls){return s+ls.itens.length;},0);
   let modo='substituir';
-  if(poolAtual>0){
+  let nomeNovaLista=null;
+
+  if(listasAtuais.length>0){
+    const resumoListas=listasAtuais.map(function(ls){return ls.nome+' ('+ls.itens.length+' itens)';}).join(', ');
     const escolha=await showConfirmModal3(
       'Carregar nova lista',
-      'A lista atual ainda tem <b>'+poolAtual+' item(ns)</b> disponível(is) para distribuir em lotes.<br><br>Você quer <b>manter</b> esses itens e adicionar a nova lista junto, ou <b>substituir</b> tudo pela nova lista?',
-      'Manter e adicionar','Substituir tudo','Cancelar','📋'
+      'Você já tem '+listasAtuais.length+' lista(s) carregada(s): <b>'+resumoListas+'</b>.<br><br>Quer <b>manter essas listas separadas</b> e adicionar uma nova lista independente, ou <b>substituir tudo</b> pela nova lista?',
+      'Manter e adicionar nova','Substituir tudo','Cancelar','📋'
     );
     if(escolha===false||escolha===undefined){input.value='';return;}
     modo=escolha==='extra'?'substituir':'adicionar';
+    if(modo==='adicionar'){
+      nomeNovaLista=prompt('Nome para esta nova lista (ex: Lista 2, Lote complementar):','Lista '+(listasAtuais.length+1));
+      if(nomeNovaLista===null){input.value='';return;}
+      nomeNovaLista=nomeNovaLista.trim()||('Lista '+(listasAtuais.length+1));
+    }
   }
+
   const reader=new FileReader();
   reader.onload=function(e){
     try{
@@ -4024,13 +4103,27 @@ async function uploadNovaLista(input){
       const wb=XLSX.read(data,{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-      processarDadosPool(rows,modo);
+      processarDadosPool(rows,modo,nomeNovaLista);
     }catch(err){
       showAlertModal('Erro ao processar arquivo: '+err.message,'⚠️');
     }
   };
   reader.readAsArrayBuffer(file);
   input.value='';
+}
+
+// Trocar de qual lista o lote em edição está puxando itens
+function selecionarListaParaLote(editIdx, listaId){
+  const a=acq();
+  const lote=a._lotes[editIdx];
+  if(!lote)return;
+  if(lote.itens.length>0){
+    const ok=confirm('Trocar a lista vai limpar os itens já selecionados para este lote. Continuar?');
+    if(!ok){_renderLotesCardDOM();return;}
+    lote.itens=[];
+  }
+  lote._listaId=listaId;
+  _renderLotesCardDOM();
 }
 
 initLogin();
@@ -4105,3 +4198,4 @@ initLogin();
 
 </body>
 </html>
+  
