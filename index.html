@@ -3685,7 +3685,7 @@ async function doCadastro(){
   if(senha!==senha2){mostrarErroLogin('As senhas não coincidem.');return;}
   const h=await hashSenha(senha);
   try{
-    const resp=await fetch(APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({acao:'cadastrar',nome,email,municipio:mun,cargo,senhaHash:h,tipo:'email'})});
+    const resp=await fetch(APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({acao:'cadastrar',nome,email,municipio:mun,cargo,senhaHash:h,tipo:'email'})});
     const data=await resp.json();
     if(data.status==='ok'){mostrarSucessoLogin('Conta criada! Faça login.');switchLoginTab('login');}
     else mostrarErroLogin(data.mensagem||'Erro ao criar conta.');
