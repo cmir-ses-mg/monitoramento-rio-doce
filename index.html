@@ -1710,43 +1710,35 @@ function contentHTML(){
     +(acq()._lotes||[]).filter(function(l){return l.confirmado;}).map(function(lote,li){
       var status=lote._status||'Planejamento';
       var concluido=status==='Concluído';
-      var emEntrega=['Em entrega','Concluído'].includes(status);
-      var borderColor=concluido?'var(--g400)':(emEntrega?'#F9A825':'var(--border)');
       var statusBadgeColor={'Planejamento':'#7C4A0A;background:#FFF3E0','Processo aberto':'#8B5E00;background:#FFF8E1','Contratado':'#1B5E20;background:#E8F5E9','Em entrega':'#1B5E20;background:#C8E6C9','Conclu\u00eddo':'#fff;background:#1B3A2B'}[status]||'#666;background:#eee';
+      var borderColor=concluido?'var(--g400)':'var(--border)';
       return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
-        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+        +'<div style="display:flex;align-items:center;gap:10px">'
           +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">L'+(li+1)+'</div>'
           +'<div style="flex:1;min-width:0;overflow:hidden">'
             +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(lote.modalidade||'Lote '+(li+1))+'</div>'
-            +'<div style="font-size:11px;color:var(--ink3)">'+(lote.itens?lote.itens.length+' itens':'')+(lote._total?' \u00b7 R$ '+lote._total.toLocaleString('pt-BR',{minimumFractionDigits:2}):'')+'</div>'
+            +'<div style="font-size:11px;color:var(--ink3)">'+(lote.itens?lote.itens.length+' itens':'')+(lote._total?' \u00b7 R$ '+lote._total.toLocaleString('pt-BR',{minimumFractionDigits:2}):'')+(lote.empresa_nome?' \u00b7 '+lote.empresa_nome:'')+'</div>'
           +'</div>'
-          +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;color:'+statusBadgeColor+'">'+status+'</span>'
+          +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;color:'+statusBadgeColor+'">'+status+'</span>'
         +'</div>'
         +(status==='Planejamento'||status==='Processo aberto'
-          ? '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:8px 0">Este lote ainda não foi contratado. Atualize o status na etapa de Contrata\u00e7\u00e3o para liberar os campos de entrega.</div>'
-          : '<div class="row2">'
-            +'<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">Empresa</label><div style="padding:8px 10px;font-size:13px;background:var(--g50);border-radius:6px;color:var(--ink2)">'+(lote.empresa_nome||'\u2014')+'</div></div>'
-            +'<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">Contrato</label><div style="padding:8px 10px;font-size:13px;background:var(--g50);border-radius:6px;color:var(--ink2)">'+(lote.num_contrato||'\u2014')+' \u00b7 Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'\u2014')+'</div></div>'
-          +'</div>'
-          +(emEntrega
-            ? _chipsObj(lote,'Situa\u00e7\u00e3o da entrega','situacao_entrega',['N\u00e3o iniciada','Parcial \u2014 dentro do previsto','Parcial \u2014 atrasado','Parcial \u2014 adiantado','Total / Conclu\u00eddo'],li)
-              +_spField(lote,'data_entrega','Data da entrega','date','',li)
-              +_chipsObj(lote,'Houve atraso?','houve_atraso',['Sim','N\u00e3o'],li)
-              +_spField(lote,'justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...',li)
-            : '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:8px 0">Atualize o status para \'Em entrega\' na Contrata\u00e7\u00e3o para liberar os campos de entrega deste lote.</div>')
-          +(concluido
-            ? '<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
-              +_chipsObj(lote,'Notas fiscais apresentadas?','nf_apresentadas',['Sim','N\u00e3o'],li)
-              +_chipsObj(lote,'Avalia\u00e7\u00e3o da qualidade','avaliacao_qualidade',['Conforme','N\u00e3o conforme','Parcialmente conforme'],li)
-              +_spField(lote,'obs_qualidade','Observa\u00e7\u00f5es sobre a qualidade','textarea','Descreva pontos relevantes...',li)
-            +'</div>'
-            : ''))
+          ? '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:10px 0 0">Este lote ainda n\u00e3o foi contratado. Atualize o status na etapa de Contrata\u00e7\u00e3o.</div>'
+          : '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 0">Contrato '+(lote.num_contrato||'\u2014')+' \u00b7 Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'\u2014')+'. Para atualizar a situa\u00e7\u00e3o da entrega, use a etapa de Contrata\u00e7\u00e3o.</div>')
       +'</div>';
     }).join('')
-    +'<div class="card"><div class="card-title">Comprovação geral</div>'
-    +chipsHTML('Notas fiscais / recibos apresentados?','notas_fiscais',['Sim','Não'])
-    +chipsHTML('Avaliação da qualidade','qualidade_entrega',['Conforme','Não conforme','Parcialmente conforme'])
-    +fld('Observações sobre a qualidade','obs_qualidade_entrega','textarea','')
+    +'<div class="card">'
+      +'<div class="card-title">Documentos comprobat\u00f3rios</div>'
+      +'<p class="hint" style="margin-bottom:12px">Clique em cada documento para marc\u00e1-lo e anexar o arquivo.</p>'
+      +'<div class="doc-list">'+docsListHTML()+'</div>'
+    +'</div>'
+    +'<div class="card" id="card-fotos" style="border-left:3px solid var(--orange)">'
+      +'<div class="card-title obra">Registro fotogr\u00e1fico</div>'
+      +'<p class="hint" style="margin-bottom:12px">Recomendamos fortemente o envio de fotos dos equipamentos instalados.</p>'
+      +'<input type="file" style="display:none" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles(\'fotos_acao\',this.files)"/>'
+      +'<div class="upload-zone" onclick="triggerUpload(\'fotos_acao\')">'
+        +'<div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>'
+      +'</div>'
+      +'<div class="file-list" id="files_fotos_acao">'+renderFilePills('fotos_acao')+'</div>'
     +'</div>'
 
   if(phase===4) return`
@@ -2747,9 +2739,16 @@ function renderLotesCard(){
     +'<div style="font-size:12.5px;color:var(--ink2);margin-bottom:14px">Organize os itens desta ação por modalidade de licitação. Importe a planilha do município ou adicione manualmente.</div>'
     +'<div id="lotes-container"></div>'
 
-    +'<div style="display:flex;align-items:center;justify-content:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">'
-    +'<div style="font-size:12px;color:var(--ink3)">Total geral:</div>'
-    +'<div id="lotes_grand_total" style="font-size:15px;font-weight:700;color:var(--g700);margin-left:10px">R$ 0,00</div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">'
+    +'<label style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">'
+      +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+      +'Carregar nova lista'
+      +'<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadNovaLista(this)"/>'
+    +'</label>'
+    +'<div style="display:flex;align-items:center;gap:10px">'
+      +'<div style="font-size:12px;color:var(--ink3)">Total geral:</div>'
+      +'<div id="lotes_grand_total" style="font-size:15px;font-weight:700;color:var(--g700)">R$ 0,00</div>'
+    +'</div>'
     +'</div></div>';
 }
 
@@ -2821,11 +2820,6 @@ function _renderLotesCardDOM(){
           Baixar modelo
         </a>
       </div>`:''}
-      ${(acq()._pool&&acq()._pool.length>0)?`<div style="padding:6px 14px 10px;background:var(--g50);border-bottom:1px solid var(--border2)"><label style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Adicionar outra lista
-        <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadSegundaLista(this)"/>
-      </label></div>`:''}
       <!-- Lista de itens disponíveis para seleção -->
       <div style="padding:12px 14px;background:#fff" id="pool-area">
         ${poolDisp.length?renderPoolHTML(editIdx):`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Importe a lista de itens do município para começar.</div>`}
@@ -3018,7 +3012,11 @@ function processarDadosPool(data,modo){
     itens.push({_pid:pid++,cod,nome,qtde,valor_unit:vUnit,total:vUnit*qtde});
   }
   if(!itens.length){alert('Nenhum item encontrado.');return;}
-  if(modo==='adicionar'){
+  if(modo==='substituir'){
+    // Lista independente: substitui completamente o pool atual
+    acq()._pool=itens;
+    (acq()._lotes||[]).forEach(function(l){if(!l.confirmado)l.itens=[];});
+  }else if(modo==='adicionar'){
     const existentes=acq()._pool||[];
     const codsExistentes=new Set(existentes.map(function(i){return i.cod;}).filter(Boolean));
     const novos=itens.filter(function(i){return !i.cod||!codsExistentes.has(i.cod);});
@@ -3767,15 +3765,25 @@ async function buscarExecutadoHistorico(instrumento,tipo){
   if(!municipio.municipio||!instrumento||!tipo)return 0;
   try{
     const url=APPS_SCRIPT_URL+'?acao=buscarExecutado&municipio='+encodeURIComponent(municipio.municipio)+'&instrumento='+encodeURIComponent(instrumento)+'&tipo='+encodeURIComponent(tipo);
-    const resp=await fetch(url);const data=await resp.json();
+    const resp=await fetch(url);
+    const data=await resp.json();
+    console.log('buscarExecutado response:',data);
     if(data.status==='ok'&&data.valor_executado!=null)return parseFloat(String(data.valor_executado).replace(/[R$\s.]/g,'').replace(',','.'))||0;
-  }catch(e){}
+  }catch(e){console.error('buscarExecutadoHistorico erro:',e);}
   return 0;
 }
 async function carregarExecutadoHistorico(){
-  const a=acq();if(!a||!a.acao_instrumento||!a.acao_tipo)return;
+  const a=acq();
+  if(!a||!a.acao_instrumento||!a.acao_tipo)return;
+  const elHist=document.getElementById('val_executado_historico');
+  if(elHist)elHist.textContent='Buscando...';
   const val=await buscarExecutadoHistorico(a.acao_instrumento,a.acao_tipo);
-  if(val>0){a._executado_historico=val;calcExecutadoLotes();}
+  if(val>0){
+    a._executado_historico=val;
+    calcExecutadoLotes();
+  }else{
+    if(elHist)elHist.textContent='R$ 0,00';
+  }
 }
 
 
@@ -3856,6 +3864,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // Buscar também com espaços originais
   const keyAnterior3 = 'rdoce__'+(municipio.municipio||'')+'__'+bimAnterior+'º Bimestre__'+anoAnterior;
   const keyAnterior4 = 'rdoce__'+(municipio.municipio||'')+'__'+bimAnterior+'%BA Bimestre__'+anoAnterior;
+  let poolAnterior = null;
   for(const k of [keyAnterior, keyAnterior2, keyAnterior3, keyAnterior4]){
     try{
       const saved = localStorage.getItem(k);
@@ -3865,16 +3874,17 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
           return (a.acao_instrumento||'').toLowerCase() === (acqObj.acao_instrumento||'').toLowerCase()
             && (a.acao_tipo||'').toLowerCase() === (acqObj.acao_tipo||'').toLowerCase();
         });
-        if(acqAnterior && acqAnterior._lotes && acqAnterior._lotes.length){
-          lotesAnteriores = acqAnterior._lotes;
-          break;
+        if(acqAnterior){
+          if(acqAnterior._lotes && acqAnterior._lotes.length){ lotesAnteriores = acqAnterior._lotes; }
+          if(acqAnterior._pool && acqAnterior._pool.length){ poolAnterior = acqAnterior._pool; }
+          if(lotesAnteriores || poolAnterior) break;
         }
       }
     }catch(e){}
   }
 
   // Fallback: buscar em TODAS as chaves do localStorage
-  if(!lotesAnteriores){
+  if(!lotesAnteriores && !poolAnterior){
     const munLower=(municipio.municipio||'').toLowerCase();
     const bimStr=String(bimAnterior);
     const anoStr=String(anoAnterior);
@@ -3887,10 +3897,19 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
             (a.acao_instrumento||'').toLowerCase().trim()===(acqObj.acao_instrumento||'').toLowerCase().trim()&&
             (a.acao_tipo||'').toLowerCase().trim()===(acqObj.acao_tipo||'').toLowerCase().trim()
           );
-          if(acqAnt&&acqAnt._lotes&&acqAnt._lotes.length){lotesAnteriores=acqAnt._lotes;break;}
+          if(acqAnt){
+            if(acqAnt._lotes&&acqAnt._lotes.length){lotesAnteriores=acqAnt._lotes;}
+            if(acqAnt._pool&&acqAnt._pool.length){poolAnterior=acqAnt._pool;}
+            if(lotesAnteriores||poolAnterior)break;
+          }
         }catch(e){}
       }
     }
+  }
+
+  // Copiar pool (itens ainda não distribuídos) — lista persiste até esgotar
+  if(poolAnterior && poolAnterior.length && (!acqObj._pool || !acqObj._pool.length)){
+    acqObj._pool = poolAnterior.slice();
   }
 
   if(lotesAnteriores && (!acqObj._lotes || !acqObj._lotes.length)){
@@ -3920,8 +3939,11 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     banner.id = 'historico-banner-temp';
     banner.style.cssText = 'background:#EFF6FF;border:1.5px solid #93C5FD;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:12.5px;color:#1E40AF';
     const bimLabel = bimAnterior+'º Bimestre';
-    const itensCarregados = lotesAnteriores ? ' · '+lotesAnteriores.length+' lote(s) carregado(s)' : '';
-    banner.innerHTML = '<strong>📋 Dados do '+bimLabel+' carregados</strong>'+itensCarregados+' — empresa, contrato e lotes foram pré-preenchidos com base no histórico anterior. Revise e complete os campos do bimestre atual.'
+    const partes=[];
+    if(lotesAnteriores) partes.push(lotesAnteriores.length+' lote(s)');
+    if(poolAnterior) partes.push(poolAnterior.length+' item(ns) na lista pendente');
+    const itensCarregados = partes.length ? ' · '+partes.join(' · ') : '';
+    banner.innerHTML = '<strong>📋 Dados do '+bimLabel+' carregados</strong>'+itensCarregados+' — empresa, contrato, lotes e lista de itens foram pré-preenchidos. Revise e complete os campos do bimestre atual.'
       +'<button onclick="document.getElementById(&apos;historico-banner-temp&apos;)?.remove()" style="float:right;background:none;border:none;cursor:pointer;color:#1E40AF;font-size:16px;line-height:1">×</button>';
     const sh = mc.querySelector('.step-head');
     if(sh) mc.insertBefore(banner, sh); else mc.prepend(banner);
@@ -3942,10 +3964,16 @@ function _baixarModeloXLSX(){
   }
 }
 
-// Upload de segunda lista — adiciona ao pool existente sem substituir
-function uploadSegundaLista(input){
+// Carregar nova lista — pergunta se quer substituir a lista atual (independente, não mistura)
+async function uploadNovaLista(input){
   const file=input.files[0];
   if(!file)return;
+  const a=acq();
+  const poolAtual=(a._pool||[]).length;
+  if(poolAtual>0){
+    const ok=await showConfirmModal('Carregar nova lista?','A lista atual ainda tem '+poolAtual+' item(ns) disponível(is) para distribuir em lotes. Carregar uma nova lista vai SUBSTITUIR a lista atual (elas não se misturam).','Substituir lista','📋');
+    if(!ok){input.value='';return;}
+  }
   const reader=new FileReader();
   reader.onload=function(e){
     try{
@@ -3953,7 +3981,7 @@ function uploadSegundaLista(input){
       const wb=XLSX.read(data,{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-      processarDadosPool(rows,'adicionar');
+      processarDadosPool(rows,'substituir');
     }catch(err){
       showAlertModal('Erro ao processar arquivo: '+err.message,'⚠️');
     }
