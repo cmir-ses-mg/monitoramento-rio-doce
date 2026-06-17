@@ -1612,8 +1612,15 @@ function contentHTML(){
           <div class="r-val" id="val_lista_total" style="color:var(--ink);font-weight:600">R$ 0,00</div>
         </div>
         <div class="resumo-item">
-          <div class="r-lbl">Valor já executado (contratos)</div>
+          <div class="r-lbl">Valor executado (contratos atuais)</div>
           <div class="r-val" id="val_executado_lotes" style="color:var(--g700);font-weight:700">R$ 0,00</div>
+        </div>
+        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
+          <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
+            <span>Já pago (bimestres anteriores)</span>
+            <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
+          </div>
+          <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
         </div>
         <div class="resumo-item">
           <div class="r-lbl">Valor total utilizado</div>
@@ -1701,22 +1708,39 @@ function contentHTML(){
     +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Patrimônio')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
     +'<p>Situação da entrega por lote — notas fiscais e incorporação patrimonial.</p></div>'
     +(acq()._lotes||[]).filter(function(l){return l.confirmado;}).map(function(lote,li){
-      const concluido=(lote.situacao_entrega||'')==='Total / Concluído';
-      const borderColor=concluido?'var(--g400)':'var(--border)';
+      var status=lote._status||'Planejamento';
+      var concluido=status==='Concluído';
+      var emEntrega=['Em entrega','Concluído'].includes(status);
+      var borderColor=concluido?'var(--g400)':(emEntrega?'#F9A825':'var(--border)');
+      var statusBadgeColor={'Planejamento':'#7C4A0A;background:#FFF3E0','Processo aberto':'#8B5E00;background:#FFF8E1','Contratado':'#1B5E20;background:#E8F5E9','Em entrega':'#1B5E20;background:#C8E6C9','Conclu\u00eddo':'#fff;background:#1B3A2B'}[status]||'#666;background:#eee';
       return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
         +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
           +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">L'+(li+1)+'</div>'
-          +'<div style="flex:1;min-width:0">'
-            +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+(lote.modalidade||'Lote '+(li+1))+'</div>'
+          +'<div style="flex:1;min-width:0;overflow:hidden">'
+            +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(lote.modalidade||'Lote '+(li+1))+'</div>'
             +'<div style="font-size:11px;color:var(--ink3)">'+(lote.itens?lote.itens.length+' itens':'')+(lote._total?' \u00b7 R$ '+lote._total.toLocaleString('pt-BR',{minimumFractionDigits:2}):'')+'</div>'
           +'</div>'
+          +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;color:'+statusBadgeColor+'">'+status+'</span>'
         +'</div>'
-        +chipsHTML('Situação da entrega','situacao_entrega_l'+li,['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'],lote)
-        +'<div class="row2" style="margin-top:10px">'
-          +_spField(lote,'data_entrega','Data da entrega','text','dd/mm/aaaa',li)
-          +_spField(lote,'prazo_entrega','Prazo (dias)','text','Ex: 60',li)
-        +'</div>'
-        +chipsHTML('Houve atraso?','houve_atraso_l'+li,['Sim','Não'],lote)
+        +(status==='Planejamento'||status==='Processo aberto'
+          ? '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:8px 0">Este lote ainda não foi contratado. Atualize o status na etapa de Contrata\u00e7\u00e3o para liberar os campos de entrega.</div>'
+          : '<div class="row2">'
+            +'<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">Empresa</label><div style="padding:8px 10px;font-size:13px;background:var(--g50);border-radius:6px;color:var(--ink2)">'+(lote.empresa_nome||'\u2014')+'</div></div>'
+            +'<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">Contrato</label><div style="padding:8px 10px;font-size:13px;background:var(--g50);border-radius:6px;color:var(--ink2)">'+(lote.num_contrato||'\u2014')+' \u00b7 Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'\u2014')+'</div></div>'
+          +'</div>'
+          +(emEntrega
+            ? _chipsObj(lote,'Situa\u00e7\u00e3o da entrega','situacao_entrega',['N\u00e3o iniciada','Parcial \u2014 dentro do previsto','Parcial \u2014 atrasado','Parcial \u2014 adiantado','Total / Conclu\u00eddo'],li)
+              +_spField(lote,'data_entrega','Data da entrega','date','',li)
+              +_chipsObj(lote,'Houve atraso?','houve_atraso',['Sim','N\u00e3o'],li)
+              +_spField(lote,'justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...',li)
+            : '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:8px 0">Atualize o status para \'Em entrega\' na Contrata\u00e7\u00e3o para liberar os campos de entrega deste lote.</div>')
+          +(concluido
+            ? '<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
+              +_chipsObj(lote,'Notas fiscais apresentadas?','nf_apresentadas',['Sim','N\u00e3o'],li)
+              +_chipsObj(lote,'Avalia\u00e7\u00e3o da qualidade','avaliacao_qualidade',['Conforme','N\u00e3o conforme','Parcialmente conforme'],li)
+              +_spField(lote,'obs_qualidade','Observa\u00e7\u00f5es sobre a qualidade','textarea','Descreva pontos relevantes...',li)
+            +'</div>'
+            : ''))
       +'</div>';
     }).join('')
     +'<div class="card"><div class="card-title">Comprovação geral</div>'
@@ -2792,7 +2816,16 @@ function _renderLotesCardDOM(){
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Colar lista
         </button>
+        <a onclick="_baixarModeloXLSX()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:var(--g50);color:var(--g700);cursor:pointer;font-family:var(--font);text-decoration:none;margin-left:auto">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Baixar modelo
+        </a>
       </div>`:''}
+      ${(acq()._pool&&acq()._pool.length>0)?`<div style="padding:6px 14px 10px;background:var(--g50);border-bottom:1px solid var(--border2)"><label style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Adicionar outra lista
+        <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadSegundaLista(this)"/>
+      </label></div>`:''}
       <!-- Lista de itens disponíveis para seleção -->
       <div style="padding:12px 14px;background:#fff" id="pool-area">
         ${poolDisp.length?renderPoolHTML(editIdx):`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Importe a lista de itens do município para começar.</div>`}
@@ -2965,7 +2998,7 @@ function colarTabela(li,texto){
   processarDadosPool(linhas);
 }
 
-function processarDadosPool(data){
+function processarDadosPool(data,modo){
   let startRow=0;
   for(let i=0;i<Math.min(data.length,10);i++){
     const row=data[i].map(c=>String(c||'').toUpperCase());
@@ -2985,9 +3018,15 @@ function processarDadosPool(data){
     itens.push({_pid:pid++,cod,nome,qtde,valor_unit:vUnit,total:vUnit*qtde});
   }
   if(!itens.length){alert('Nenhum item encontrado.');return;}
-  acq()._pool=itens;
-  // Limpar itens de lotes não confirmados
-  (acq()._lotes||[]).forEach(function(l){if(!l.confirmado)l.itens=[];});
+  if(modo==='adicionar'){
+    const existentes=acq()._pool||[];
+    const codsExistentes=new Set(existentes.map(function(i){return i.cod;}).filter(Boolean));
+    const novos=itens.filter(function(i){return !i.cod||!codsExistentes.has(i.cod);});
+    acq()._pool=existentes.concat(novos);
+  }else{
+    acq()._pool=itens;
+    (acq()._lotes||[]).forEach(function(l){if(!l.confirmado)l.itens=[];});
+  }
   _renderLotesCardDOM();
   const info=document.getElementById('navInfo');
   if(info){const prev=info.innerHTML;info.innerHTML=`<span style="color:var(--g600)">✓ ${itens.length} itens carregados</span>`;setTimeout(()=>info.innerHTML=prev,2500);}
@@ -3108,14 +3147,60 @@ function _statusPills(cur,onclickFn){
 
 function _camposContrato(obj,isContratado,idxOrNull){
   var sp=function(f,l,t,ph){return _spField(obj,f,l,t,ph,idxOrNull);};
-  var lockStyle=isContratado?'':'opacity:.5;pointer-events:none';
-  var aviso=isContratado?'':'<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;font-style:italic">Preencha quando o contrato for assinado</div>';
-  return '<div style="'+lockStyle+'">'+aviso
+  var status=obj._status||'Planejamento';
+  var emEntrega=['Em entrega','Concluído'].includes(status);
+  var concluido=status==='Concluído';
+
+  // Bloco 1: dados do contrato — aparece a partir de "Contratado"
+  var lockStyleContrato=isContratado?'':'opacity:.5;pointer-events:none';
+  var avisoContrato=isContratado?'':'<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;font-style:italic">Preencha quando o contrato for assinado</div>';
+  var blocoContrato='<div style="'+lockStyleContrato+'">'+avisoContrato
     +'<div class="row2">'+sp('empresa_nome','Empresa contratada','text','Razão social')+sp('empresa_cnpj','CNPJ','text','00.000.000/0000-00')+'</div>'
     +'<div class="row2">'+sp('num_contrato','Nº do contrato','text','CT-001/2025')+sp('valor_contratado','Valor do contrato (R$)','text','0,00')+'</div>'
-    +'<div class="row2">'+sp('data_assinatura','Data de assinatura','date','')+sp('prazo_entrega','Prazo de entrega (dias)','number','Ex: 60')+'</div>'
+    +'<div class="row2">'+sp('data_assinatura','Data de assinatura','date','')+sp('prazo_entrega','Prazo de entrega (dias)','text','Ex: 60')+'</div>'
     +sp('data_prev_entrega','Data prevista de entrega','date','')
     +'</div>';
+
+  // Bloco 2: dados de entrega — aparece a partir de "Em entrega"
+  var lockStyleEntrega=emEntrega?'':'opacity:.5;pointer-events:none';
+  var avisoEntrega=emEntrega?'':'<div style="font-size:12px;color:var(--ink3);margin:14px 0 12px;font-style:italic">Preencha quando o lote estiver em entrega</div>';
+  var blocoEntrega='<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
+    +'<div style="'+lockStyleEntrega+'">'+avisoEntrega
+    +_chipsObj(obj,'Situação da entrega','situacao_entrega',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'],idxOrNull)
+    +sp('data_entrega','Data da entrega','date','')
+    +_chipsObj(obj,'Houve atraso?','houve_atraso',['Sim','Não'],idxOrNull)
+    +sp('justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...')
+    +'</div></div>';
+
+  // Bloco 3: comprovação fiscal — aparece quando Concluído
+  var blocoComprovacao=concluido?('<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
+    +_chipsObj(obj,'Notas fiscais apresentadas?','nf_apresentadas',['Sim','Não'],idxOrNull)
+    +_chipsObj(obj,'Avaliação da qualidade','avaliacao_qualidade',['Conforme','Não conforme','Parcialmente conforme'],idxOrNull)
+    +sp('obs_qualidade','Observações sobre a qualidade','textarea','Descreva pontos relevantes...')
+    +'</div>'):'';
+
+  return blocoContrato+blocoEntrega+blocoComprovacao;
+}
+
+// Helper: chips vinculados a um objeto específico (lote) em vez de acq() global
+function _chipsObj(obj,label,field,options,idxOrNull){
+  var cur=obj[field]||'';
+  var setterPrefix=idxOrNull!==undefined?'_setLoteField('+idxOrNull+',':'_setAcqField(';
+  var pills=options.map(function(o){
+    var active=o===cur;
+    return '<span onclick="'+setterPrefix+'\''+field+'\',&apos;'+o+'&apos;)" style="display:inline-block;padding:5px 12px;margin:0 6px 6px 0;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;'+(active?'background:var(--g700);color:#fff':'background:var(--g50);color:var(--ink3);border:1px solid var(--border)')+'">'+o+'</span>';
+  }).join('');
+  return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px">'+label+'</label><div>'+pills+'</div></div>';
+}
+
+function _setLoteField(idx,field,value){
+  var a=acq();
+  if(a._lotes&&a._lotes[idx]){a._lotes[idx][field]=value;}
+  renderMain();
+}
+function _setAcqField(field,value){
+  acq()[field]=value;
+  renderMain();
 }
 
 function renderContratacaoLotes(lotes,lockedBanner,modeBadge){
@@ -3475,14 +3560,23 @@ function calcTotalUtilizado(){
 
 // Calcular executado dos lotes e atualizar resumo financeiro
 function calcExecutadoLotes(){
-  const lotes=acq()._lotes||[];
-  const exec=lotes.reduce(function(s,l){return s+parseBRL(l.valor_executado||'');},0);
+  const a=acq();
+  const lotes=a._lotes||[];
+  const exec=lotes.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+  const historico=a._executado_historico||0;
   const lista=lotes.reduce(function(s,l){return s+(l._total||0);},0);
+  const proprio=parseBRL(a.valor_proprio||'');
+  const total=exec+historico+proprio;
+  const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
   const elEx=document.getElementById('val_executado_lotes');
   const elLi=document.getElementById('val_lista_total');
-  if(elEx)elEx.textContent='R$ '+exec.toLocaleString('pt-BR',{minimumFractionDigits:2});
-  if(elLi)elLi.textContent='R$ '+lista.toLocaleString('pt-BR',{minimumFractionDigits:2});
-  calcTotalUtilizado();
+  const elHist=document.getElementById('val_executado_historico');
+  const elTot=document.getElementById('val_total_auto_equip');
+  if(elEx)elEx.textContent=fmt(exec);
+  if(elLi)elLi.textContent=fmt(lista);
+  if(elHist&&historico>0)elHist.textContent=fmt(historico);
+  if(elTot)elTot.textContent=fmt(total);
+  a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
 }
 
 // ══ LOGIN ════════════════════════════════════════════════════════════════════
@@ -3832,6 +3926,40 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     const sh = mc.querySelector('.step-head');
     if(sh) mc.insertBefore(banner, sh); else mc.prepend(banner);
   }
+}
+
+// ── DOWNLOAD MODELO XLSX ──────────────────────────────────────────────────────
+function _baixarModeloXLSX(){
+  try{
+    const wsData=[['COD','EQUIPAMENTO','VALOR','QNTD']];
+    const ws=XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols']=[{wch:10},{wch:40},{wch:14},{wch:8}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Modelo');
+    XLSX.writeFile(wb,'modelo_equipamentos.xlsx');
+  }catch(e){
+    showAlertModal('Erro ao gerar modelo: '+e.message,'⚠️');
+  }
+}
+
+// Upload de segunda lista — adiciona ao pool existente sem substituir
+function uploadSegundaLista(input){
+  const file=input.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=new Uint8Array(e.target.result);
+      const wb=XLSX.read(data,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      processarDadosPool(rows,'adicionar');
+    }catch(err){
+      showAlertModal('Erro ao processar arquivo: '+err.message,'⚠️');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value='';
 }
 
 initLogin();
