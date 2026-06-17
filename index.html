@@ -2259,15 +2259,26 @@ async function enviarAcaoSheet(a, tipoRegistro){
     const medRes=obra?(a._medicoes||[]).map(function(m){return 'BM '+(m.num||'?')+' / '+(m.data||'?')+' / R$'+(m.valor||'0');}).join(' | '):'';
     const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){return e[0];}).join(', ');
     const firstEmp=(a._empresas&&a._empresas[0])||{};
+    // Para equipamentos com lotes: somar valor contratado e total utilizado de todos os lotes confirmados
+    const lotesConf=(a._lotes||[]).filter(function(l){return l.confirmado;});
+    const valorContratadoLotes=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+    const valorListaLotes=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
+    const temLotes=lotesConf.length>0;
+    const valorExecutadoFinal=temLotes?valorContratadoLotes:(firstEmp.valor||a.valor_contratado||'');
+    const valorTotalUtilizadoFinal=temLotes?(valorContratadoLotes+(a._executado_historico||0)+parseBRL(a.valor_proprio||'')):(a.valor_total_utilizado||'');
     const payload=Object.assign({},municipio,a,{
-      _nfs:undefined,_docs:undefined,_medicoes:undefined,_empresas:undefined,
+      _nfs:undefined,_docs:undefined,_medicoes:undefined,_empresas:undefined,_lotes:undefined,_pool:undefined,
       _key:undefined,_locked:undefined,_sent:undefined,_sentAt:undefined,_corrections:undefined,
-      empresa_nome:firstEmp.nome||a.empresa_nome||'',
-      empresa_cnpj:firstEmp.cnpj||a.empresa_cnpj||'',
-      valor_contratado:firstEmp.valor||a.valor_contratado||'',
+      empresa_nome:firstEmp.nome||a.empresa_nome||(lotesConf[0]&&lotesConf[0].empresa_nome)||'',
+      empresa_cnpj:firstEmp.cnpj||a.empresa_cnpj||(lotesConf[0]&&lotesConf[0].empresa_cnpj)||'',
+      valor_contratado:valorExecutadoFinal,
+      valor_executado:valorExecutadoFinal,
+      valor_total_utilizado:valorTotalUtilizadoFinal,
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
+      // Resumo dos lotes para a planilha (lista textual)
+      lotes_resumo:lotesConf.map(function(l){return (l.modalidade||'Lote')+': '+(l.empresa_nome||'?')+' / R$'+(l._total||0).toFixed(2)+' / status:'+(l._status||'Planejamento');}).join(' | '),
       // Arrays estruturados para as abas auxiliares
       _empresas_array:(a._empresas||[]).map(function(em){return{nome:em.nome||'',cnpj:em.cnpj||'',valor:em.valor||'',homologacao:em.homologacao||'',prazo:em.prazo||'',prev_entrega:em.prev_entrega||''};}).filter(function(em){return em.nome;}),
       _nfs_array:obra?[]:(a._nfs||[]).map(function(n){return{num:n.num||'',data:n.data||'',valor:n.valor||''};}).filter(function(n){return n.num;}),
