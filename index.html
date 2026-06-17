@@ -1932,6 +1932,26 @@ function showConfirmModal(title, body, okLabel, icon, okColor){
     modal.style.display='flex';
   });
 }
+
+function showConfirmModal3(title, body, okLabel, extraLabel, cancelLabel, icon){
+  return new Promise(resolve=>{
+    _confirmResolve=resolve;
+    document.getElementById('confirm-modal-title').textContent=title;
+    document.getElementById('confirm-modal-body').innerHTML=body;
+    document.getElementById('confirm-modal-icon').textContent=icon||'📋';
+    document.getElementById('confirm-modal-icon').style.background=icon==='⚠️'?'#FFF3E0':'var(--g100)';
+    const okBtn=document.getElementById('confirm-modal-ok');
+    okBtn.textContent=okLabel||'Confirmar';
+    okBtn.style.background='var(--g800)';
+    const extraBtn=document.getElementById('confirm-modal-extra');
+    extraBtn.textContent=extraLabel||'';
+    extraBtn.style.display=extraLabel?'':'none';
+    const cancelBtn=document.getElementById('confirm-modal-cancel');
+    cancelBtn.textContent=cancelLabel||'Cancelar';
+    const modal=document.getElementById('confirm-modal');
+    modal.style.display='flex';
+  });
+}
 function confirmModalResolve(val){
   document.getElementById('confirm-modal').style.display='none';
   if(_confirmResolve){_confirmResolve(val);_confirmResolve=null;}
@@ -3097,9 +3117,10 @@ function calcDataPrevEntrega(el,idx){
 }
 function _spField(storeObj,field,label,type,ph,idx){
   const val=(storeObj[field]||'').toString().replace(/"/g,'&quot;');
+  var recalc=(field==='valor_contratado'||field==='valor_proprio')?';calcExecutadoLotes()':'';
   const onChange=idx!==undefined
-    ? 'onchange="(acq()._lotes||[])['+idx+'][\''+field+'\']=this.value"'
-    : 'onchange="acq()[\''+field+'\']=this.value"';
+    ? 'onchange="(acq()._lotes||[])['+idx+'][\''+field+'\']=this.value'+recalc+'"'
+    : 'onchange="acq()[\''+field+'\']=this.value'+recalc+'"';
   if(type==='textarea'){
     return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
       +'<textarea placeholder="'+(ph||'')+'" style="width:100%;min-height:72px;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none;resize:vertical" '+onChange+'>'+val+'</textarea></div>';
@@ -3107,9 +3128,10 @@ function _spField(storeObj,field,label,type,ph,idx){
   var extraAttr='';
   if(field==='empresa_cnpj') extraAttr=' oninput="maskCNPJ(this)" maxlength="18"';
   else if(field==='valor_contratado'||field==='valor_proprio') extraAttr=' oninput="maskMoeda(this)"';
-  else if(field==='prazo_entrega'){extraAttr=' oninput="this.value=this.value.replace(/[^0-9]/g,\'\');calcDataPrevEntrega(this,'+(idx!==undefined?String(idx):'undefined')+')" inputmode="numeric" placeholder="Ex: 60"';}
+  else if(field==='prazo_entrega'){extraAttr=' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" onblur="calcDataPrevEntrega(this,'+(idx!==undefined?String(idx):'undefined')+')" onkeydown="if(event.key===\'Enter\'){calcDataPrevEntrega(this,'+(idx!==undefined?String(idx):'undefined')+');this.blur();}" inputmode="numeric" placeholder="Ex: 60"';}
+  var dataAttrs=' data-field="'+field+'"'+(idx!==undefined?' data-idx="'+idx+'"':'');
   return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
-    +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+extraAttr+'/></div>';
+    +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+extraAttr+dataAttrs+'/></div>';
 }
 
 function _campoEspecifico(lote,li){
@@ -3560,9 +3582,11 @@ function calcTotalUtilizado(){
 function calcExecutadoLotes(){
   const a=acq();
   const lotes=a._lotes||[];
-  const exec=lotes.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+  // Apenas lotes CONFIRMADOS contam para os totais financeiros
+  const lotesConf=lotes.filter(function(l){return l.confirmado;});
+  const exec=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
   const historico=a._executado_historico||0;
-  const lista=lotes.reduce(function(s,l){return s+(l._total||0);},0);
+  const lista=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
   const proprio=parseBRL(a.valor_proprio||'');
   const total=exec+historico+proprio;
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
@@ -3570,10 +3594,12 @@ function calcExecutadoLotes(){
   const elLi=document.getElementById('val_lista_total');
   const elHist=document.getElementById('val_executado_historico');
   const elTot=document.getElementById('val_total_auto_equip');
+  const elGrand=document.getElementById('lotes_grand_total');
   if(elEx)elEx.textContent=fmt(exec);
   if(elLi)elLi.textContent=fmt(lista);
   if(elHist&&historico>0)elHist.textContent=fmt(historico);
   if(elTot)elTot.textContent=fmt(total);
+  if(elGrand)elGrand.textContent=fmt(lista);
   a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
 }
 
@@ -3964,15 +3990,21 @@ function _baixarModeloXLSX(){
   }
 }
 
-// Carregar nova lista — pergunta se quer substituir a lista atual (independente, não mistura)
+// Carregar nova lista — pergunta se quer adicionar (manter itens antigos) ou substituir
 async function uploadNovaLista(input){
   const file=input.files[0];
   if(!file)return;
   const a=acq();
   const poolAtual=(a._pool||[]).length;
+  let modo='substituir';
   if(poolAtual>0){
-    const ok=await showConfirmModal('Carregar nova lista?','A lista atual ainda tem '+poolAtual+' item(ns) disponível(is) para distribuir em lotes. Carregar uma nova lista vai SUBSTITUIR a lista atual (elas não se misturam).','Substituir lista','📋');
-    if(!ok){input.value='';return;}
+    const escolha=await showConfirmModal3(
+      'Carregar nova lista',
+      'A lista atual ainda tem <b>'+poolAtual+' item(ns)</b> disponível(is) para distribuir em lotes.<br><br>Você quer <b>manter</b> esses itens e adicionar a nova lista junto, ou <b>substituir</b> tudo pela nova lista?',
+      'Manter e adicionar','Substituir tudo','Cancelar','📋'
+    );
+    if(escolha===false||escolha===undefined){input.value='';return;}
+    modo=escolha==='extra'?'substituir':'adicionar';
   }
   const reader=new FileReader();
   reader.onload=function(e){
@@ -3981,7 +4013,7 @@ async function uploadNovaLista(input){
       const wb=XLSX.read(data,{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-      processarDadosPool(rows,'substituir');
+      processarDadosPool(rows,modo);
     }catch(err){
       showAlertModal('Erro ao processar arquivo: '+err.message,'⚠️');
     }
@@ -4040,6 +4072,7 @@ initLogin();
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
       <button id="confirm-modal-cancel" onclick="confirmModalResolve(false)" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
+      <button id="confirm-modal-extra" onclick="confirmModalResolve('extra')" style="display:none;padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid var(--g400);border-radius:7px;background:#fff;color:var(--g700);cursor:pointer"></button>
       <button id="confirm-modal-ok" onclick="confirmModalResolve(true)" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">Confirmar</button>
     </div>
   </div>
