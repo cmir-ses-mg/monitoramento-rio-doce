@@ -2181,8 +2181,48 @@ function gerarPDFBase64(){
 }
 
 // ── SALVAR / CONCLUIR AÇÃO ────────────────────────────────────────────────────
+
+// Envia ao servidor (aba ListasPendentes) o estado atual das listas importadas
+// desta ação, para que os itens ainda não distribuídos fiquem disponíveis em
+// qualquer navegador/computador nos bimestres seguintes — sem precisar reimportar.
+function salvarListasPendentesSheet(a){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
+  if(!a||!a._listas||!a._listas.length)return;
+  try{
+    const payload={
+      acao:'salvarListasPendentes',
+      municipio:municipio.municipio||'',
+      acao_instrumento:a.acao_instrumento||'',
+      acao_tipo:a.acao_tipo||'',
+      listas:a._listas.map(function(ls){return {id:ls.id,nome:ls.nome,itens:ls.itens||[]};})
+    };
+    fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)}).catch(function(){});
+  }catch(e){}
+}
+
+// Busca no servidor as listas pendentes (itens ainda não distribuídos) salvas
+// em bimestres anteriores para este município+instrumento+tipo. Sempre prioriza
+// o servidor (fonte confiável entre máquinas) em vez do localStorage.
+async function buscarListasPendentesSheet(instrumento, tipo){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return null;
+  try{
+    const url=APPS_SCRIPT_URL+'?acao=buscarListasPendentes'
+      +'&municipio='+encodeURIComponent(municipio.municipio||'')
+      +'&instrumento='+encodeURIComponent(instrumento||'')
+      +'&tipo='+encodeURIComponent(tipo||'');
+    const resp=await fetch(url);
+    const j=await resp.json();
+    if(j&&j.status==='ok'&&j.listas&&j.listas.length){
+      // Só interessam as listas que ainda têm itens disponíveis
+      return j.listas.filter(function(ls){return ls.itens&&ls.itens.length>0;});
+    }
+    return null;
+  }catch(e){ return null; }
+}
+
 function saveAndContinueLater(){
   saveAllInputs();
+  salvarListasPendentesSheet(aquisicoes[acqIdx]);
   // Permanece na mesma etapa — apenas salva
   const info=document.getElementById('navInfo');
   if(info){const prev=info.innerHTML;info.innerHTML='<span style="color:var(--g600)">✓ Salvo</span>';setTimeout(()=>{info.innerHTML=prev;},1500);}
@@ -2226,6 +2266,7 @@ async function concludeAction(){
   a._sentAt=new Date().toISOString();
   a._locked=true;
   enviarAcaoSheet(a, tipoRegistro);
+  salvarListasPendentesSheet(a);
   enviarAnexosDrive(a); // envia anexos desta ação ao Drive
 
   const planActions=getAllPlanActions(municipio.municipio||'');
@@ -2900,7 +2941,11 @@ function _renderLotesCardDOM(){
   if(a._listas.length>0){
     const listasDiv=document.createElement('div');
     listasDiv.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)';
-    listasDiv.innerHTML='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin-bottom:8px">Listas importadas (isoladas entre si)</div>'
+    listasDiv.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)">Listas importadas (isoladas entre si)</div>'
+      +'<button class="btn" style="padding:4px 10px;font-size:11px" onclick="sincronizarListasManual()" id="btnSyncListas">🔄 Sincronizar com servidor</button>'
+      +'</div>'
+      +'<div id="syncListasStatus" style="font-size:11px;color:var(--ink3);margin-bottom:8px"></div>'
       +a._listas.map(function(ls,li){
         const distribuidos=a._lotes.filter(function(l){return l._listaId===ls.id&&l.confirmado;}).reduce(function(s,l){return s+l.itens.length;},0);
         return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--g50);border-radius:8px;margin-bottom:6px">'
@@ -2913,6 +2958,46 @@ function _renderLotesCardDOM(){
 
   // Atualizar totais
   calcExecutadoLotes();
+}
+
+// Botão manual de sincronização: empurra as listas pendentes desta ação para o
+// servidor (aba ListasPendentes) imediatamente — útil para "migrar" ações que
+// já estavam preenchidas antes de existir o carry-over automático entre bimestres,
+// sem precisar reabrir/editar nada para disparar o salvamento normal.
+async function sincronizarListasManual(){
+  const a=acq();
+  const btn=document.getElementById('btnSyncListas');
+  const status=document.getElementById('syncListasStatus');
+  if(!a||!a._listas||!a._listas.length){
+    if(status)status.innerHTML='<span style="color:var(--ink3)">Nenhuma lista para sincronizar nesta ação.</span>';
+    return;
+  }
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')){
+    if(status)status.innerHTML='<span style="color:var(--red)">URL do Apps Script não configurada.</span>';
+    return;
+  }
+  if(btn){btn.disabled=true;btn.innerHTML='🔄 Sincronizando…';}
+  if(status)status.innerHTML='';
+  try{
+    const payload={
+      acao:'salvarListasPendentes',
+      municipio:municipio.municipio||'',
+      acao_instrumento:a.acao_instrumento||'',
+      acao_tipo:a.acao_tipo||'',
+      listas:a._listas.map(function(ls){return {id:ls.id,nome:ls.nome,itens:ls.itens||[]};})
+    };
+    const resp=await fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)});
+    const j=await resp.json();
+    if(j&&j.status==='ok'){
+      if(status)status.innerHTML='<span style="color:var(--g600)">✓ '+a._listas.length+' lista(s) sincronizada(s) com o servidor às '+new Date().toLocaleTimeString('pt-BR')+'.</span>';
+    }else{
+      if(status)status.innerHTML='<span style="color:var(--red)">Erro ao sincronizar: '+(j&&j.mensagem||'falha desconhecida')+'</span>';
+    }
+  }catch(e){
+    if(status)status.innerHTML='<span style="color:var(--red)">Falha de conexão ao sincronizar. Tente novamente.</span>';
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML='🔄 Sincronizar com servidor';}
+  }
 }
 
 
@@ -3032,6 +3117,7 @@ function confirmarLote(editIdx){
   lote._total=lote.itens.reduce(function(s,it){return s+(it.total||0);},0);
   _renderLotesCardDOM();
   calcExecutadoLotes();
+  salvarListasPendentesSheet(a);
 }
 
 function editarLote(realIdx){
@@ -3121,6 +3207,7 @@ function processarDadosPool(data,modo,nomeListaForcado){
     (a._lotes||[]).forEach(function(l){if(!l.confirmado){l.itens=[];l._listaId=null;}});
   }
   _renderLotesCardDOM();
+  salvarListasPendentesSheet(a);
   const info=document.getElementById('navInfo');
   if(info){const prev=info.innerHTML;info.innerHTML=`<span style="color:var(--g600)">✓ ${itens.length} itens carregados</span>`;setTimeout(()=>info.innerHTML=prev,2500);}
 }
@@ -4012,7 +4099,15 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   }
 
   // Copiar listas (itens ainda não distribuídos) — cada lista persiste isolada até esgotar
-  if(listasAnteriores && listasAnteriores.length && (!acqObj._listas || !acqObj._listas.length)){
+  // Fonte prioritária: servidor (aba ListasPendentes), que funciona em qualquer
+  // navegador/computador. O localStorage só serve de fallback se o servidor não
+  // responder ou não tiver nada salvo (ex: ainda não migrou para a versão nova).
+  const listasServidor = await buscarListasPendentesSheet(acqObj.acao_instrumento, acqObj.acao_tipo);
+  if(listasServidor && listasServidor.length && (!acqObj._listas || !acqObj._listas.length)){
+    acqObj._listas = listasServidor.map(function(ls){
+      return {id:ls.id, nome:ls.nome, itens:(ls.itens||[]).slice()};
+    });
+  } else if(listasAnteriores && listasAnteriores.length && (!acqObj._listas || !acqObj._listas.length)){
     acqObj._listas = listasAnteriores.map(function(ls){
       return {id:ls.id, nome:ls.nome, itens:(ls.itens||[]).slice()};
     });
