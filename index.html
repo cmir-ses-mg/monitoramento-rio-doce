@@ -1928,6 +1928,10 @@ function showConfirmModal(title, body, okLabel, icon, okColor){
     const okBtn=document.getElementById('confirm-modal-ok');
     okBtn.textContent=okLabel||'Confirmar';
     okBtn.style.background=okColor||'var(--g800)';
+    const extraBtn=document.getElementById('confirm-modal-extra');
+    extraBtn.style.display='none';
+    const cancelBtn=document.getElementById('confirm-modal-cancel');
+    cancelBtn.textContent='Cancelar';
     const modal=document.getElementById('confirm-modal');
     modal.style.display='flex';
   });
@@ -4198,4 +4202,3 @@ initLogin();
 
 </body>
 </html>
-  
