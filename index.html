@@ -3953,30 +3953,44 @@ function initLogin(){
 
 // Buscar executado histórico ao selecionar ação
 async function buscarExecutadoHistorico(instrumento,tipo){
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return 0;
-  if(!municipio.municipio||!instrumento||!tipo)return 0;
+  const r=await buscarExecutadoHistoricoDetalhado(instrumento,tipo);
+  return r.valor;
+}
+
+// Versão detalhada: retorna {valor, registros} para permitir auditoria do que
+// está sendo somado em "Já pago (bimestres anteriores)".
+async function buscarExecutadoHistoricoDetalhado(instrumento,tipo){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return {valor:0,registros:0};
+  if(!municipio.municipio||!instrumento||!tipo)return {valor:0,registros:0};
   try{
     const url=APPS_SCRIPT_URL+'?acao=buscarExecutado&municipio='+encodeURIComponent(municipio.municipio)+'&instrumento='+encodeURIComponent(instrumento)+'&tipo='+encodeURIComponent(tipo);
     const resp=await fetch(url);
     const data=await resp.json();
     console.log('buscarExecutado response:',data);
-    if(data.status==='ok'&&data.valor_executado!=null)return parseFloat(String(data.valor_executado).replace(/[R$\s.]/g,'').replace(',','.'))||0;
+    if(data.status==='ok'&&data.valor_executado!=null){
+      return {valor:parseFloat(String(data.valor_executado).replace(/[R$\s.]/g,'').replace(',','.'))||0, registros:data.registros_encontrados||0};
+    }
   }catch(e){console.error('buscarExecutadoHistorico erro:',e);}
-  return 0;
+  return {valor:0,registros:0};
 }
 async function carregarExecutadoHistorico(){
   const a=acq();
   if(!a||!a.acao_instrumento||!a.acao_tipo)return;
   const elHist=document.getElementById('val_executado_historico');
   if(elHist)elHist.textContent='Buscando...';
-  const val=await buscarExecutadoHistorico(a.acao_instrumento,a.acao_tipo);
-  if(val>0){
-    a._executado_historico=val;
+  const r=await buscarExecutadoHistoricoDetalhado(a.acao_instrumento,a.acao_tipo);
+  if(r.valor>0){
+    a._executado_historico=r.valor;
     calcExecutadoLotes();
+    if(elHist)elHist.title=r.registros+' registro(s) "Concluído" encontrado(s) na planilha para esta ação.';
   }else{
-    if(elHist)elHist.textContent='R$ 0,00';
+    a._executado_historico=0;
+    if(elHist){elHist.textContent='R$ 0,00';elHist.title='Nenhum registro "Concluído" encontrado para esta ação.';}
   }
 }
+
+// Permite zerar manualmente o "já pago" quando o valor carregado estiver
+// incorreto (ex: veio de outra ação por engano) — sem precisar editar a planilha.
 
 
 // ── CARREGAMENTO DE HISTÓRICO DO BIMESTRE ANTERIOR ────────────────────────────
