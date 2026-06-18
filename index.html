@@ -2310,11 +2310,15 @@ async function enviarAcaoSheet(a, tipoRegistro){
     const firstEmp=(a._empresas&&a._empresas[0])||{};
     // Para equipamentos com lotes: somar valor contratado e total utilizado de todos os lotes confirmados
     const lotesConf=(a._lotes||[]).filter(function(l){return l.confirmado;});
-    const valorContratadoLotes=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+    const STATUS_PAGO_ENVIO=['Em entrega','Concluído'];
+    const lotesExecConf=lotesConf.filter(function(l){return !STATUS_PAGO_ENVIO.includes(l._status||'Planejamento');});
+    const lotesPagosConf=lotesConf.filter(function(l){return STATUS_PAGO_ENVIO.includes(l._status||'Planejamento');});
+    const valorContratadoLotes=lotesExecConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+    const valorPagoLotes=lotesPagosConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
     const valorListaLotes=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
     const temLotes=lotesConf.length>0;
     const valorExecutadoFinal=temLotes?valorContratadoLotes:(firstEmp.valor||a.valor_contratado||'');
-    const valorTotalUtilizadoFinal=temLotes?(valorContratadoLotes+(a._executado_historico||0)+parseBRL(a.valor_proprio||'')):(a.valor_total_utilizado||'');
+    const valorTotalUtilizadoFinal=temLotes?(valorContratadoLotes+valorPagoLotes+(a._executado_historico||0)+parseBRL(a.valor_proprio||'')):(a.valor_total_utilizado||'');
     const payload=Object.assign({},municipio,a,{
       _nfs:undefined,_docs:undefined,_medicoes:undefined,_empresas:undefined,_lotes:undefined,_pool:undefined,
       _key:undefined,_locked:undefined,_sent:undefined,_sentAt:undefined,_corrections:undefined,
@@ -3445,6 +3449,7 @@ function setLoteStatus(li,status){
   var a=acq();
   if(a._lotes&&a._lotes[li])a._lotes[li]._status=status;
   renderMain();
+  calcExecutadoLotes();
 }
 
 function renderLotesCard_init(){
@@ -3745,13 +3750,22 @@ function calcTotalUtilizado(){
 }
 
 // Calcular executado dos lotes e atualizar resumo financeiro
+// Regra: lotes com status até "Contratado" (Planejamento, Processo aberto,
+// Contratado) somam em "Valor executado (contratos atuais)". Lotes com status
+// "Em entrega" ou "Concluído" somam em "Já pago (bimestres anteriores)",
+// junto com o valor histórico vindo do servidor (bimestres já encerrados).
 function calcExecutadoLotes(){
   const a=acq();
   const lotes=a._lotes||[];
   // Apenas lotes CONFIRMADOS contam para os totais financeiros
   const lotesConf=lotes.filter(function(l){return l.confirmado;});
-  const exec=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
-  const historico=a._executado_historico||0;
+  const STATUS_PAGO=['Em entrega','Concluído'];
+  const lotesExec=lotesConf.filter(function(l){return !STATUS_PAGO.includes(l._status||'Planejamento');});
+  const lotesPagos=lotesConf.filter(function(l){return STATUS_PAGO.includes(l._status||'Planejamento');});
+  const exec=lotesExec.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+  const pagoLotesAtual=lotesPagos.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+  const historicoServidor=a._executado_historico||0;
+  const historico=historicoServidor+pagoLotesAtual;
   const lista=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
   const proprio=parseBRL(a.valor_proprio||'');
   const total=exec+historico+proprio;
@@ -3763,7 +3777,7 @@ function calcExecutadoLotes(){
   const elGrand=document.getElementById('lotes_grand_total');
   if(elEx)elEx.textContent=fmt(exec);
   if(elLi)elLi.textContent=fmt(lista);
-  if(elHist&&historico>0)elHist.textContent=fmt(historico);
+  if(elHist)elHist.textContent=fmt(historico);
   if(elTot)elTot.textContent=fmt(total);
   if(elGrand)elGrand.textContent=fmt(lista);
   a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
