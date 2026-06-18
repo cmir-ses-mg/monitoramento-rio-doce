@@ -4378,77 +4378,6 @@ function selecionarListaParaLote(editIdx, listaId){
 
 initLogin();
 
-</script>
-
-
-<!-- Modal Colar Lista -->
-<div id="colar-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;max-width:560px;width:92%;padding:24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
-    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">📋 Colar lista de equipamentos</div>
-    <div style="font-size:12.5px;color:var(--ink2);margin-bottom:12px">Abra a planilha no Excel, selecione as linhas de dados (sem título), copie com Ctrl+C e cole abaixo com Ctrl+V.</div>
-    <textarea id="colar-textarea" rows="10" placeholder="Cole aqui os dados copiados do Excel (Ctrl+V)..." style="width:100%;font-family:var(--mono);font-size:11.5px;border:1.5px solid var(--border);border-radius:8px;padding:10px;resize:vertical;outline:none;line-height:1.5" onpaste="setTimeout(()=>this.style.borderColor='var(--g400)',50)"></textarea>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-      <button onclick="fecharColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
-      <button onclick="confirmarColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">✓ Importar itens</button>
-    </div>
-  </div>
-</div>
-
-<div id="missing-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;max-width:480px;width:90%;padding:28px 24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <div style="width:40px;height:40px;border-radius:50%;background:#FFF3E0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">⚠️</div>
-      <div>
-        <div style="font-size:15px;font-weight:700;color:#0D1F16">Ações não monitoradas</div>
-        <div style="font-size:12px;color:#7A9E8C;margin-top:2px" id="modal-subtitle"></div>
-      </div>
-    </div>
-    <div style="font-size:12.5px;color:#3A5446;margin-bottom:14px">As seguintes ações disponíveis para este beneficiário ainda não foram preenchidas:</div>
-    <div id="modal-missing-list" style="background:#FFF8F0;border:1px solid #FFCC80;border-radius:8px;padding:10px 14px;margin-bottom:18px;max-height:200px;overflow-y:auto"></div>
-    <div style="font-size:12px;color:#7A9E8C;margin-bottom:20px">Você pode voltar e adicionar novas aquisições, ou enviar assim mesmo.</div>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button onclick="closeMissingModal()" style="padding:8px 18px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid #C8E8D8;border-radius:7px;background:#fff;color:#3A5446;cursor:pointer">Voltar e completar</button>
-      <button onclick="confirmSendAnyway()" style="padding:8px 18px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:#0A3323;color:#fff;cursor:pointer">Enviar assim mesmo</button>
-    </div>
-  </div>
-</div>
-
-
-<!-- Modal genérico de confirmação -->
-<div id="confirm-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;max-width:460px;width:90%;padding:28px 24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
-    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
-      <div id="confirm-modal-icon" style="width:40px;height:40px;border-radius:50%;background:var(--g100);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">✓</div>
-      <div style="flex:1">
-        <div id="confirm-modal-title" style="font-size:15px;font-weight:700;color:var(--ink)"></div>
-        <div id="confirm-modal-body" style="font-size:13px;color:var(--ink2);margin-top:8px;line-height:1.6;white-space:pre-wrap"></div>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
-      <button id="confirm-modal-cancel" onclick="confirmModalResolve(false)" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
-      <button id="confirm-modal-extra" onclick="confirmModalResolve('extra')" style="display:none;padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid var(--g400);border-radius:7px;background:#fff;color:var(--g700);cursor:pointer"></button>
-      <button id="confirm-modal-ok" onclick="confirmModalResolve(true)" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">Confirmar</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal genérico de alerta -->
-<div id="alert-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;max-width:420px;width:90%;padding:28px 24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
-    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:20px">
-      <div id="alert-modal-icon" style="width:40px;height:40px;border-radius:50%;background:#FFF3E0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">⚠️</div>
-      <div id="alert-modal-body" style="font-size:13px;color:var(--ink2);line-height:1.6;padding-top:8px"></div>
-    </div>
-    <div style="display:flex;justify-content:flex-end">
-      <button onclick="alertModalClose()" style="padding:8px 24px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">OK</button>
-    </div>
-  </div>
-</div>
-
-
-</body>
-</html>
-  
 // ══ CUSTEIO — ATIVIDADES ══════════════════════════════════════════════════════
 const _STAT_ATIV=['Planejamento','Processo aberto','Contratado','Em execução','Concluído'];
 function renderAtividadesCard(){
@@ -4624,3 +4553,72 @@ async function sincronizarListasCusteioManual(){
   setTimeout(function(){if(btn){btn.disabled=false;btn.innerHTML='\uD83D\uDD04 Sincronizar';}},3000);
 }
 // ══ FIM CUSTEIO ═══════════════════════════════════════════════════════════════
+</script>
+
+
+<!-- Modal Colar Lista -->
+<div id="colar-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;max-width:560px;width:92%;padding:24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
+    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">📋 Colar lista de equipamentos</div>
+    <div style="font-size:12.5px;color:var(--ink2);margin-bottom:12px">Abra a planilha no Excel, selecione as linhas de dados (sem título), copie com Ctrl+C e cole abaixo com Ctrl+V.</div>
+    <textarea id="colar-textarea" rows="10" placeholder="Cole aqui os dados copiados do Excel (Ctrl+V)..." style="width:100%;font-family:var(--mono);font-size:11.5px;border:1.5px solid var(--border);border-radius:8px;padding:10px;resize:vertical;outline:none;line-height:1.5" onpaste="setTimeout(()=>this.style.borderColor='var(--g400)',50)"></textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button onclick="fecharColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
+      <button onclick="confirmarColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">✓ Importar itens</button>
+    </div>
+  </div>
+</div>
+
+<div id="missing-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;max-width:480px;width:90%;padding:28px 24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div style="width:40px;height:40px;border-radius:50%;background:#FFF3E0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">⚠️</div>
+      <div>
+        <div style="font-size:15px;font-weight:700;color:#0D1F16">Ações não monitoradas</div>
+        <div style="font-size:12px;color:#7A9E8C;margin-top:2px" id="modal-subtitle"></div>
+      </div>
+    </div>
+    <div style="font-size:12.5px;color:#3A5446;margin-bottom:14px">As seguintes ações disponíveis para este beneficiário ainda não foram preenchidas:</div>
+    <div id="modal-missing-list" style="background:#FFF8F0;border:1px solid #FFCC80;border-radius:8px;padding:10px 14px;margin-bottom:18px;max-height:200px;overflow-y:auto"></div>
+    <div style="font-size:12px;color:#7A9E8C;margin-bottom:20px">Você pode voltar e adicionar novas aquisições, ou enviar assim mesmo.</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="closeMissingModal()" style="padding:8px 18px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid #C8E8D8;border-radius:7px;background:#fff;color:#3A5446;cursor:pointer">Voltar e completar</button>
+      <button onclick="confirmSendAnyway()" style="padding:8px 18px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:#0A3323;color:#fff;cursor:pointer">Enviar assim mesmo</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal genérico de confirmação -->
+<div id="confirm-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;max-width:460px;width:90%;padding:28px 24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+      <div id="confirm-modal-icon" style="width:40px;height:40px;border-radius:50%;background:var(--g100);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">✓</div>
+      <div style="flex:1">
+        <div id="confirm-modal-title" style="font-size:15px;font-weight:700;color:var(--ink)"></div>
+        <div id="confirm-modal-body" style="font-size:13px;color:var(--ink2);margin-top:8px;line-height:1.6;white-space:pre-wrap"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+      <button id="confirm-modal-cancel" onclick="confirmModalResolve(false)" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
+      <button id="confirm-modal-extra" onclick="confirmModalResolve('extra')" style="display:none;padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid var(--g400);border-radius:7px;background:#fff;color:var(--g700);cursor:pointer"></button>
+      <button id="confirm-modal-ok" onclick="confirmModalResolve(true)" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal genérico de alerta -->
+<div id="alert-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;max-width:420px;width:90%;padding:28px 24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:20px">
+      <div id="alert-modal-icon" style="width:40px;height:40px;border-radius:50%;background:#FFF3E0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">⚠️</div>
+      <div id="alert-modal-body" style="font-size:13px;color:var(--ink2);line-height:1.6;padding-top:8px"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end">
+      <button onclick="alertModalClose()" style="padding:8px 24px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">OK</button>
+    </div>
+  </div>
+</div>
+
+
+</body>
