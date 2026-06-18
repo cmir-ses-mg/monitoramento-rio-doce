@@ -4603,7 +4603,8 @@ function confirmarAtividade(idx){
   const a=acq();if(!a._atividades||!a._atividades[idx])return;
   const at=a._atividades[idx];
   if(!at.descricao&&!at.item_num){showAlertModal('Selecione ou descreva a atividade antes de confirmar.','⚠️');return;}
-  if(!(at.empresas||[]).some(function(e){return e.nome;})){showAlertModal('Adicione ao menos uma empresa.','⚠️');return;}
+  const STATUS_EXIGE_EMP=['Contratado','Em execução','Concluído'];
+  if(STATUS_EXIGE_EMP.includes(at._status)&&!(at.empresas||[]).some(function(e){return e.nome;})){showAlertModal('Adicione ao menos uma empresa.','⚠️');return;}
   at.confirmado=true;
   // Abre automaticamente a próxima atividade (com opção de cancelar via botão separado)
   a._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
