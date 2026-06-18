@@ -1662,17 +1662,39 @@ function contentHTML(){
         </div>`
       :`<div id="inline-action-list" style="margin-top:4px">${renderInlineActionList()}</div>`}
     </div>
+    ${servico&&acq().acao_tipo?renderAtividadesCard():''}
     ${servico&&acq().acao_tipo?`
-    <div class="card">
-      <div class="card-title">Dados da aquisição</div>
-      ${fld('Detalhamento complementar do serviço','descricao_item','textarea','Descreva o escopo, prazo e especificações técnicas do serviço.')}
-      ${fld('Quantidade / Período','quantidade','text','Ex: 12 meses')}
-      ${fld('Valor já executado (R$)','valor_executado','money','','',true)}
+    <div class="card" id="card-financeiro-custeio">
+      <div class="card-title">Resumo financeiro</div>
+      <div class="resumo-grid" style="margin-bottom:14px">
+        <div class="resumo-item">
+          <div class="r-lbl">Valor total da ação (plano)</div>
+          <div class="r-val" style="color:var(--g700);font-weight:700">${acq().acao_valor?'R$ '+Number(acq().acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</div>
+        </div>
+        <div class="resumo-item">
+          <div class="r-lbl">Valor contratado (atividades)</div>
+          <div class="r-val" id="val_custeio_contratado" style="color:var(--g700);font-weight:700">R$ 0,00</div>
+        </div>
+        <div class="resumo-item">
+          <div class="r-lbl">Valor executado (contratos atuais)</div>
+          <div class="r-val" id="val_custeio_executado" style="color:var(--g700);font-weight:700">R$ 0,00</div>
+        </div>
+        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
+          <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
+            <span>Já pago (bimestres anteriores)</span>
+            <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
+          </div>
+          <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
+        </div>
+        <div class="resumo-item">
+          <div class="r-lbl">Valor total utilizado</div>
+          <div class="r-val" id="val_custeio_total" style="color:var(--g700);font-weight:700;font-size:15px">R$ 0,00</div>
+        </div>
+      </div>
       <div class="row2">
         ${fld('Recurso próprio (R$)','valor_proprio','money')}
         ${fld('Fonte do recurso próprio','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
-      <div class="field"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(executado + recurso próprio)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?renderLotesCard():''}
     ${obra&&acq().acao_tipo?`
@@ -3576,6 +3598,17 @@ function renderMain(){
   if(phase===1&&!isAcqObra()&&acq().modalidade_objeto==='equipamento'){
     renderLotesCard_init();
   }
+  // Inicializar atividades se fase 1 e custeio (servico)
+  if(phase===1&&!isAcqObra()&&acq().modalidade_objeto==='servico'){
+    setTimeout(function(){
+      _renderAtividadesCardDOM();
+      if(typeof XLSX==='undefined'&&!document.getElementById('sheetjs-script')){
+        const s=document.createElement('script');s.id='sheetjs-script';
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        document.head.appendChild(s);
+      }
+    },100);
+  }
 }
 
 function restoreInputs(){
@@ -4415,3 +4448,179 @@ initLogin();
 
 </body>
 </html>
+  
+// ══ CUSTEIO — ATIVIDADES ══════════════════════════════════════════════════════
+const _STAT_ATIV=['Planejamento','Processo aberto','Contratado','Em execução','Concluído'];
+function renderAtividadesCard(){
+  return '<div class="card" style="border-left:3px solid var(--g400)">'
+    +'<div class="card-title">Atividades de custeio</div>'
+    +'<div style="font-size:12.5px;color:var(--ink2);margin-bottom:14px">Registre cada atividade contratada nesta ação de custeio com empresa, valor e status de execução.</div>'
+    +'<div id="atividades-container"></div>'
+    +'<div style="display:flex;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)">'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+        +'<div style="font-size:12px;color:var(--ink3)">Total contratado:</div>'
+        +'<div id="ativ_grand_total" style="font-size:15px;font-weight:700;color:var(--g700)">R$ 0,00</div>'
+      +'</div>'
+    +'</div></div>';
+}
+function _renderAtividadesCardDOM(){
+  const c=document.getElementById('atividades-container');if(!c)return;
+  const a=acq();
+  if(!a._atividades||!a._atividades.length)a._atividades=[{descricao:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false}];
+  c.innerHTML='';
+  a._atividades.filter(function(at){return at.confirmado;}).forEach(function(at){
+    const realIdx=a._atividades.indexOf(at);
+    const vlr=(at.empresas||[]).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
+    const corMap={'Planejamento':'#9CA3AF','Processo aberto':'#F59E0B','Contratado':'#3B82F6','Em execução':'#10B981','Concluído':'#065F46'};
+    const cor=corMap[at._status]||'#9CA3AF';
+    const div=document.createElement('div');
+    div.style.cssText='border:1.5px solid var(--g300);border-radius:10px;overflow:hidden;margin-bottom:10px';
+    div.innerHTML='<div style="background:var(--g50);padding:10px 14px;display:flex;align-items:center;gap:10px">'
+      +'<div style="width:26px;height:26px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u2713</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--g800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
+      +'<div style="font-size:11px;color:var(--ink3)">'+(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){return e.nome;}).join(', ')+'&nbsp;&middot;&nbsp;<span style="color:'+cor+';font-weight:600">'+at._status+'</span></div></div>'
+      +'<div style="font-size:13px;font-weight:700;color:var(--g700);flex-shrink:0">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
+      +'<button onclick="editarAtividade('+realIdx+')" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font);flex-shrink:0">\u270F\uFE0F Editar</button>'
+      +'</div>';
+    c.appendChild(div);
+  });
+  const editIdx=a._atividades.findIndex(function(at){return !at.confirmado;});
+  if(editIdx>=0){
+    const at=a._atividades[editIdx];
+    if(!at.empresas||!at.empresas.length)at.empresas=[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}];
+    const div=document.createElement('div');
+    div.style.cssText='border:2px solid var(--g400);border-radius:10px;padding:16px;margin-bottom:10px;background:#fff';
+    const pillsHTML=_STAT_ATIV.map(function(s){const sel=at._status===s;return '<button type="button" onclick="_setAtivStatus('+editIdx+',' +"'"+s+"'"+' )" style="padding:4px 10px;font-size:11px;border-radius:20px;border:1.5px solid '+(sel?'var(--g600)':'var(--border)')+';background:'+(sel?'var(--g600)':'#fff')+';color:'+(sel?'#fff':'var(--ink2)')+';cursor:pointer;font-weight:'+(sel?'700':'400')+'">'+s+'</button>';}).join('');
+    const empHTML=(at.empresas||[]).map(function(em,ei){
+      return '<div style="background:var(--g50);border-radius:8px;padding:12px;margin-bottom:8px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:8px">Empresa '+(ei+1)+(ei>0?' <button type="button" onclick="_removeEmpresaAtiv('+editIdx+','+ei+')" style="margin-left:8px;font-size:10px;color:#C94040;background:none;border:none;cursor:pointer">\u2715 remover</button>':'')+'</div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Raz\u00e3o Social</label><input type="text" value="'+(em.nome||'')+'" oninput="_updEmpresaAtiv('+editIdx+','+ei+",'nome'"+',this.value)" placeholder="Nome da empresa" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">CNPJ</label><input type="text" value="'+(em.cnpj||'')+'" oninput="_updEmpresaAtiv('+editIdx+','+ei+",'cnpj'"+',this.value)" placeholder="00.000.000/0000-00" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Valor contratado (R$)</label><input type="text" value="'+(em.valor||'')+'" oninput="onMoneyInput(this);_updEmpresaAtiv('+editIdx+','+ei+",'valor'"+',this.value)" onblur="this.value=fmtBRL(this.value);_updEmpresaAtiv('+editIdx+','+ei+",'valor'"+',this.value);calcAtividades()" placeholder="0,00" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Data assinatura</label><input type="date" value="'+(em.homologacao||'')+'" oninput="_updEmpresaAtiv('+editIdx+','+ei+",'homologacao'"+',this.value)" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Prazo (meses)</label><input type="text" value="'+(em.prazo||'')+'" oninput="_updEmpresaAtiv('+editIdx+','+ei+",'prazo'"+',this.value)" placeholder="12" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'</div></div>';
+    }).join('');
+    div.innerHTML='<div style="font-size:13px;font-weight:700;color:var(--g700);margin-bottom:12px">\u270F\uFE0F Atividade '+(editIdx+1)+'</div>'
+      +'<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Detalhamento da atividade</label>'
+      +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'descricao'"+',this.value)" placeholder="Descreva a atividade contratada..." style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box">'+(at.descricao||'')+'</textarea></div>'
+      +'<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Status de execu\u00e7\u00e3o</label>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+pillsHTML+'</div></div>'
+      +'<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Empresa(s) contratada(s)</div>'
+      +'<div id="ativ-empresas-'+editIdx+'">'+empHTML+'</div>'
+      +'<button type="button" onclick="_addEmpresaAtiv('+editIdx+')" style="margin-top:4px;padding:5px 14px;font-size:11px;font-weight:600;border:1.5px dashed var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar empresa</button></div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2)">'
+      +'<button type="button" onclick="confirmarAtividade('+editIdx+')" style="padding:8px 20px;font-size:13px;font-weight:700;background:var(--g700);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar atividade</button></div>';
+    c.appendChild(div);
+  }
+  const temEditando=a._atividades.some(function(at){return !at.confirmado;});
+  if(!temEditando){const b=document.createElement('div');b.innerHTML='<button type="button" onclick="_addAtividade()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;margin-bottom:8px">+ Adicionar atividade de custeio</button>';c.appendChild(b);}
+  calcAtividades();
+}
+function _updAtiv(idx,f,v){const a=acq();if(a._atividades&&a._atividades[idx])a._atividades[idx][f]=v;}
+function _updEmpresaAtiv(idx,ei,f,v){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas[ei])a._atividades[idx].empresas[ei][f]=v;}
+function _addEmpresaAtiv(idx){const a=acq();if(a._atividades&&a._atividades[idx]){a._atividades[idx].empresas.push({nome:'',cnpj:'',valor:'',homologacao:'',prazo:''});_renderAtividadesCardDOM();}}
+function _removeEmpresaAtiv(idx,ei){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas.length>1){a._atividades[idx].empresas.splice(ei,1);_renderAtividadesCardDOM();}}
+function _addAtividade(){const a=acq();if(!a._atividades)a._atividades=[];a._atividades.push({descricao:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});_renderAtividadesCardDOM();}
+function _setAtivStatus(idx,status){const a=acq();if(a._atividades&&a._atividades[idx])a._atividades[idx]._status=status;_renderAtividadesCardDOM();calcAtividades();}
+function _selectAtividadePool(idx,numStr){
+  const a=acq();if(!a._atividades||!a._atividades[idx]||!numStr)return;
+  const pool=(a._listas_custeio||[]).flatMap(function(ls){return ls.itens||[];});
+  const item=pool.find(function(it){return String(it.num)===String(numStr);});
+  if(item){a._atividades[idx].descricao=item.descricao||'';a._atividades[idx].item_num=item.num;(a._listas_custeio||[]).forEach(function(ls){ls.itens=(ls.itens||[]).filter(function(it){return String(it.num)!==String(numStr);});});_renderAtividadesCardDOM();}
+}
+function editarAtividade(idx){
+  const a=acq();if(!a._atividades||!a._atividades[idx])return;
+  if(a._atividades.some(function(at,i){return !at.confirmado&&i!==idx;})){showAlertModal('Confirme a atividade em edi\u00e7\u00e3o antes de editar outra.','⚠️');return;}
+  a._atividades[idx].confirmado=false;_renderAtividadesCardDOM();
+}
+function confirmarAtividade(idx){
+  const a=acq();if(!a._atividades||!a._atividades[idx])return;
+  const at=a._atividades[idx];
+  if(!at.descricao){showAlertModal('Preencha ao menos o detalhamento da atividade.','⚠️');return;}
+  if(!(at.empresas||[]).some(function(e){return e.nome;})){showAlertModal('Adicione ao menos uma empresa.','⚠️');return;}
+  at.confirmado=true;
+  a._atividades.push({descricao:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
+  _renderAtividadesCardDOM();calcAtividades();
+}
+function calcAtividades(){
+  const a=acq();if(a.modalidade_objeto!=='servico')return;
+  const ativConf=(a._atividades||[]).filter(function(at){return at.confirmado;});
+  const SPAG=['Em execução','Concluído'];
+  const vlrC=ativConf.reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
+  const vlrE=calcularExecutadoAcumuladoCusteio(a);
+  const pago=ativConf.filter(function(at){return SPAG.includes(at._status);}).reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
+  const hist=a._executado_historico||0;const prop=parseBRL(a.valor_proprio||'');
+  const total=vlrE+pago+hist+prop;
+  const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  const el1=document.getElementById('val_custeio_contratado');const el2=document.getElementById('val_custeio_executado');
+  const el3=document.getElementById('val_custeio_total');const elH=document.getElementById('val_executado_historico');
+  const elG=document.getElementById('ativ_grand_total');
+  if(el1)el1.textContent=fmt(vlrC);if(el2)el2.textContent=fmt(vlrE);if(el3)el3.textContent=fmt(total);
+  if(elH)elH.textContent=fmt(hist+pago);if(elG)elG.textContent=fmt(vlrC);
+  a.valor_executado=vlrC.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
+}
+function calcularExecutadoAcumuladoCusteio(acqObj){
+  if(!acqObj)return 0;
+  const inst=(acqObj.acao_instrumento||'').toLowerCase().trim();const tipo=(acqObj.acao_tipo||'').toLowerCase().trim();
+  if(!inst||!tipo)return 0;const ids=new Set();let total=0;
+  for(const k of Object.keys(localStorage)){if(!k.toLowerCase().includes('rdoce'))continue;
+    try{const s=localStorage.getItem(k);if(!s)continue;const parsed=JSON.parse(s);
+      (parsed.aquisicoes||[]).forEach(function(a){
+        if((a.acao_instrumento||'').toLowerCase().trim()!==inst)return;
+        if((a.acao_tipo||'').toLowerCase().trim()!==tipo)return;
+        (a._atividades||[]).forEach(function(at){
+          if(!at.confirmado)return;
+          const ch=(at.item_num||'')+'|'+(at.descricao||'').substring(0,30)+'|'+(at.empresas||[]).map(function(e){return e.cnpj||e.nome;}).join(',');
+          if(ids.has(ch))return;ids.add(ch);total+=(at.empresas||[]).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
+        });
+      });
+    }catch(e){}
+  }return total;
+}
+function uploadNovaListaCusteio(input){
+  const file=input.files&&input.files[0];if(!file)return;
+  if(typeof XLSX==='undefined'){showAlertModal('Aguarde o carregamento do leitor de planilhas.','⏳');return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(!rows.length){showAlertModal('Planilha vazia ou formato inválido.','⚠️');return;}
+      const keys=Object.keys(rows[0]);
+      const kItem=keys.find(function(k){return /^item$/i.test(k.trim());});
+      const kDesc=keys.find(function(k){return /descri/i.test(k);});
+      if(!kDesc){showAlertModal('N\u00e3o encontrei coluna "Descri\u00e7\u00e3o". Verifique a planilha.','⚠️');return;}
+      const itens=rows.map(function(r,i){return {num:r[kItem]||i+1,descricao:(r[kDesc]||'').toString().trim()};}).filter(function(it){return it.descricao;});
+      const a=acq();if(!a._listas_custeio)a._listas_custeio=[];
+      const id='lcusteio_'+Date.now();const nome=file.name.replace(/\.[^.]+$/,'').substring(0,40)||'Lista '+(a._listas_custeio.length+1);
+      if(a._listas_custeio.length>0){
+        showConfirmModal3('Carregar nova lista?','J\u00e1 existe(m) lista(s) carregada(s). O que deseja fazer?','Manter e adicionar nova','Substituir tudo','Cancelar','\uD83D\uDCCB').then(function(res){
+          if(res==='ok')a._listas_custeio.push({id:id,nome:nome,itens:itens});
+          else if(res==='extra')a._listas_custeio=[{id:id,nome:nome,itens:itens}];
+          else{input.value='';return;}
+          input.value='';_renderAtividadesCardDOM();salvarListasCusteioSheet(a);
+        });
+      }else{a._listas_custeio=[{id:id,nome:nome,itens:itens}];input.value='';_renderAtividadesCardDOM();salvarListasCusteioSheet(a);}
+    }catch(err){showAlertModal('Erro ao ler planilha: '+err.message,'❌');}
+  };reader.readAsArrayBuffer(file);
+}
+function salvarListasCusteioSheet(a){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
+  if(!a||!a._listas_custeio||!a._listas_custeio.length)return;
+  try{fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({acao:'salvarListasPendentes',municipio:municipio.municipio||'',acao_instrumento:(a.acao_instrumento||'')+'__custeio',acao_tipo:a.acao_tipo||'',listas:a._listas_custeio.map(function(ls){return {id:ls.id,nome:ls.nome,itens:ls.itens||[]};})})}).catch(function(){});}catch(e){}
+}
+async function sincronizarListasCusteioManual(){
+  const a=acq();const btn=document.getElementById('btnSyncAtiv');
+  if(!a||!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
+  if(btn){btn.disabled=true;btn.innerHTML='\uD83D\uDD04 Sincronizando\u2026';}
+  try{
+    const resp=await fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({acao:'salvarListasPendentes',municipio:municipio.municipio||'',acao_instrumento:(a.acao_instrumento||'')+'__custeio',acao_tipo:a.acao_tipo||'',listas:(a._listas_custeio||[]).map(function(ls){return {id:ls.id,nome:ls.nome,itens:ls.itens||[]};})})});
+    const j=await resp.json();if(btn)btn.innerHTML=j&&j.status==='ok'?'\u2713 Sincronizado':'\u26A0\uFE0F Erro';
+  }catch(e){if(btn)btn.innerHTML='\u26A0\uFE0F Falha';}
+  setTimeout(function(){if(btn){btn.disabled=false;btn.innerHTML='\uD83D\uDD04 Sincronizar';}},3000);
+}
+// ══ FIM CUSTEIO ═══════════════════════════════════════════════════════════════
