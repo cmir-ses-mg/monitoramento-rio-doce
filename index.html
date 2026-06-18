@@ -4479,9 +4479,7 @@ function _renderAtividadesCardDOM(){
     if(!at.empresas||!at.empresas.length) at.empresas=[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}];
 
     const lista=_getListaCusteioAtual();
-    // Itens já usados em atividades confirmadas desta ação
-    const usados=new Set(a._atividades.filter(function(x,i){return x.confirmado&&i!==editIdx;}).map(function(x){return x.item_num;}));
-    const disponiveis=lista.filter(function(it){return !usados.has(it.num);});
+    const disponiveis=lista;
 
     const selectorHTML=disponiveis.length
       ?('<div style="margin-bottom:14px">'
