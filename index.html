@@ -1139,6 +1139,30 @@ async function selectPlanAction(instrumento, tipo){
   } else {
     setTimeout(carregarExecutadoHistorico, 500);
   }
+  // Listas pendentes (itens ainda não distribuídos) vêm do servidor independente
+  // do estado de preenchimento da ação — mesmo que já tenha lotes confirmados,
+  // pode haver itens de uma lista anterior ainda não usados.
+  if(_acqAtual && (!_acqAtual._listas || !_acqAtual._listas.length)){
+    sincronizarListasDoServidor(_acqAtual, instrumento, item.tipo).then(function(achou){
+      if(achou) renderAll();
+    });
+  }
+}
+
+// Busca no servidor as listas pendentes para esta ação e popula acqObj._listas
+// se ela ainda estiver vazia. Roda sempre que a ação é aberta, independente de
+// já ter lotes/preenchimento — diferente do carregarHistoricoBimestreAnterior,
+// que só roda em ações totalmente vazias.
+async function sincronizarListasDoServidor(acqObj, instrumento, tipo){
+  if(!acqObj || (acqObj._listas && acqObj._listas.length)) return false;
+  const listasServidor = await buscarListasPendentesSheet(instrumento, tipo);
+  if(listasServidor && listasServidor.length){
+    acqObj._listas = listasServidor.map(function(ls){
+      return {id:ls.id, nome:ls.nome, itens:(ls.itens||[]).slice()};
+    });
+    return true;
+  }
+  return false;
 }
 
 
@@ -1149,7 +1173,18 @@ async function deleteAcqTab(e,i){
   if(!_dok)return;
   aquisicoes.splice(i,1);acqIdx=Math.min(acqIdx,aquisicoes.length-1);renderAll();
 }
-function switchAcq(i){saveAllInputs();acqIdx=i;if(phase===0)phase=1;renderAll();}
+function switchAcq(i){
+  saveAllInputs();
+  acqIdx=i;
+  if(phase===0)phase=1;
+  renderAll();
+  const a=aquisicoes[i];
+  if(a && (!a._listas || !a._listas.length) && a.acao_instrumento && a.acao_tipo){
+    sincronizarListasDoServidor(a, a.acao_instrumento, a.acao_tipo).then(function(achou){
+      if(achou) renderAll();
+    });
+  }
+}
 function addAcqBtn(){saveAllInputs();aquisicoes.push({});acqIdx=aquisicoes.length-1;phase=1;renderAll();}
 
 function renderBadge(){
@@ -4131,15 +4166,10 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   }
 
   // Copiar listas (itens ainda não distribuídos) — cada lista persiste isolada até esgotar
-  // Fonte prioritária: servidor (aba ListasPendentes), que funciona em qualquer
-  // navegador/computador. O localStorage só serve de fallback se o servidor não
-  // responder ou não tiver nada salvo (ex: ainda não migrou para a versão nova).
-  const listasServidor = await buscarListasPendentesSheet(acqObj.acao_instrumento, acqObj.acao_tipo);
-  if(listasServidor && listasServidor.length && (!acqObj._listas || !acqObj._listas.length)){
-    acqObj._listas = listasServidor.map(function(ls){
-      return {id:ls.id, nome:ls.nome, itens:(ls.itens||[]).slice()};
-    });
-  } else if(listasAnteriores && listasAnteriores.length && (!acqObj._listas || !acqObj._listas.length)){
+  // A busca no servidor já é feita de forma independente em sincronizarListasDoServidor
+  // (chamada sempre que a ação é aberta). Aqui mantemos apenas o fallback de
+  // localStorage, para o caso de o servidor ainda não ter nada salvo.
+  if(listasAnteriores && listasAnteriores.length && (!acqObj._listas || !acqObj._listas.length)){
     acqObj._listas = listasAnteriores.map(function(ls){
       return {id:ls.id, nome:ls.nome, itens:(ls.itens||[]).slice()};
     });
