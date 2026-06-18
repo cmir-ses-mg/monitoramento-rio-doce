@@ -1147,6 +1147,12 @@ async function selectPlanAction(instrumento, tipo){
       if(achou) renderAll();
     });
   }
+  // Valor executado acumulado: soma TODOS os lotes confirmados de TODOS os
+  // bimestres já salvos para esta ação, para que "Executado" nunca volte a zero.
+  if(_acqAtual){
+    _acqAtual._executado_acumulado_historico = calcularExecutadoAcumuladoHistorico(_acqAtual);
+    calcExecutadoLotes();
+  }
 }
 
 // Busca no servidor as listas pendentes para esta ação e popula acqObj._listas
@@ -1163,6 +1169,43 @@ async function sincronizarListasDoServidor(acqObj, instrumento, tipo){
     return true;
   }
   return false;
+}
+
+// Acumulado histórico do "Valor Executado (Contratos Atuais)": soma o valor
+// contratado de TODOS os lotes confirmados encontrados em TODOS os bimestres
+// anteriores salvos no localStorage para esta ação (município+instrumento+tipo),
+// independente do status atual de cada lote (Contratado, Em entrega ou
+// Concluído contam igualmente aqui — diferente do "Já Pago", que é uma soma
+// separada). Isso garante que o valor nunca "zera" ao abrir um bimestre novo,
+// mesmo que o bimestre atual ainda não tenha nenhum lote criado.
+function calcularExecutadoAcumuladoHistorico(acqObj){
+  if(!acqObj) return 0;
+  const instrumento=(acqObj.acao_instrumento||'').toLowerCase().trim();
+  const tipo=(acqObj.acao_tipo||'').toLowerCase().trim();
+  if(!instrumento||!tipo) return 0;
+  const idsContados=new Set(); // evita somar o mesmo lote 2x se ele foi copiado entre bimestres
+  let total=0;
+  for(const k of Object.keys(localStorage)){
+    if(!k.toLowerCase().includes('rdoce')) continue;
+    try{
+      const s=localStorage.getItem(k); if(!s) continue;
+      const parsed=JSON.parse(s);
+      const acqs=parsed.aquisicoes||[];
+      acqs.forEach(function(a){
+        if((a.acao_instrumento||'').toLowerCase().trim()!==instrumento) return;
+        if((a.acao_tipo||'').toLowerCase().trim()!==tipo) return;
+        (a._lotes||[]).forEach(function(l){
+          if(!l.confirmado) return;
+          // chave de deduplicação: id do lote se existir, senão modalidade+empresa+valor
+          const chave=l.id || ((l.modalidade||'')+'|'+(l.empresa_nome||'')+'|'+(l.valor_contratado||'')+'|'+(l.num_processo||''));
+          if(idsContados.has(chave)) return;
+          idsContados.add(chave);
+          total+=parseBRL(l.valor_contratado||'');
+        });
+      });
+    }catch(e){}
+  }
+  return total;
 }
 
 
@@ -1183,6 +1226,10 @@ function switchAcq(i){
     sincronizarListasDoServidor(a, a.acao_instrumento, a.acao_tipo).then(function(achou){
       if(achou) renderAll();
     });
+  }
+  if(a && a.acao_instrumento && a.acao_tipo){
+    a._executado_acumulado_historico = calcularExecutadoAcumuladoHistorico(a);
+    calcExecutadoLotes();
   }
 }
 function addAcqBtn(){saveAllInputs();aquisicoes.push({});acqIdx=aquisicoes.length-1;phase=1;renderAll();}
@@ -2343,12 +2390,14 @@ async function enviarAcaoSheet(a, tipoRegistro){
     const medRes=obra?(a._medicoes||[]).map(function(m){return 'BM '+(m.num||'?')+' / '+(m.data||'?')+' / R$'+(m.valor||'0');}).join(' | '):'';
     const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){return e[0];}).join(', ');
     const firstEmp=(a._empresas&&a._empresas[0])||{};
-    // Para equipamentos com lotes: somar valor contratado e total utilizado de todos os lotes confirmados
+    // Para equipamentos com lotes: valor executado é o ACUMULADO histórico de
+    // todos os bimestres (nunca diminui), igual ao exibido em calcExecutadoLotes.
     const lotesConf=(a._lotes||[]).filter(function(l){return l.confirmado;});
     const STATUS_PAGO_ENVIO=['Em entrega','Concluído'];
-    const lotesExecConf=lotesConf.filter(function(l){return !STATUS_PAGO_ENVIO.includes(l._status||'Planejamento');});
     const lotesPagosConf=lotesConf.filter(function(l){return STATUS_PAGO_ENVIO.includes(l._status||'Planejamento');});
-    const valorContratadoLotes=lotesExecConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+    const execAcumuladoEnvio=calcularExecutadoAcumuladoHistorico(a);
+    const execAtualTelaEnvio=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+    const valorContratadoLotes=Math.max(execAcumuladoEnvio, execAtualTelaEnvio);
     const valorPagoLotes=lotesPagosConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
     const valorListaLotes=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
     const temLotes=lotesConf.length>0;
@@ -3785,19 +3834,26 @@ function calcTotalUtilizado(){
 }
 
 // Calcular executado dos lotes e atualizar resumo financeiro
-// Regra: lotes com status até "Contratado" (Planejamento, Processo aberto,
-// Contratado) somam em "Valor executado (contratos atuais)". Lotes com status
-// "Em entrega" ou "Concluído" somam em "Já pago (bimestres anteriores)",
-// junto com o valor histórico vindo do servidor (bimestres já encerrados).
+// Regra: "Valor Executado (Contratos Atuais)" é um ACUMULADO histórico — soma
+// o valor contratado de TODOS os lotes confirmados já registrados para esta
+// ação em QUALQUER bimestre (independente do status atual de cada lote), e
+// nunca diminui ao trocar de bimestre. "Já Pago (bimestres anteriores)" soma,
+// separadamente, apenas os lotes com status "Em entrega"/"Concluído" do
+// histórico do servidor + os do bimestre atual.
 function calcExecutadoLotes(){
   const a=acq();
   const lotes=a._lotes||[];
   // Apenas lotes CONFIRMADOS contam para os totais financeiros
   const lotesConf=lotes.filter(function(l){return l.confirmado;});
   const STATUS_PAGO=['Em entrega','Concluído'];
-  const lotesExec=lotesConf.filter(function(l){return !STATUS_PAGO.includes(l._status||'Planejamento');});
   const lotesPagos=lotesConf.filter(function(l){return STATUS_PAGO.includes(l._status||'Planejamento');});
-  const exec=lotesExec.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+  // Acumulado de TODOS os bimestres salvos localmente para esta ação (nunca zera)
+  const execAcumulado=calcularExecutadoAcumuladoHistorico(a);
+  // Soma dos lotes confirmados do bimestre atual em tela agora (cobre edições
+  // ainda não persistidas no localStorage)
+  const execAtualTela=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
+  const exec=Math.max(execAcumulado, execAtualTela);
+  a._executado_acumulado_historico=exec;
   const pagoLotesAtual=lotesPagos.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
   const historicoServidor=a._executado_historico||0;
   const historico=historicoServidor+pagoLotesAtual;
