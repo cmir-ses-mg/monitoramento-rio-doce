@@ -828,7 +828,11 @@ function fmtBRL(v){
 function onMoneyInput(el){el.value=el.value.replace(/[^0-9,]/g,'');}
 function onMoneyBlur(el){
   el.value=fmtBRL(el.value);sv(el);validateField(el);
-  if(el.name==='valor_executado'||el.name==='valor_proprio')calcTotalUtilizado();
+  if(el.name==='valor_executado'||el.name==='valor_proprio'){
+    // Equipamentos: recalcular incluindo "já pago (bimestres anteriores)"
+    if(acq().modalidade_objeto==='equipamento') calcExecutadoLotes();
+    calcTotalUtilizado();
+  }
 }
 function onNumInput(el){el.value=el.value.replace(/[^0-9]/g,'');sv(el);}
 function onPctInput(el){
