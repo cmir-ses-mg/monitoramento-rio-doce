@@ -2246,7 +2246,7 @@ async function concludeAction(){
   let titulo='', corpo='', icone='', okLabel='', okColor='';
   if(!jaEnviada){
     titulo='Confirmar conclusão desta ação?';
-    const _aviso=status==='partial'?'\n\n⚠️ Esta ação está parcialmente preenchida.\nConfira se todos os dados necessários foram incluídos. Se alguma etapa ainda não tiver sido executada, você pode enviar assim mesmo.':'';
+    const _aviso=status==='partial'?'\n\n⚠️ Esta ação está parcialmente preenchida.\n\n<b>Confira se todos os dados necessários foram incluídos.</b>\n\nSe alguma etapa ainda não tiver sido executada, você pode enviar assim mesmo.':'';
     corpo='Os dados serão registrados.'+_aviso+'\n\nApós concluir, os campos ficam bloqueados para edição. Você pode reabrir e corrigir — o registro anterior será substituído automaticamente.';
     icone='📊'; okLabel='Concluir ação'; okColor='var(--g600)';
   } else {
