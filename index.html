@@ -825,13 +825,28 @@ function fmtBRL(v){
   const n=parseFloat(s);
   return isNaN(n)?'':n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
-function onMoneyInput(el){el.value=el.value.replace(/[^0-9,]/g,'');}
+function onMoneyInput(el){
+  // Máscara em tempo real: trata os dígitos digitados como centavos
+  // (estilo apps bancários). Ex: digitar 100000 exibe 1.000,00
+  let digits=el.value.replace(/\D/g,'');
+  digits=digits.replace(/^0+(?=\d)/,''); // remove zeros à esquerda supérfluos
+  if(!digits){el.value='';return;}
+  const n=parseInt(digits,10)/100;
+  el.value=n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
 function onMoneyBlur(el){
   el.value=fmtBRL(el.value);sv(el);validateField(el);
   if(el.name==='valor_executado'||el.name==='valor_proprio'){
-    // Equipamentos: recalcular incluindo "já pago (bimestres anteriores)"
-    if(acq().modalidade_objeto==='equipamento') calcExecutadoLotes();
-    calcTotalUtilizado();
+    if(acq().modalidade_objeto==='equipamento'){
+      // Equipamentos: recalcular incluindo "já pago (bimestres anteriores)".
+      // NÃO chamar calcTotalUtilizado aqui — ela usa lógica antiga e
+      // sobrescreveria o valor correto calculado por calcExecutadoLotes.
+      calcExecutadoLotes();
+    } else if(acq().modalidade_objeto==='servico'){
+      calcAtividades();
+    } else {
+      calcTotalUtilizado();
+    }
   }
 }
 function onNumInput(el){el.value=el.value.replace(/[^0-9]/g,'');sv(el);}
