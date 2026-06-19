@@ -1719,10 +1719,6 @@ function contentHTML(){
           <div class="r-lbl">Valor total da lista de itens</div>
           <div class="r-val" id="val_lista_total" style="color:var(--ink);font-weight:600">R$ 0,00</div>
         </div>
-        <div class="resumo-item">
-          <div class="r-lbl">Valor executado (contratos atuais)</div>
-          <div class="r-val" id="val_executado_lotes" style="color:var(--g700);font-weight:700">R$ 0,00</div>
-        </div>
         <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
           <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
             <span>Já pago (bimestres anteriores)</span>
@@ -2424,7 +2420,8 @@ async function enviarAcaoSheet(a, tipoRegistro){
     const valorListaLotes=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
     const temLotes=lotesConf.length>0;
     const valorExecutadoFinal=temLotes?valorContratadoLotes:(firstEmp.valor||a.valor_contratado||'');
-    const valorTotalUtilizadoFinal=temLotes?(valorContratadoLotes+valorPagoLotes+(a._executado_historico||0)+parseBRL(a.valor_proprio||'')):(a.valor_total_utilizado||'');
+    // Valor Total Utilizado = Já Pago (lotes pagos + histórico servidor) + Recurso Próprio
+    const valorTotalUtilizadoFinal=temLotes?(valorPagoLotes+(a._executado_historico||0)+parseBRL(a.valor_proprio||'')):(a.valor_total_utilizado||'');
     const payload=Object.assign({},municipio,a,{
       _nfs:undefined,_docs:undefined,_medicoes:undefined,_empresas:undefined,_lotes:undefined,_pool:undefined,
       _key:undefined,_locked:undefined,_sent:undefined,_sentAt:undefined,_corrections:undefined,
@@ -3841,9 +3838,6 @@ function calcTotalUtilizado(){
   if(acq().modalidade_objeto==='equipamento'){
     // Soma valor_executado de cada lote
     executado=(acq()._lotes||[]).reduce(function(s,l){return s+parseBRL(l.valor_executado||'');},0);
-    // Atualizar display
-    const elEx=document.getElementById('val_executado_lotes');
-    if(elEx)elEx.textContent='R$ '+executado.toLocaleString('pt-BR',{minimumFractionDigits:2});
     // Soma total da lista
     const totalLista=(acq()._lotes||[]).reduce(function(s,l){return s+(l._total||0);},0);
     const elLista=document.getElementById('val_lista_total');
@@ -3880,10 +3874,9 @@ function calcExecutadoLotes(){
   const lotesConf=lotes.filter(function(l){return l.confirmado;});
   const STATUS_PAGO=['Em entrega','Concluído'];
   const lotesPagos=lotesConf.filter(function(l){return STATUS_PAGO.includes(l._status||'Planejamento');});
-  // Acumulado de TODOS os bimestres salvos localmente para esta ação (nunca zera)
+  // Acumulado histórico de valor contratado — mantido internamente (não exibido
+  // mais no resumo, a pedido), pois ainda é usado em enviarAcaoSheet/auditoria.
   const execAcumulado=calcularExecutadoAcumuladoHistorico(a);
-  // Soma dos lotes confirmados do bimestre atual em tela agora (cobre edições
-  // ainda não persistidas no localStorage)
   const execAtualTela=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
   const exec=Math.max(execAcumulado, execAtualTela);
   a._executado_acumulado_historico=exec;
@@ -3892,14 +3885,13 @@ function calcExecutadoLotes(){
   const historico=historicoServidor+pagoLotesAtual;
   const lista=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
   const proprio=parseBRL(a.valor_proprio||'');
-  const total=exec+historico+proprio;
+  // Valor Total Utilizado = Já Pago + Recurso Próprio (sem somar o executado/contratado)
+  const total=historico+proprio;
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
-  const elEx=document.getElementById('val_executado_lotes');
   const elLi=document.getElementById('val_lista_total');
   const elHist=document.getElementById('val_executado_historico');
   const elTot=document.getElementById('val_total_auto_equip');
   const elGrand=document.getElementById('lotes_grand_total');
-  if(elEx)elEx.textContent=fmt(exec);
   if(elLi)elLi.textContent=fmt(lista);
   if(elHist)elHist.textContent=fmt(historico);
   if(elTot)elTot.textContent=fmt(total);
