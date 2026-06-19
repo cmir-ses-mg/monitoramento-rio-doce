@@ -1690,10 +1690,6 @@ function contentHTML(){
           <div class="r-lbl">Valor contratado (atividades)</div>
           <div class="r-val" id="val_custeio_contratado" style="color:var(--g700);font-weight:700">R$ 0,00</div>
         </div>
-        <div class="resumo-item">
-          <div class="r-lbl">Valor executado (contratos atuais)</div>
-          <div class="r-val" id="val_custeio_executado" style="color:var(--g700);font-weight:700">R$ 0,00</div>
-        </div>
         <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
           <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
             <span>Já pago (bimestres anteriores)</span>
@@ -4650,15 +4646,15 @@ function calcAtividades(){
   const ativConf=(a._atividades||[]).filter(function(at){return at.confirmado;});
   const SPAG=['Em execução','Concluído'];
   const vlrC=ativConf.reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
-  const vlrE=calcularExecutadoAcumuladoCusteio(a);
   const pago=ativConf.filter(function(at){return SPAG.includes(at._status);}).reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
   const hist=a._executado_historico||0;const prop=parseBRL(a.valor_proprio||'');
-  const total=vlrE+pago+hist+prop;
+  // Valor Total Utilizado = Já Pago (histórico + atividades pagas) + Recurso Próprio
+  const total=pago+hist+prop;
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
-  const el1=document.getElementById('val_custeio_contratado');const el2=document.getElementById('val_custeio_executado');
+  const el1=document.getElementById('val_custeio_contratado');
   const el3=document.getElementById('val_custeio_total');const elH=document.getElementById('val_executado_historico');
   const elG=document.getElementById('ativ_grand_total');
-  if(el1)el1.textContent=fmt(vlrC);if(el2)el2.textContent=fmt(vlrE);if(el3)el3.textContent=fmt(total);
+  if(el1)el1.textContent=fmt(vlrC);if(el3)el3.textContent=fmt(total);
   if(elH)elH.textContent=fmt(hist+pago);if(elG)elG.textContent=fmt(vlrC);
   a.valor_executado=vlrC.toLocaleString('pt-BR',{minimumFractionDigits:2});
   a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
