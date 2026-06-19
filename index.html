@@ -4734,7 +4734,14 @@ if(!window._ativEmpListenersBound){
 }
 
 function _addAtividade(){const a=acq();if(!a._atividades)a._atividades=[];a._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});_renderAtividadesCardDOM();}
-function _setAtivStatus(idx,status){const a=acq();if(a._atividades&&a._atividades[idx])a._atividades[idx]._status=status;_renderAtividadesCardDOM();calcAtividades();}
+function _setAtivStatus(idx,status){
+  const a=acq();
+  if(a._atividades&&a._atividades[idx]) a._atividades[idx]._status=status;
+  calcAtividades();
+  // Fase 1 usa o container local; Fase 2 (Contratação) precisa re-renderizar a tela toda
+  if(document.getElementById('atividades-container')) _renderAtividadesCardDOM();
+  else renderMain();
+}
 
 function editarAtividade(idx){
   const a=acq();if(!a._atividades||!a._atividades[idx])return;
