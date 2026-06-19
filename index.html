@@ -1752,8 +1752,11 @@ function contentHTML(){
   if(phase===2){
   const a=acq();
   const lotes=(a.modalidade_objeto==='equipamento')?(a._lotes||[]).filter(function(l){return l.confirmado;}):null;
+  const ativs=(a.modalidade_objeto==='servico')?(a._atividades||[]).filter(function(at){return at.confirmado;}):null;
   const temLotes=lotes&&lotes.length>0;
+  const temAtivs=ativs&&ativs.length>0;
   const ob=isAcqObra(a);
+  if(temAtivs) return renderContratacaoAtividades(ativs,lockedBanner,modeBadge);
   return temLotes ? renderContratacaoLotes(lotes,lockedBanner,modeBadge) : renderContratacaoUnico(a,ob,lockedBanner,modeBadge);
 }
 
@@ -1792,6 +1795,31 @@ function contentHTML(){
       </div>
       <div class="file-list" id="files_fotos_acao">${renderFilePills('fotos_acao')}</div>
     </div>`;
+
+  // Phase 3 — CUSTEIO (com atividades)
+  if(phase===3&&servico&&(acq()._atividades||[]).filter(at=>at.confirmado).length>0) return lockedBanner
+    +'<div class="step-head"><h2>Execução do Serviço <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
+    +'<p>Resumo da execução por atividade — status definido na etapa de Contratação.</p></div>'
+    +(acq()._atividades||[]).filter(function(at){return at.confirmado;}).map(function(at){
+      const a=acq();
+      const realIdx=a._atividades.indexOf(at);
+      var status=at._status||'Planejamento';
+      var concluido=status==='Concluído';
+      var statusBadgeColor={'Planejamento':'#7C4A0A;background:#FFF3E0','Processo aberto':'#8B5E00;background:#FFF8E1','Contratado':'#1B5E20;background:#E8F5E9','Em execução':'#1B5E20;background:#C8E6C9','Concluído':'#fff;background:#1B3A2B'}[status]||'#666;background:#eee';
+      var borderColor=concluido?'var(--g400)':'var(--border)';
+      var vlr=(at.empresas||[]).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
+      return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
+        +'<div style="display:flex;align-items:center;gap:10px">'
+          +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">A'+(realIdx+1)+'</div>'
+          +'<div style="flex:1;min-width:0;overflow:hidden">'
+            +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(at.item_num?'Item '+at.item_num+': ':'')+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
+            +'<div style="font-size:11px;color:var(--ink3)">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+((at.empresas||[]).filter(function(e){return e.nome;}).length?' · '+(at.empresas||[]).filter(function(e){return e.nome;})[0].nome:'')+'</div>'
+          +'</div>'
+          +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;color:'+statusBadgeColor+'">'+status+'</span>'
+        +'</div>'
+        +(status==='Planejamento'||status==='Processo aberto'?'<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Avance o status na etapa "Contratação" para registrar a execução.</div>':'')
+      +'</div>';
+    }).join('');
 
   // Phase 3 — EQUIPAMENTO
   if(phase===3&&!obra) return (acq()._lotes||[]).filter(l=>l.confirmado).length===0 ? `
@@ -3487,9 +3515,9 @@ function _camposContrato(obj,isContratado,idxOrNull){
 }
 
 // Helper: chips vinculados a um objeto específico (lote) em vez de acq() global
-function _chipsObj(obj,label,field,options,idxOrNull){
+function _chipsObj(obj,label,field,options,idxOrNull,setterName){
   var cur=obj[field]||'';
-  var setterPrefix=idxOrNull!==undefined?'_setLoteField('+idxOrNull+',':'_setAcqField(';
+  var setterPrefix=setterName?(setterName+'('+idxOrNull+','):(idxOrNull!==undefined?'_setLoteField('+idxOrNull+',':'_setAcqField(');
   var pills=options.map(function(o){
     var active=o===cur;
     return '<span onclick="'+setterPrefix+'\''+field+'\',&apos;'+o+'&apos;)" style="display:inline-block;padding:5px 12px;margin:0 6px 6px 0;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;'+(active?'background:var(--g700);color:#fff':'background:var(--g50);color:var(--ink3);border:1px solid var(--border)')+'">'+o+'</span>';
@@ -3504,6 +3532,87 @@ function _setLoteField(idx,field,value){
 }
 function _setAcqField(field,value){
   acq()[field]=value;
+  renderMain();
+}
+
+// Fase 2 — CUSTEIO: um card de contratação por atividade, já preenchido com
+// a empresa cadastrada na Fase 1. Não repete os campos de empresa/valor (já
+// coletados antes); foca em status, entrega/execução e comprovação fiscal.
+function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
+  const a=acq();
+  var cards=ativs.map(function(at){
+    const realIdx=a._atividades.indexOf(at);
+    var cur=at._status||'Planejamento';
+    var isContr=['Contratado','Em execução','Concluído'].includes(cur);
+    var emExec=['Em execução','Concluído'].includes(cur);
+    var concluido=cur==='Concluído';
+    var borderColor=isContr?'var(--g400)':'var(--border)';
+    var pills=_STAT_ATIV.map(function(s){
+      var active=s===cur;
+      var col=active?'background:var(--g600);color:#fff':'background:var(--g50);color:var(--ink3)';
+      return '<span onclick="_setAtivStatus('+realIdx+',&apos;'+s+'&apos;)" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:20px;cursor:pointer;'+col+';transition:all .15s">'+s+'</span>';
+    }).join('');
+    var vlr=(at.empresas||[]).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
+    var empresasResumo=isContr
+      ?('<div style="background:var(--g50);border-radius:8px;padding:12px;margin-bottom:12px">'
+        +(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){
+          return '<div style="font-size:13px;color:var(--ink2);margin-bottom:4px"><strong>'+e.nome+'</strong>'+(e.cnpj?' · '+e.cnpj:'')+(e.valor?' · R$ '+e.valor:'')+(e.prazo?' · '+e.prazo+' meses':'')+'</div>';
+        }).join('')
+        +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Para alterar a empresa ou o valor, volte à etapa "Instrumento".</div>'
+        +'</div>')
+      :('<div style="background:var(--g50);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--ink3)">'
+        +'\uD83D\uDCA1 Os dados da empresa aparecerão aqui quando o status avançar para <strong>Contratado</strong>.'
+        +'</div>');
+
+    var lockStyleExec=emExec?'':'opacity:.5;pointer-events:none';
+    var avisoExec=emExec?'':'<div style="font-size:12px;color:var(--ink3);margin:14px 0 12px;font-style:italic">Preencha quando a atividade estiver em execução</div>';
+    var blocoExec='<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
+      +'<div style="'+lockStyleExec+'">'+avisoExec
+      +_chipsObj(at,'Situação da execução','situacao_execucao',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'],realIdx,'_setAtivField')
+      +_spFieldGeneric(at,'periodo_execucao','Período de execução','text','Ex: jan-jun/2026',realIdx,'_setAtivField')
+      +_chipsObj(at,'Houve atraso?','houve_atraso',['Sim','Não'],realIdx,'_setAtivField')
+      +_spFieldGeneric(at,'justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...',realIdx,'_setAtivField')
+      +'</div></div>';
+
+    var blocoComprovacao=concluido?('<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
+      +_chipsObj(at,'Comprovações apresentadas?','comprovacoes',['Sim','Não'],realIdx,'_setAtivField')
+      +_chipsObj(at,'Avaliação da qualidade/execução','avaliacao_qualidade',['Conforme','Não conforme','Parcialmente conforme'],realIdx,'_setAtivField')
+      +_spFieldGeneric(at,'obs_qualidade','Observações sobre a execução','textarea','Descreva pontos relevantes...',realIdx,'_setAtivField')
+      +'</div>'):'';
+
+    return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+        +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">A'+(realIdx+1)+'</div>'
+        +'<div style="flex:1;min-width:0;overflow:hidden">'
+          +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(at.item_num?'Item '+at.item_num+': ':'')+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
+          +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2)">'+pills+'</div>'
+      +empresasResumo
+      +blocoExec+blocoComprovacao
+    +'</div>';
+  }).join('');
+  return (lockedBanner||'')
+    +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+(modeBadge||'')+'</h2>'
+    +'<p>Um card por atividade selecionada na etapa anterior. A empresa já cadastrada aparece automaticamente.</p></div>'
+    +cards;
+}
+
+// Versão genérica de _spField que aceita um nome de setter customizado
+// (usado para atividades de custeio, que vivem em a._atividades[idx] em vez de a._lotes[idx])
+function _spFieldGeneric(obj,field,label,type,placeholder,idx,setterName){
+  var val=obj[field]||'';
+  var setter=setterName+'('+idx+",'"+field+"',this.value)";
+  if(type==='textarea'){
+    return '<div class="field"><label>'+label+'</label><textarea oninput="'+setter+'" placeholder="'+(placeholder||'')+'">'+val+'</textarea></div>';
+  }
+  return '<div class="field"><label>'+label+'</label><input type="'+type+'" value="'+val.replace(/"/g,'&quot;')+'" oninput="'+setter+'" placeholder="'+(placeholder||'')+'"/></div>';
+}
+
+function _setAtivField(idx,field,value){
+  var a=acq();
+  if(a._atividades&&a._atividades[idx]){a._atividades[idx][field]=value;}
   renderMain();
 }
 
