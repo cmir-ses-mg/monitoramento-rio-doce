@@ -4471,104 +4471,108 @@ function _renderAtividadesCardDOM(){
       +'</div>'
       +'<div style="font-size:13px;font-weight:700;color:var(--g700);flex-shrink:0">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
       +'<button onclick="editarAtividade('+realIdx+')" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font);flex-shrink:0">\u270F\uFE0F Editar</button>'
+      +'<button onclick="excluirAtividade('+realIdx+')" title="Excluir atividade" style="padding:4px 9px;font-size:11px;font-weight:600;border:1px solid #F2C5C5;border-radius:5px;background:#fff;color:#C94040;cursor:pointer;font-family:var(--font);flex-shrink:0">\uD83D\uDDD1\uFE0F</button>'
       +'</div>';
     c.appendChild(div);
   });
 
-  // ── ATIVIDADE EM EDIÇÃO ────────────────────────────────────────────────────
-  const editIdx=a._atividades.findIndex(function(at){return !at.confirmado;});
-  if(editIdx>=0){
-    const at=a._atividades[editIdx];
-    if(!at.empresas||!at.empresas.length) at.empresas=[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}];
-
-    const lista=_getListaCusteioAtual();
-    const disponiveis=lista;
-
-    const selectorHTML=disponiveis.length
-      ?('<div style="margin-bottom:14px">'
-        +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Selecionar atividade da lista</label>'
-        +'<select onchange="_onSelecionarAtividade('+editIdx+',this)" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);color:var(--ink);background:#fff">'
-          +'<option value="">— selecione uma atividade —</option>'
-          +disponiveis.map(function(it){return '<option value="'+it.num+'" '+(at.item_num==it.num?'selected':'')+'>'+it.num+'. '+it.descricao.substring(0,90)+'</option>';}).join('')
-        +'</select>'
-        +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Ou preencha livremente os campos abaixo</div>'
-      +'</div>')
-      :'';
-
-    const pillsHTML=_STAT_ATIV.map(function(s){
-      const sel=at._status===s;
-      return '<button type="button" onclick="_setAtivStatus('+editIdx+',' +"'"+s+"'"+' )" style="padding:4px 10px;font-size:11px;border-radius:20px;border:1.5px solid '+(sel?'var(--g600)':'var(--border)')+';background:'+(sel?'var(--g600)':'#fff')+';color:'+(sel?'#fff':'var(--ink2)')+';cursor:pointer;font-weight:'+(sel?'700':'400')+'">'+s+'</button>';
-    }).join('');
-
-    const empHTML=(at.empresas||[]).map(function(em,ei){
-      const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
-      const remBtn=ei>0?(' <button type="button" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" onclick="_removeEmpresaAtiv(this.dataset.ativIdx*1,this.dataset.empIdx*1)" style="margin-left:8px;font-size:10px;color:#C94040;background:none;border:none;cursor:pointer">✕ remover</button>'):'';
-      return '<div style="background:var(--g50);border-radius:8px;padding:12px;margin-bottom:8px">'
-        +'<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:8px">Empresa '+(ei+1)+remBtn+'</div>'
-        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">'
-          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Razão Social</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="nome" value="'+esc(em.nome)+'" placeholder="Nome da empresa" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">CNPJ</label><input type="text" class="ativ-emp-field ativ-emp-cnpj" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="cnpj" value="'+esc(em.cnpj)+'" placeholder="00.000.000/0000-00" maxlength="18" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-        +'</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
-          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Valor contratado (R$)</label><input type="text" class="ativ-emp-field ativ-emp-money" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="valor" value="'+esc(em.valor)+'" placeholder="0,00" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Data assinatura</label><input type="date" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="homologacao" value="'+esc(em.homologacao)+'" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Prazo (meses)</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="prazo" value="'+esc(em.prazo)+'" placeholder="12" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-        +'</div></div>';
-    }).join('');
-
-    const div=document.createElement('div');
-    div.style.cssText='border:2px solid var(--g400);border-radius:10px;padding:16px;margin-bottom:10px;background:#fff';
-    div.innerHTML=
-      '<div style="font-size:13px;font-weight:700;color:var(--g700);margin-bottom:14px">\u270F\uFE0F Atividade '+(editIdx+1)+'</div>'
-      +selectorHTML
-      +'<div style="margin-bottom:12px">'
-        +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Detalhamento / Descri\u00e7\u00e3o</label>'
-        +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'descricao',this.value)\" placeholder=\"Descreva a atividade contratada...\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+(at.descricao||'')+'</textarea>'
-      +'</div>'
-      +'<div style="margin-bottom:12px">'
-        +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Status de execu\u00e7\u00e3o</label>'
-        +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+pillsHTML+'</div>'
-      +'</div>'
-      +'<div style="margin-bottom:12px">'
-        +(function(){
-          const STATUS_MOSTRA_EMP=['Contratado','Em execução','Concluído'];
-          const mostra=STATUS_MOSTRA_EMP.includes(at._status);
-          // Histórico: se já tinha empresa preenchida antes de mudar status, mostra em modo leitura
-          const temEmpHist=(at.empresas||[]).some(function(e){return e.nome;});
-          if(mostra){
-            return '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Empresa(s) contratada(s)</div>'
-              +'<div id="ativ-empresas-'+editIdx+'">'+empHTML+'</div>'
-              +'<button type="button" onclick="_addEmpresaAtiv('+editIdx+')" style="margin-top:4px;padding:5px 14px;font-size:11px;font-weight:600;border:1.5px dashed var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar empresa</button>';
-          } else if(temEmpHist){
-            // Já tem empresa cadastrada — mostra em modo leitura (histórico)
-            return '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Empresa(s) contratada(s)</div>'
-              +'<div style="padding:10px 12px;background:var(--g50);border-radius:8px;font-size:12.5px;color:var(--ink2)">'
-              +(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){
-                return '<div style="margin-bottom:4px"><strong>'+e.nome+'</strong>'+(e.cnpj?' · '+e.cnpj:'')+(e.valor?' · R$ '+e.valor:'')+'</div>';
-              }).join('')
-              +'<div style="font-size:11px;color:var(--ink3);margin-top:6px">Avance para "Contratado" para editar os dados da empresa.</div>'
-              +'</div>';
-          } else {
-            return '<div style="padding:10px 12px;background:var(--g50);border-radius:8px;font-size:12px;color:var(--ink3)">'
-              +'\uD83D\uDCA1 Preencha os dados da empresa ao selecionar o status <strong>Contratado</strong> ou superior.'
-              +'</div>';
-          }
-        })()
-      +'</div>'
-      +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2)">'
-        +'<button type="button" onclick="confirmarAtividade('+editIdx+')" style="padding:8px 20px;font-size:13px;font-weight:700;background:var(--g700);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar atividade</button>'
-      +'</div>';
-    c.appendChild(div);
-  }
+  // ── ATIVIDADES EM EDIÇÃO (pode haver mais de uma simultaneamente) ──────────
+  a._atividades.forEach(function(at,idx){
+    if(at.confirmado) return;
+    c.appendChild(_buildAtividadeEditCard(idx));
+  });
 
   // ── BOTÃO ADICIONAR NOVA ATIVIDADE ─────────────────────────────────────────
-  const temEditando=a._atividades.some(function(at){return !at.confirmado;});
-  if(!temEditando){
-    const b=document.createElement('div');
-    b.innerHTML='<button type="button" onclick="_addAtividade()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;margin-bottom:8px">+ Adicionar outra atividade</button>';
-    c.appendChild(b);
-  }
+  const b=document.createElement('div');
+  b.innerHTML='<button type="button" onclick="_addAtividade()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;margin-bottom:8px">+ Adicionar outra atividade</button>';
+  c.appendChild(b);
 
   calcAtividades();
+}
+
+function _buildAtividadeEditCard(editIdx){
+  const a=acq();
+  const at=a._atividades[editIdx];
+  if(!at.empresas||!at.empresas.length) at.empresas=[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}];
+
+  const lista=_getListaCusteioAtual();
+  const disponiveis=lista;
+
+  const selectorHTML=disponiveis.length
+    ?('<div style="margin-bottom:14px">'
+      +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Selecionar atividade da lista</label>'
+      +'<select onchange="_onSelecionarAtividade('+editIdx+',this)" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);color:var(--ink);background:#fff">'
+        +'<option value="">— selecione uma atividade —</option>'
+        +disponiveis.map(function(it){return '<option value="'+it.num+'" '+(at.item_num==it.num?'selected':'')+'>'+it.num+'. '+it.descricao.substring(0,90)+'</option>';}).join('')
+      +'</select>'
+      +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Ou preencha livremente os campos abaixo</div>'
+    +'</div>')
+    :'';
+
+  const pillsHTML=_STAT_ATIV.map(function(s){
+    const sel=at._status===s;
+    return '<button type="button" onclick="_setAtivStatus('+editIdx+',' +"'"+s+"'"+' )" style="padding:4px 10px;font-size:11px;border-radius:20px;border:1.5px solid '+(sel?'var(--g600)':'var(--border)')+';background:'+(sel?'var(--g600)':'#fff')+';color:'+(sel?'#fff':'var(--ink2)')+';cursor:pointer;font-weight:'+(sel?'700':'400')+'">'+s+'</button>';
+  }).join('');
+
+  const empHTML=(at.empresas||[]).map(function(em,ei){
+    const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+    const remBtn=ei>0?(' <button type="button" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" onclick="_removeEmpresaAtiv(this.dataset.ativIdx*1,this.dataset.empIdx*1)" style="margin-left:8px;font-size:10px;color:#C94040;background:none;border:none;cursor:pointer">✕ remover</button>'):'';
+    return '<div style="background:var(--g50);border-radius:8px;padding:12px;margin-bottom:8px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:8px">Empresa '+(ei+1)+remBtn+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Razão Social</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="nome" value="'+esc(em.nome)+'" placeholder="Nome da empresa" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">CNPJ</label><input type="text" class="ativ-emp-field ativ-emp-cnpj" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="cnpj" value="'+esc(em.cnpj)+'" placeholder="00.000.000/0000-00" maxlength="18" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+      +'</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Valor contratado (R$)</label><input type="text" class="ativ-emp-field ativ-emp-money" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="valor" value="'+esc(em.valor)+'" placeholder="0,00" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Data assinatura</label><input type="date" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="homologacao" value="'+esc(em.homologacao)+'" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Prazo (meses)</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="prazo" value="'+esc(em.prazo)+'" placeholder="12" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+      +'</div></div>';
+  }).join('');
+
+  const div=document.createElement('div');
+  div.style.cssText='border:2px solid var(--g400);border-radius:10px;padding:16px;margin-bottom:10px;background:#fff';
+  div.innerHTML=
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--g700)">\u270F\uFE0F Atividade '+(editIdx+1)+'</div>'
+      +'<button type="button" onclick="excluirAtividade('+editIdx+')" title="Excluir atividade" style="padding:3px 9px;font-size:11px;font-weight:600;border:1px solid #F2C5C5;border-radius:5px;background:#fff;color:#C94040;cursor:pointer;font-family:var(--font)">\uD83D\uDDD1\uFE0F Excluir</button>'
+    +'</div>'
+    +selectorHTML
+    +'<div style="margin-bottom:12px">'
+      +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Detalhamento / Descri\u00e7\u00e3o</label>'
+      +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'descricao',this.value)\" placeholder=\"Descreva a atividade contratada...\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+(at.descricao||'')+'</textarea>'
+    +'</div>'
+    +'<div style="margin-bottom:12px">'
+      +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Status de execu\u00e7\u00e3o</label>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+pillsHTML+'</div>'
+    +'</div>'
+    +'<div style="margin-bottom:12px">'
+      +(function(){
+        const STATUS_MOSTRA_EMP=['Contratado','Em execução','Concluído'];
+        const mostra=STATUS_MOSTRA_EMP.includes(at._status);
+        const temEmpHist=(at.empresas||[]).some(function(e){return e.nome;});
+        if(mostra){
+          return '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Empresa(s) contratada(s)</div>'
+            +'<div id="ativ-empresas-'+editIdx+'">'+empHTML+'</div>'
+            +'<button type="button" onclick="_addEmpresaAtiv('+editIdx+')" style="margin-top:4px;padding:5px 14px;font-size:11px;font-weight:600;border:1.5px dashed var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar empresa</button>';
+        } else if(temEmpHist){
+          return '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Empresa(s) contratada(s)</div>'
+            +'<div style="padding:10px 12px;background:var(--g50);border-radius:8px;font-size:12.5px;color:var(--ink2)">'
+            +(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){
+              return '<div style="margin-bottom:4px"><strong>'+e.nome+'</strong>'+(e.cnpj?' · '+e.cnpj:'')+(e.valor?' · R$ '+e.valor:'')+'</div>';
+            }).join('')
+            +'<div style="font-size:11px;color:var(--ink3);margin-top:6px">Avance para "Contratado" para editar os dados da empresa.</div>'
+            +'</div>';
+        } else {
+          return '<div style="padding:10px 12px;background:var(--g50);border-radius:8px;font-size:12px;color:var(--ink3)">'
+            +'\uD83D\uDCA1 Preencha os dados da empresa ao selecionar o status <strong>Contratado</strong> ou superior.'
+            +'</div>';
+        }
+      })()
+    +'</div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2)">'
+      +'<button type="button" onclick="confirmarAtividade('+editIdx+')" style="padding:8px 20px;font-size:13px;font-weight:700;background:var(--g700);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar atividade</button>'
+    +'</div>';
+  return div;
 }
 
 // Ao selecionar atividade do dropdown: preenche descricao e item_num, re-renderiza
@@ -4625,8 +4629,19 @@ function _setAtivStatus(idx,status){const a=acq();if(a._atividades&&a._atividade
 
 function editarAtividade(idx){
   const a=acq();if(!a._atividades||!a._atividades[idx])return;
-  if(a._atividades.some(function(at,i){return !at.confirmado&&i!==idx;})){showAlertModal('Confirme a atividade em edi\u00e7\u00e3o antes de editar outra.','⚠️');return;}
   a._atividades[idx].confirmado=false;_renderAtividadesCardDOM();
+}
+
+function excluirAtividade(idx){
+  const a=acq();if(!a._atividades||!a._atividades[idx])return;
+  showConfirmModal('Excluir atividade?','Esta ação não pode ser desfeita.','Excluir','🗑️','#C94040').then(function(ok){
+    if(!ok)return;
+    a._atividades.splice(idx,1);
+    if(!a._atividades.length){
+      a._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
+    }
+    _renderAtividadesCardDOM();
+  });
 }
 
 function confirmarAtividade(idx){
