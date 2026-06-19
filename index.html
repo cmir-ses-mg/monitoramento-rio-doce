@@ -4505,20 +4505,17 @@ function _renderAtividadesCardDOM(){
     }).join('');
 
     const empHTML=(at.empresas||[]).map(function(em,ei){
-      const q=function(s){return s.replace(/"/g,'&quot;');};
-      const remBtn=ei>0?' <button type=\'button\' onclick=\'_removeEmpresaAtiv('+editIdx+','+ei+')\'  style=\'margin-left:8px;font-size:10px;color:#C94040;background:none;border:none;cursor:pointer\'>✕ remover</button>':'';
-      const inp=function(lbl,val,fn,ph){return '<div><label style=\'font-size:11px;color:var(--ink3);display:block;margin-bottom:3px\'>'+lbl+'</label><input type=\'text\' value=\''+q(val||'')+'\'  oninput=\''+fn+'\' placeholder=\''+ph+'\' style=\'width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box\'/></div>';};
-      const inpDate=function(lbl,val,fn){return '<div><label style=\'font-size:11px;color:var(--ink3);display:block;margin-bottom:3px\'>'+lbl+'</label><input type=\'date\' value=\''+q(val||'')+'\'  oninput=\''+fn+'\' style=\'width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box\'/></div>';};
-      const inpMoney=function(val){return '<div><label style=\'font-size:11px;color:var(--ink3);display:block;margin-bottom:3px\'>Valor contratado (R$)</label><input type=\'text\' value=\''+q(val||'')+'\'  oninput=\'onMoneyInput(this);_updEmpresaAtiv('+editIdx+','+ei+',\'valor\',this.value)\' onblur=\'this.value=fmtBRL(this.value);_updEmpresaAtiv('+editIdx+','+ei+',\'valor\',this.value);calcAtividades()\' placeholder=\'0,00\' style=\'width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box\'/></div>';};
-      return '<div style=\'background:var(--g50);border-radius:8px;padding:12px;margin-bottom:8px\'>'
-        +'<div style=\'font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:8px\'>Empresa '+(ei+1)+remBtn+'</div>'
-        +'<div style=\'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px\'>'
-          +inp('Raz\u00e3o Social',em.nome,'_updEmpresaAtiv('+editIdx+','+ei+',\'nome\',this.value)','Nome da empresa')
-          +inp('CNPJ',em.cnpj,'_updEmpresaAtiv('+editIdx+','+ei+',\'cnpj\',this.value)','00.000.000/0000-00')
-        +'</div><div style=\'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px\'>'
-          +inpMoney(em.valor)
-          +inpDate('Data assinatura',em.homologacao,'_updEmpresaAtiv('+editIdx+','+ei+',\'homologacao\',this.value)')
-          +inp('Prazo (meses)',em.prazo,'_updEmpresaAtiv('+editIdx+','+ei+',\'prazo\',this.value)','12')
+      const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+      const remBtn=ei>0?(' <button type="button" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" onclick="_removeEmpresaAtiv(this.dataset.ativIdx*1,this.dataset.empIdx*1)" style="margin-left:8px;font-size:10px;color:#C94040;background:none;border:none;cursor:pointer">✕ remover</button>'):'';
+      return '<div style="background:var(--g50);border-radius:8px;padding:12px;margin-bottom:8px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:8px">Empresa '+(ei+1)+remBtn+'</div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">'
+          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Razão Social</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="nome" value="'+esc(em.nome)+'" placeholder="Nome da empresa" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">CNPJ</label><input type="text" class="ativ-emp-field ativ-emp-cnpj" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="cnpj" value="'+esc(em.cnpj)+'" placeholder="00.000.000/0000-00" maxlength="18" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+        +'</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Valor contratado (R$)</label><input type="text" class="ativ-emp-field ativ-emp-money" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="valor" value="'+esc(em.valor)+'" placeholder="0,00" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Data assinatura</label><input type="date" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="homologacao" value="'+esc(em.homologacao)+'" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
+          +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Prazo (meses)</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="prazo" value="'+esc(em.prazo)+'" placeholder="12" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
         +'</div></div>';
     }).join('');
 
@@ -4597,6 +4594,36 @@ function _updAtiv(idx,f,v){const a=acq();if(a._atividades&&a._atividades[idx])a.
 function _updEmpresaAtiv(idx,ei,f,v){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas[ei])a._atividades[idx].empresas[ei][f]=v;}
 function _addEmpresaAtiv(idx){const a=acq();if(a._atividades&&a._atividades[idx]){a._atividades[idx].empresas.push({nome:'',cnpj:'',valor:'',homologacao:'',prazo:''});_renderAtividadesCardDOM();}}
 function _removeEmpresaAtiv(idx,ei){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas.length>1){a._atividades[idx].empresas.splice(ei,1);_renderAtividadesCardDOM();}}
+
+// Listener delegado (registrado uma única vez) para os campos de empresa do
+// card de custeio (.ativ-emp-field). Evita handlers inline com aspas
+// conflitantes — fonte do bug de HTML quebrado relatado anteriormente.
+if(!window._ativEmpListenersBound){
+  window._ativEmpListenersBound=true;
+  document.addEventListener('input', function(e){
+    const el=e.target;
+    if(!el.classList||!el.classList.contains('ativ-emp-field'))return;
+    if(el.classList.contains('ativ-emp-money')) onMoneyInput(el);
+    else if(el.classList.contains('ativ-emp-cnpj')) maskCNPJ(el);
+    const idx=parseInt(el.dataset.ativIdx,10);
+    const ei=parseInt(el.dataset.empIdx,10);
+    _updEmpresaAtiv(idx,ei,el.dataset.field,el.value);
+  });
+  document.addEventListener('blur', function(e){
+    const el=e.target;
+    if(!el.classList||!el.classList.contains('ativ-emp-field'))return;
+    const idx=parseInt(el.dataset.ativIdx,10);
+    const ei=parseInt(el.dataset.empIdx,10);
+    if(el.classList.contains('ativ-emp-money')){
+      el.value=fmtBRL(el.value);
+      _updEmpresaAtiv(idx,ei,el.dataset.field,el.value);
+      calcAtividades();
+    } else {
+      _updEmpresaAtiv(idx,ei,el.dataset.field,el.value);
+    }
+  }, true);
+}
+
 function _addAtividade(){const a=acq();if(!a._atividades)a._atividades=[];a._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});_renderAtividadesCardDOM();}
 function _setAtivStatus(idx,status){const a=acq();if(a._atividades&&a._atividades[idx])a._atividades[idx]._status=status;_renderAtividadesCardDOM();calcAtividades();}
 
