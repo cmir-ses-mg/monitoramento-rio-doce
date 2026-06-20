@@ -708,10 +708,6 @@ window.onerror = function(msg, src, line, col, err) {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
       Exportar PDF
     </button>
-    <button class="btn" onclick="resetApp()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>
-      Novo preenchimento
-    </button>
   </div>
 </div>
 
@@ -747,7 +743,7 @@ window.onerror = function(msg, src, line, col, err) {
       <div class="login-field"><label>E-mail</label><input type="email" id="cad-email" placeholder="seu@email.com"/></div>
       <div class="login-field"><label>Município / Consórcio</label>
         <select id="cad-municipio" style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;background:#fff">
-          <option value="">Selecione</option>
+          <option value="">Selecione...</option>
         </select>
       </div>
       <div class="login-field"><label>Cargo / Função</label><input type="text" id="cad-cargo" placeholder="Ex: Secretário de Saúde"/></div>
@@ -1088,7 +1084,6 @@ function renderAcqBar(){
       const aIdx=aquisicoes.findIndex(a=>a._key===key);
       const a=aIdx>=0?aquisicoes[aIdx]:null;
       const isActive=aIdx>=0&&aIdx===acqIdx;
-      const obra=a?isAcqObra(a):isObra(item.tipo);
       const status=calcAcqStatus(a);// 'empty'|'partial'|'complete'|'locked'
       const locked=status==='locked';
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
@@ -1915,9 +1910,8 @@ function contentHTML(){
       const key=acqKey(item.instrumento,item.tipo);
       const aIdx=aquisicoes.findIndex(a=>a._key===key);
       const a=aIdx>=0?aquisicoes[aIdx]:null;
-      const ob=a?isAcqObra(a):isObra(item.tipo);
       const hasData=!!(a&&a.modalidade_objeto);
-      const _tipoDetect=a&&a.acao_tipo?(typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento')):(isObra(item.tipo)?'obra':'equipamento');
+      const _tipoDetect=a&&a.acao_tipo?(typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento')):(typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(item.instrumento||'',item.tipo||''):(isObra(item.tipo)?'obra':'equipamento'));
       const icon=_tipoDetect==='obra'?'🏗️':(_tipoDetect==='servico'?'🛠️':'📦');
       const safeType=item.tipo.replace(/'/g,"\\'" ).replace(/\n/g,' ');
       return`<div class="acq-ov" style="${!hasData?'opacity:.6':''}">
@@ -2679,8 +2673,8 @@ function renderInlineActionList(){
       const aIdx=aquisicoes.findIndex(a=>a._key===key);
       const a=aIdx>=0?aquisicoes[aIdx]:null;
       const st=calcAcqStatus(a);
-      const obra=a?isAcqObra(a):isObra(item.tipo);
-      const _tipoIAL=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(item.instrumento||'',item.tipo||''):(obra?'obra':'equipamento');
+      const _tipoIAL=a&&a.modalidade_objeto?a.modalidade_objeto:(typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(item.instrumento||'',item.tipo||''):(isObra(item.tipo)?'obra':'equipamento'));
+      const obra=_tipoIAL==='obra';
       const servico=_tipoIAL==='servico';
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
       const displayType=item.tipo.replace(/\n.*/,'');
@@ -3830,7 +3824,7 @@ async function doSubmit(){
       const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
     const ob=_tipoAuto==='obra';
     const servico=_tipoAuto==='servico';
-      return`<div class="sac-row"><span class="sac-n">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':'📦 '}${a.acao_tipo}</span><span style="flex-shrink:0;font-size:11px;color:var(--ink3);margin-left:8px">${a.status_aquisicao||'—'}</span></div>`;
+      return`<div class="sac-row"><span class="sac-n">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':servico?'🛠️ ':'📦 '}${a.acao_tipo}</span><span style="flex-shrink:0;font-size:11px;color:var(--ink3);margin-left:8px">${a.status_aquisicao||'—'}</span></div>`;
     }).join('');
   document.getElementById('successWrap').style.display='block';
 }
