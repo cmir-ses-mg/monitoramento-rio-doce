@@ -4061,21 +4061,27 @@ async function doLogin(){
   const emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   if(!emailRe.test(email)){mostrarErroLogin('E-mail inválido.');return;}
   if(!senha){mostrarErroLogin('Digite sua senha.');return;}
-  const h=await hashSenha(senha);
-  if(ADMIN_EMAILS.includes(email)){
-    try{
-      const resp=await fetch(APPS_SCRIPT_URL+'?acao=login&email='+encodeURIComponent(email)+'&senhaHash='+encodeURIComponent(h));
-      const data=await resp.json();
-      if(data.status==='ok')return aplicarSessao(data.usuario);
-    }catch(e){}
-    return aplicarSessao({email,nome:'Fabi SES-MG',municipio:'',cargo:'SES-MG'});
-  }
+  const btn=document.querySelector('#painel-login .login-btn-primary');
+  if(btn){btn.textContent='Entrando...';btn.disabled=true;}
   try{
+    const h=await hashSenha(senha);
+    if(ADMIN_EMAILS.includes(email)){
+      try{
+        const resp=await fetch(APPS_SCRIPT_URL+'?acao=login&email='+encodeURIComponent(email)+'&senhaHash='+encodeURIComponent(h));
+        const data=await resp.json();
+        if(data.status==='ok')return aplicarSessao(data.usuario);
+      }catch(e){}
+      return aplicarSessao({email,nome:'Fabi SES-MG',municipio:'',cargo:'SES-MG'});
+    }
     const resp=await fetch(APPS_SCRIPT_URL+'?acao=login&email='+encodeURIComponent(email)+'&senhaHash='+encodeURIComponent(h));
     const data=await resp.json();
     if(data.status==='ok')return aplicarSessao(data.usuario);
     mostrarErroLogin(data.mensagem||'E-mail ou senha incorretos.');
-  }catch(e){mostrarErroLogin('Erro de conexão.');}
+  }catch(e){
+    mostrarErroLogin('Erro de conexão. Tente novamente.');
+  }finally{
+    if(btn){btn.textContent='Entrar';btn.disabled=false;}
+  }
 }
 
 async function doCadastro(){
@@ -4092,13 +4098,24 @@ async function doCadastro(){
   if(!mun){mostrarErroLogin('Selecione seu município.');return;}
   if(!senha||senha.length<6){mostrarErroLogin('Senha deve ter pelo menos 6 caracteres.');return;}
   if(senha!==senha2){mostrarErroLogin('As senhas não coincidem.');return;}
+  const btn=document.querySelector('#painel-cadastro .login-btn-primary');
+  if(btn){btn.textContent='Criando conta...';btn.disabled=true;}
   const h=await hashSenha(senha);
   try{
     const resp=await fetch(APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({acao:'cadastrar',nome,email,municipio:mun,cargo,senhaHash:h,tipo:'email'})});
     const data=await resp.json();
-    if(data.status==='ok'){mostrarSucessoLogin('Conta criada! Faça login.');switchLoginTab('login');}
-    else mostrarErroLogin(data.mensagem||'Erro ao criar conta.');
-  }catch(e){mostrarErroLogin('Erro de conexão.');}
+    if(data.status==='ok'){
+      doLogout(); // encerra qualquer sessão anterior antes de mostrar a tela de login
+      mostrarSucessoLogin('✓ Conta criada com sucesso! Faça login para continuar.');
+      switchLoginTab('login');
+    } else {
+      mostrarErroLogin(data.mensagem||'Erro ao criar conta.');
+    }
+  }catch(e){
+    mostrarErroLogin('Erro de conexão. Tente novamente.');
+  }finally{
+    if(btn){btn.textContent='Criar conta';btn.disabled=false;}
+  }
 }
 
 async function solicitarCodigo(){
