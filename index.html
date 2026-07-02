@@ -36,12 +36,12 @@
 html{scroll-behavior:smooth}
 body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:100vh;font-size:14px;position:relative;overflow-x:hidden}
 #mapa-bg{position:fixed;inset:0;pointer-events:none;z-index:0;background-repeat:no-repeat;background-position:center;background-size:65%;opacity:0.045}
-.topbar{background:var(--g900);padding:0 20px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.topbar{background:#FFFFFF;border-bottom:1px solid var(--border2);padding:0 20px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 1px 6px rgba(6,31,22,.07)}
 .topbar-brand{display:flex;align-items:center;gap:12px}
 .topbar-logo{height:38px;width:auto;display:block}
-.topbar-divider{width:1px;height:24px;background:rgba(255,255,255,0.15)}
-.topbar-sub{font-size:13px;color:var(--g300);letter-spacing:.03em}
-.topbar-badge{font-family:var(--mono);font-size:10px;padding:3px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:20px;color:var(--g300);display:none}
+.topbar-divider{width:1px;height:24px;background:rgba(6,31,22,0.15)}
+.topbar-sub{font-size:13px;color:var(--ink);letter-spacing:.03em;font-weight:500}
+.topbar-badge{font-family:var(--mono);font-size:10px;padding:3px 9px;background:var(--g100);border:1px solid var(--border);border-radius:20px;color:var(--g700);display:none}
 .topbar-badge.visible{display:block}
 .phase-bar{background:var(--white);border-bottom:1px solid var(--border2);padding:0 24px;overflow-x:auto;scrollbar-width:none;position:sticky;top:56px;z-index:100}
 .phase-bar::-webkit-scrollbar{display:none}
