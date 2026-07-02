@@ -19,11 +19,10 @@
     link.rel='icon';link.type='image/png';link.href=c.toDataURL('image/png');
     document.head.appendChild(link);
   };
-  img.src=typeof LOGO_SRC!=='undefined'?LOGO_SRC:'';
-  // Fallback: aguardar LOGO_SRC ser definido
-  if(typeof LOGO_SRC==='undefined'){
-    window.addEventListener('load',function(){img.src=LOGO_SRC||'';});
-  }
+  // Aguardar LOGO_SRC ser definido
+  var _ft=setInterval(function(){
+    if(typeof LOGO_SRC!=='undefined'&&LOGO_SRC){img.src=LOGO_SRC;clearInterval(_ft);}
+  },50);
 })();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
