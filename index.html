@@ -194,7 +194,10 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .acq-ov-status{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--g200);color:var(--g800);white-space:nowrap;flex-shrink:0}
 .acq-ov-del{width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;color:var(--ink3);transition:all var(--t);flex-shrink:0;font-weight:700}
 .acq-ov-del:hover{background:var(--red);color:white}
-.nav{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.97);backdrop-filter:blur(12px);border-top:1px solid var(--border2);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;z-index:150;box-shadow:0 -4px 20px rgba(6,31,22,.08)}
+.nav{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.97);backdrop-filter:blur(12px);border-top:1px solid var(--border2);padding:8px 24px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;z-index:150;box-shadow:0 -4px 20px rgba(6,31,22,.08)}
+.nav-footer-brand{display:flex;align-items:center;gap:10px;justify-content:center}
+.nav-footer-logo{height:28px;width:auto;flex-shrink:0;object-fit:contain}
+.nav-footer-text{font-size:10px;color:var(--ink3);line-height:1.4;max-width:420px}
 .nav-info{font-size:12px;color:var(--ink3)}
 .nav-info strong{color:var(--ink2);font-weight:600}
 .nav-btns{display:flex;gap:9px;align-items:center}
@@ -713,8 +716,23 @@ window.onerror = function(msg, src, line, col, err) {
 
 <nav class="nav" id="navBar">
   <div class="nav-info" id="navInfo"></div>
+  <div class="nav-footer-brand">
+    <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.</span>
+  </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
+<script>
+(function(){
+  function _setNavFooterLogo(){
+    var img=document.getElementById('nav-footer-logo-img');
+    if(!img) return;
+    if(typeof LOGO_SRC!=='undefined'&&LOGO_SRC){ img.src=LOGO_SRC; return; }
+    setTimeout(_setNavFooterLogo,150);
+  }
+  _setNavFooterLogo();
+})();
+</script>
 
 <!-- ══ TELA DE LOGIN ══════════════════════════════════════════════════════ -->
 <div id="login-screen" style="display:flex">
@@ -5035,46 +5053,5 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   </div>
 </div>
 
-
-<!-- ══ RODAPÉ RIO DOCE ══════════════════════════════════════════════════════ -->
-<footer id="rodape-rio-doce" style="
-  background:#061F16;
-  border-top:1px solid rgba(255,255,255,.10);
-  padding:18px 28px 80px;
-  display:flex;
-  align-items:center;
-  gap:20px;
-  position:relative;
-  z-index:1;
-">
-  <img
-    src=""
-    id="footer-logo-img"
-    alt="Reparação Rio Doce"
-    style="height:48px;width:auto;flex-shrink:0;object-fit:contain;"
-    onerror="this.style.display='none'"
-  />
-  <p style="
-    font-family:'Sora',sans-serif;
-    font-size:11.5px;
-    line-height:1.65;
-    color:rgba(255,255,255,.60);
-    margin:0;
-  ">
-    Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da
-    Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.
-  </p>
-</footer>
-<script>
-(function(){
-  function _setFooterLogo(){
-    var img=document.getElementById('footer-logo-img');
-    if(!img) return;
-    if(typeof LOGO_SRC!=='undefined'&&LOGO_SRC){ img.src=LOGO_SRC; return; }
-    setTimeout(_setFooterLogo,150);
-  }
-  _setFooterLogo();
-})();
-</script>
 
 </body>
