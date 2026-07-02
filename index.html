@@ -11,8 +11,8 @@
   img.onload=function(){
     const c=document.createElement('canvas');c.width=64;c.height=64;
     const ctx=c.getContext('2d');
-    // Fundo verde escuro (cor da topbar)
-    ctx.fillStyle='#061F16';ctx.fillRect(0,0,64,64);
+    // Fundo branco
+    ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,64,64);
     // Logo centralizado
     const s=Math.min(64/img.width,64/img.height)*0.85;
     const w=img.width*s,h=img.height*s;
@@ -717,16 +717,21 @@ window.onerror = function(msg, src, line, col, err) {
 <nav class="nav" id="navBar">
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
-    <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
+    <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce"/>
     <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.</span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
 <script>
-window.addEventListener('load', function(){
-  var img = document.getElementById('nav-footer-logo-img');
-  if(img && typeof LOGO_SRC !== 'undefined') img.src = LOGO_SRC;
-});
+(function(){
+  var t = setInterval(function(){
+    if(typeof LOGO_SRC !== 'undefined' && LOGO_SRC){
+      var img = document.getElementById('nav-footer-logo-img');
+      if(img){ img.src = LOGO_SRC; }
+      clearInterval(t);
+    }
+  }, 50);
+})();
 </script>
 
 <!-- ══ TELA DE LOGIN ══════════════════════════════════════════════════════ -->
