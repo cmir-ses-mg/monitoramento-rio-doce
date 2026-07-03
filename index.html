@@ -12,8 +12,9 @@
     const c=document.createElement('canvas');c.width=64;c.height=64;
     const ctx=c.getContext('2d');
     // Fundo verde escuro (cor da topbar)
-    // Sem fundo
-    const s=Math.min(64/img.width,64/img.height);
+    ctx.fillStyle='#061F16';ctx.fillRect(0,0,64,64);
+    // Logo centralizado
+    const s=Math.min(64/img.width,64/img.height)*0.85;
     const w=img.width*s,h=img.height*s;
     ctx.drawImage(img,(64-w)/2,(64-h)/2,w,h);
     const link=document.createElement('link');
@@ -21,8 +22,6 @@
     document.head.appendChild(link);
   };
   var _ft=setInterval(function(){if(typeof LOGO_SRC!=="undefined"&&LOGO_SRC){img.src=LOGO_SRC;clearInterval(_ft);}},50);
-  });
-  }
 })();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
