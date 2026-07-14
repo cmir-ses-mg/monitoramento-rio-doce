@@ -11,8 +11,8 @@
   img.onload=function(){
     const c=document.createElement('canvas');c.width=64;c.height=64;
     const ctx=c.getContext('2d');
-    // Fundo verde escuro (cor da topbar)
-    ctx.fillStyle='#061F16';ctx.fillRect(0,0,64,64);
+    // Fundo branco (mesmo tom do topo da página)
+    ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,64,64);
     // Logo centralizado
     const s=Math.min(64/img.width,64/img.height)*0.85;
     const w=img.width*s,h=img.height*s;
@@ -4559,9 +4559,11 @@ function calcAcqStatusAgregado(benef,item){
   });
   const statuses=idxs.map(function(i){return calcAcqStatus(i>=0?aquisicoes[i]:null);});
   const concluidas=statuses.filter(function(s){return s==='complete'||s==='locked';}).length;
+  const todasLocked=statuses.length>0&&statuses.every(function(s){return s==='locked';});
   const iniciadas=statuses.filter(function(s){return s!=='empty';}).length;
   let status='empty';
-  if(concluidas===statuses.length)status='complete';
+  if(todasLocked)status='locked';
+  else if(concluidas===statuses.length)status='complete';
   else if(iniciadas>0)status='partial';
   return{multi:true,status:status,total:statuses.length,concluidas:concluidas,iniciadas:iniciadas,idxs:idxs};
 }
