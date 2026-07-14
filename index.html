@@ -718,7 +718,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.</span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-3</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1287,10 +1287,11 @@ function renderBadge(){
 
 function saveAllInputs(){
   const store=phase===0?municipio:acq();
+  let mudou=false;
   document.querySelectorAll('input,select,textarea').forEach(el=>{
     if(el.name&&el.dataset.store&&el.type!=='file'){
-      if(el.dataset.store==='mun')municipio[el.name]=el.value;
-      else acq()[el.name]=el.value;
+      if(el.dataset.store==='mun'){if(municipio[el.name]!==el.value)mudou=true;municipio[el.name]=el.value;}
+      else{if(acq()[el.name]!==el.value)mudou=true;acq()[el.name]=el.value;}
     }
   });
   // Salvar chips marcados — garantir sincronia DOM → objeto
@@ -1298,15 +1299,17 @@ function saveAllInputs(){
     document.querySelectorAll('.chip-group').forEach(function(group){
       const onChip=group.querySelector('.chip.on input[type=radio]');
       if(onChip&&onChip.name&&onChip.value){
+        if(acq()[onChip.name]!==onChip.value)mudou=true;
         acq()[onChip.name]=onChip.value;
       }
     });
   }
+  if(mudou&&phase>=1&&aquisicoes[acqIdx])aquisicoes[acqIdx]._touchedAt=Date.now();
 }
 function sv(el){
   if(!el.name)return;
   if(el.dataset.store==='mun')municipio[el.name]=el.value;
-  else if(el.dataset.store==='acq')acq()[el.name]=el.value;
+  else if(el.dataset.store==='acq'){acq()[el.name]=el.value;if(phase>=1&&aquisicoes[acqIdx])aquisicoes[acqIdx]._touchedAt=Date.now();}
   if(el.name==='municipio'||el.name==='bimestre'){
     renderAll();
   }
@@ -2547,6 +2550,135 @@ function saveSession(){
     };
     localStorage.setItem(key,JSON.stringify(data));
   }catch(e){console.warn('saveSession:',e);}
+  agendarSyncSessaoServidor();
+}
+
+// ── SINCRONIZAÇÃO DE SESSÃO PARCIAL COM O SERVIDOR (multi-usuário) ───────────
+// O preenchimento parcial deixa de viver só no localStorage: a cada alteração
+// (com debounce) as ações modificadas são enviadas à aba SessoesParciais.
+// Várias pessoas podem preencher ao mesmo tempo em máquinas diferentes — o
+// servidor só aceita a versão mais nova de cada ação (_touchedAt), então cada
+// um trabalha na sua ação sem apagar o que os colegas fizeram.
+let _syncTimer=null;
+let _ultimoSyncEnviado={}; // acaoKey -> touchedAt já confirmado no servidor
+
+function _acqParaPayload(a){
+  return JSON.stringify({...a,_nfs:undefined,_medicoes:undefined,_docs:undefined,_empresas:a._empresas||[]});
+}
+
+function agendarSyncSessaoServidor(){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  if(_syncTimer)clearTimeout(_syncTimer);
+  _syncTimer=setTimeout(enviarSessaoServidor,4000); // debounce 4s
+}
+
+async function enviarSessaoServidor(){
+  _syncTimer=null;
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  if(!municipio.municipio||!municipio.bimestre||!municipio.ano)return;
+  // Enviar só as ações alteradas desde o último sync confirmado
+  const itens=[];
+  aquisicoes.forEach(function(a){
+    if(!a._key||!a._touchedAt)return;
+    if((_ultimoSyncEnviado[a._key]||0)>=a._touchedAt)return;
+    itens.push({acaoKey:a._key,payload:_acqParaPayload(a),touchedAt:a._touchedAt});
+  });
+  if(!itens.length)return;
+  try{
+    const resp=await fetch(APPS_SCRIPT_URL,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({acao:'salvarSessaoParcial',municipio:municipio.municipio,bimestre:municipio.bimestre,ano:municipio.ano,itens:itens})
+    });
+    const data=await resp.json();
+    if(data&&data.status==='ok'){
+      itens.forEach(function(it){_ultimoSyncEnviado[it.acaoKey]=it.touchedAt;});
+    }
+  }catch(e){console.warn('enviarSessaoServidor:',e);}
+}
+
+// Busca no servidor as ações parciais desta sessão e mescla com o estado local:
+// para cada ação, vence a versão com _touchedAt mais recente. Ações que só
+// existem no servidor (preenchidas por um colega em outra máquina) são trazidas.
+async function mesclarSessaoDoServidor(){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return 0;
+  if(!municipio.municipio||!municipio.bimestre||!municipio.ano)return 0;
+  try{
+    const url=APPS_SCRIPT_URL+'?acao=buscarSessaoParcial'
+      +'&municipio='+encodeURIComponent(municipio.municipio)
+      +'&bimestre='+encodeURIComponent(municipio.bimestre)
+      +'&ano='+encodeURIComponent(municipio.ano);
+    const resp=await fetch(url);
+    const data=await resp.json();
+    if(!data||data.status!=='ok'||!data.itens||!data.itens.length)return 0;
+    let aplicadas=0;
+    data.itens.forEach(function(it){
+      if(!it.acaoKey||!it.payload)return;
+      let remoto=null;
+      try{remoto=JSON.parse(it.payload);}catch(e){return;}
+      remoto._touchedAt=Number(it.touchedAt)||remoto._touchedAt||0;
+      const idxLocal=aquisicoes.findIndex(function(a){return a._key===it.acaoKey;});
+      if(idxLocal===-1){
+        aquisicoes.push(remoto);aplicadas++;
+        _ultimoSyncEnviado[it.acaoKey]=remoto._touchedAt;
+      }else{
+        const local=aquisicoes[idxLocal];
+        if((remoto._touchedAt||0)>(local._touchedAt||0)){
+          aquisicoes[idxLocal]=remoto;aplicadas++;
+        }
+        _ultimoSyncEnviado[it.acaoKey]=Math.max(_ultimoSyncEnviado[it.acaoKey]||0,remoto._touchedAt||0);
+      }
+    });
+    if(aplicadas>0){
+      // Reaplicar detecção de tipo e garantir índice válido
+      aquisicoes.forEach(function(a){
+        if((a.acao_instrumento||a.acao_tipo)&&!a.modalidade_objeto){
+          a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
+        }
+      });
+      acqIdx=Math.min(acqIdx,Math.max(0,aquisicoes.length-1));
+    }
+    return aplicadas;
+  }catch(e){console.warn('mesclarSessaoDoServidor:',e);return 0;}
+}
+
+// ── MIGRAÇÃO DE AQUISIÇÕES AGREGADAS LEGADAS ─────────────────────────────────
+// Sessões/registros criados ANTES do desmembramento têm uma aquisição única
+// com _key agregada (ex: "RES_Investimento||4 UBS tipo I"). Ao restaurar,
+// converte-a na Unidade 1 (preservando tudo que foi preenchido) e cria as
+// demais unidades vazias — sem isso, a agregada antiga "atropela" o novo fluxo.
+function migrarAquisicoesAgregadas(){
+  const ben=municipio.municipio||'';
+  if(!ben||typeof PLANO_DATA==='undefined'||!PLANO_DATA||!PLANO_DATA.unidades)return;
+  const planActions=getAllPlanActions(ben);
+  planActions.forEach(function(item){
+    const unidades=unidadesDoItem(ben,item);
+    if(!unidades)return;
+    const keyAgregada=acqKey(item.instrumento,item.tipo);
+    const idxAgregada=aquisicoes.findIndex(function(a){return a._key===keyAgregada;});
+    if(idxAgregada===-1)return;
+    const agregada=aquisicoes[idxAgregada];
+    // Converter a agregada na primeira unidade, preservando o que foi preenchido
+    const u0=unidades[0];
+    agregada._key=acqKey(item.instrumento,u0.tipo);
+    agregada.acao_tipo=u0.tipo;
+    agregada.acao_valor=u0.valor;
+    agregada._migradaDeAgregada=true;
+    // Criar as demais unidades (se ainda não existirem)
+    unidades.slice(1).forEach(function(u){
+      const k=acqKey(item.instrumento,u.tipo);
+      if(aquisicoes.some(function(a){return a._key===k;}))return;
+      aquisicoes.push({
+        _key:k,
+        acao_instrumento:item.instrumento,
+        acao_tipo:u.tipo,
+        acao_descricao:item.acao,
+        acao_eixo:item.eixo,
+        acao_valor:u.valor,
+        modalidade_objeto:detectarTipoMonitoramento(item.instrumento,u.tipo)
+      });
+    });
+  });
 }
 
 function loadSession(key){
@@ -2604,12 +2736,17 @@ function resumeSession(){
         a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
       }
     });
+    migrarAquisicoesAgregadas();
     phase=1; // Voltar para instrumento para garantir renderização correta
     renderAll();
     setTimeout(function(){
       restoreInputs();
       applyConditionals();
     },100);
+    // Buscar em paralelo o que colegas preencheram em outras máquinas
+    mesclarSessaoDoServidor().then(function(aplicadas){
+      if(aplicadas>0){migrarAquisicoesAgregadas();renderAll();setTimeout(function(){restoreInputs();applyConditionals();},100);}
+    });
   }
 }
 
@@ -2627,6 +2764,10 @@ async function loadAndResume(key){
       a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
     }
   });
+  migrarAquisicoesAgregadas();
+  // Mesclar o que colegas preencheram em outras máquinas (sessão parcial no servidor)
+  const _aplicadas=await mesclarSessaoDoServidor();
+  if(_aplicadas>0)migrarAquisicoesAgregadas();
   phase=1;
   renderAll();
 
@@ -2652,6 +2793,7 @@ async function loadAndResume(key){
       registros.forEach(function(reg){
         aquisicoes.push(registroParaAcq(reg));
       });
+      migrarAquisicoesAgregadas();
       acqIdx=0;
       renderAll();
       setTimeout(function(){ restoreInputs(); applyConditionals(); }, 100);
@@ -4269,14 +4411,31 @@ async function _verificarSessaoExistente(){
     return;
   }
 
-  // 2) Nada localmente: pode ser outro navegador/dispositivo. Consultar o
-  // servidor (planilha) antes de assumir que não há nada preenchido — sem
-  // isso, trocar de navegador fazia o app "esquecer" o que já foi enviado.
+  // 2) Nada localmente: pode ser outro navegador/dispositivo/usuário. Checar
+  // primeiro a sessão PARCIAL no servidor (preenchimento em andamento de
+  // colegas), depois os registros já concluídos na planilha.
   try{
-    const registros=await buscarRegistrosPlanilha(municipio.municipio,municipio.bimestre,municipio.ano);
-    // Checagem de corrida: se o usuário já mudou município/bimestre/ano
-    // enquanto a busca rodava, ignorar o resultado.
-    if(!municipio.municipio||!municipio.bimestre||!municipio.ano)return;
+    const mun0=municipio.municipio,bim0=municipio.bimestre,ano0=municipio.ano;
+    let qtdParcial=0;
+    if(APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('PLACEHOLDER')){
+      try{
+        const url=APPS_SCRIPT_URL+'?acao=buscarSessaoParcial'
+          +'&municipio='+encodeURIComponent(mun0)
+          +'&bimestre='+encodeURIComponent(bim0)
+          +'&ano='+encodeURIComponent(ano0);
+        const resp=await fetch(url);
+        const d=await resp.json();
+        if(d&&d.status==='ok'&&d.itens)qtdParcial=d.itens.length;
+      }catch(e){}
+    }
+    // Checagem de corrida: usuário pode ter mudado o período durante a busca.
+    if(municipio.municipio!==mun0||municipio.bimestre!==bim0||municipio.ano!==ano0)return;
+    if(qtdParcial>0){
+      _mostrarBanner(qtdParcial,'Preenchimento em andamento encontrado no servidor','carregarDoServidorEContinuar()');
+      return;
+    }
+    const registros=await buscarRegistrosPlanilha(mun0,bim0,ano0);
+    if(municipio.municipio!==mun0||municipio.bimestre!==bim0||municipio.ano!==ano0)return;
     if(registros&&registros.length){
       _mostrarBanner(registros.length,'Preenchimento salvo encontrado no servidor','carregarDoServidorEContinuar()');
     }
@@ -4284,7 +4443,8 @@ async function _verificarSessaoExistente(){
 }
 
 // Usado quando o preenchimento existente só está no servidor (outro
-// navegador/dispositivo) e não no localStorage local.
+// navegador/dispositivo/usuário) e não no localStorage local. Combina:
+// 1) registros concluídos da planilha, 2) sessão parcial (em andamento).
 async function carregarDoServidorEContinuar(){
   document.getElementById('sessao-banner-temp')?.remove();
   const mc=document.getElementById('mainContent');
@@ -4297,10 +4457,16 @@ async function carregarDoServidorEContinuar(){
     mc.prepend(loadDiv);
   }
   const registros=await buscarRegistrosPlanilha(municipio.municipio,municipio.bimestre,municipio.ano);
-  document.getElementById('load-planilha')?.remove();
   if(registros&&registros.length){
     aquisicoes.length=0;
     registros.forEach(function(reg){ aquisicoes.push(registroParaAcq(reg)); });
+  }
+  // Trazer também o preenchimento parcial (ações ainda não concluídas por
+  // colegas em outras máquinas) — mescla por _touchedAt.
+  await mesclarSessaoDoServidor();
+  migrarAquisicoesAgregadas();
+  document.getElementById('load-planilha')?.remove();
+  if(aquisicoes.length){
     acqIdx=0;phase=1;
     renderAll();
     setTimeout(function(){ restoreInputs(); applyConditionals(); },100);
@@ -4736,6 +4902,7 @@ function selecionarListaParaLote(editIdx, listaId){
 }
 
 carregarPlanoDataDoServidor().then(initLogin);
+console.log('%cRio Doce Monitoramento — versão v2026.07.14-3 (desmembramento de unidades + sessão multi-usuário)','color:#1A6B49;font-weight:bold');
 
 // ══ CUSTEIO — ATIVIDADES ══════════════════════════════════════════════════════
 // Listas fixas de sub-atividades por tipo de ação de custeio.
