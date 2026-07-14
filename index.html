@@ -1094,15 +1094,14 @@ function renderAcqBar(){
     if(!groups[inst])return;
     html+=`<div class="sidebar-section-title">${ILBL[inst]||inst}</div>`;
     groups[inst].forEach(item=>{
-      const key=acqKey(item.instrumento,item.tipo);
-      const aIdx=aquisicoes.findIndex(a=>a._key===key);
-      const a=aIdx>=0?aquisicoes[aIdx]:null;
-      const isActive=aIdx>=0&&aIdx===acqIdx;
-      const status=calcAcqStatus(a);// 'empty'|'partial'|'complete'|'locked'
+      const agg=calcAcqStatusAgregado(ben,item);
+      const status=agg.status;
+      const isActive=agg.multi?(agg.idxs.includes(acqIdx)):(agg.aIdx===acqIdx&&acqIdx>=0);
+      const a=agg.multi?null:agg.a;
       const locked=status==='locked';
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
       const displayType=item.tipo.replace(/\n.*/,'');
-      const dots=[2,3,4,5].map(s=>{
+      const dots=agg.multi?'':[2,3,4,5].map(s=>{
         const done=stepDone(a,s);
         const isCurrent=isActive&&phase===s;
         let cls='';
@@ -1110,6 +1109,7 @@ function renderAcqBar(){
         else if(done)cls='done';
         return`<span class="sacq-step ${cls}"></span>`;
       }).join('');
+      const multiBadge=agg.multi?`<div style="font-size:10px;font-weight:700;color:var(--g700);margin-top:4px">${agg.concluidas}/${agg.total} concluídas${agg.iniciadas>agg.concluidas?' · '+agg.iniciadas+' iniciadas':''}</div>`:'';
       html+=`<div class="sacq-item s-${status}${isActive?' active':''}"
         onclick="selectPlanAction('${inst}','${safeType}')"
         title="${item.acao}">
@@ -1118,7 +1118,8 @@ function renderAcqBar(){
           <span style="font-size:10px;flex-shrink:0;margin-top:1px">${STATUS_DOT[status]}</span>
         </div>
         <div style="font-size:10px;color:var(--ink3);margin-top:2px">${item.eixo}</div>
-        ${a&&a.modalidade_objeto?`<div class="sacq-steps" style="margin-top:4px">${dots}</div>`:''}
+        ${multiBadge}
+        ${(!agg.multi&&a&&a.modalidade_objeto)?`<div class="sacq-steps" style="margin-top:4px">${dots}</div>`:''}
         ${locked?`<div class="sacq-lock-badge">🔒 Concluída — clique para reabrir</div>`:''}
       </div>`;
     });
@@ -1131,10 +1132,13 @@ function renderAcqBar(){
 
 async function selectPlanAction(instrumento, tipo){
   saveAllInputs();
-  const planActions=getAllPlanActions(municipio.municipio||'');
+  const ben=municipio.municipio||'';
+  const planActions=getAllPlanActions(ben);
   const item=planActions.find(a=>a.instrumento===instrumento&&a.tipo.replace(/\n/g,' ')===tipo.replace(/\n/g,' '));
   if(!item)return;
-  const idx=getOrCreateAcq(instrumento,item.tipo,item);
+  const idxs=getOrCreateAcqsParaItem(ben,item);
+  let idx=idxs.find(function(i){return !(aquisicoes[i]&&aquisicoes[i]._locked);});
+  if(idx===undefined)idx=idxs[0];
   // Se está bloqueada (concluída), perguntar se quer reabrir
   if(aquisicoes[idx]&&aquisicoes[idx]._locked){
     const _ok=await showConfirmModal('Ação concluída','Esta ação foi marcada como concluída. Deseja reabri-la para edição?','Reabrir','🔓');
@@ -1147,7 +1151,7 @@ async function selectPlanAction(instrumento, tipo){
   // Carregar histórico do bimestre anterior se a ação ainda não foi preenchida
   const _acqAtual = aquisicoes[idx];
   if(_acqAtual && !_acqAtual._sent && !_acqAtual.modalidade_objeto){
-    carregarHistoricoBimestreAnterior(instrumento, item.tipo).then(function(regs){
+    carregarHistoricoBimestreAnterior(instrumento, _acqAtual.acao_tipo||item.tipo).then(function(regs){
       if(regs && regs.length){
         aplicarHistoricoNaAcao(regs, _acqAtual).then(function(){
           renderAll();
@@ -1920,7 +1924,18 @@ function contentHTML(){
     const muItems=[['Município',municipio.municipio],['Bimestre',`${municipio.bimestre||''} / ${municipio.ano||''}`],['Responsável',municipio.responsavel],['Cargo',municipio.cargo]];
     const planAll=getAllPlanActions(municipio.municipio||'');
     const ILBL4={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
-    const acqCards=planAll.map((item,i)=>{
+    // Desmembra itens com múltiplas unidades (ex: "4 UBS tipo I") em N linhas
+    // individuais, para revisão em separado — igual às etapas 2 a 4.
+    const linhas=[];
+    planAll.forEach(function(item){
+      const unidades=unidadesDoItem(municipio.municipio||'',item);
+      if(unidades){
+        unidades.forEach(function(u){linhas.push({instrumento:item.instrumento,tipo:u.tipo,eixo:item.eixo});});
+      }else{
+        linhas.push({instrumento:item.instrumento,tipo:item.tipo,eixo:item.eixo});
+      }
+    });
+    const acqCards=linhas.map((item,i)=>{
       const key=acqKey(item.instrumento,item.tipo);
       const aIdx=aquisicoes.findIndex(a=>a._key===key);
       const a=aIdx>=0?aquisicoes[aIdx]:null;
@@ -1953,7 +1968,7 @@ function contentHTML(){
         <div class="resumo-grid">${muItems.map(([l,v])=>`<div class="resumo-item"><div class="r-lbl">${l}</div><div class="r-val ${!v?'none':''}">${v||'Não informado'}</div></div>`).join('')}</div>
       </div>
       <div class="card">
-        <div class="card-title">${(()=>{const n=planAll.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
+        <div class="card-title">${(()=>{const n=linhas.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
         <div class="acq-cards">${acqCards}</div>
         <div style="margin-top:12px"><button class="btn btn-add" style="width:100%;justify-content:center" onclick="goToPhase(1)">← Continuar preenchendo ações</button></div>
       </div>
@@ -2431,19 +2446,18 @@ async function concludeAction(){
   salvarListasPendentesSheet(a);
   enviarAnexosDrive(a); // envia anexos desta ação ao Drive
 
-  const planActions=getAllPlanActions(municipio.municipio||'');
+  const ben=municipio.municipio||'';
+  const planActions=getAllPlanActions(ben);
   let nextIdx=-1;
   for(let i=0;i<planActions.length;i++){
-    const item=planActions[i];
-    const key=acqKey(item.instrumento,item.tipo);
-    const aIdx=aquisicoes.findIndex(x=>x._key===key);
-    const st=calcAcqStatus(aIdx>=0?aquisicoes[aIdx]:null);
-    if(st!=='locked'&&st!=='complete'){nextIdx=i;break;}
+    const agg=calcAcqStatusAgregado(ben,planActions[i]);
+    if(agg.status!=='locked'&&agg.status!=='complete'){nextIdx=i;break;}
   }
   if(nextIdx>=0){
     const nextItem=planActions[nextIdx];
-    const nIdx=getOrCreateAcq(nextItem.instrumento,nextItem.tipo,nextItem);
-    acqIdx=nIdx;phase=1;
+    const nIdxs=getOrCreateAcqsParaItem(ben,nextItem);
+    const nIdx=nIdxs.find(function(i){var st=calcAcqStatus(aquisicoes[i]);return st!=='locked'&&st!=='complete';});
+    acqIdx=nIdx!==undefined?nIdx:nIdxs[0];phase=1;
   } else {
     phase=5;
   }
@@ -2684,15 +2698,15 @@ function renderInlineActionList(){
     if(!groups[inst])return;
     out+=`<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--g600);margin:10px 0 5px">${ILBL[inst]||inst}</div>`;
     groups[inst].forEach(item=>{
-      const key=acqKey(item.instrumento,item.tipo);
-      const aIdx=aquisicoes.findIndex(a=>a._key===key);
-      const a=aIdx>=0?aquisicoes[aIdx]:null;
-      const st=calcAcqStatus(a);
+      const agg=calcAcqStatusAgregado(ben,item);
+      const st=agg.status;
+      const a=agg.multi?null:agg.a;
       const _tipoIAL=a&&a.modalidade_objeto?a.modalidade_objeto:(typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(item.instrumento||'',item.tipo||''):(isObra(item.tipo)?'obra':'equipamento'));
       const obra=_tipoIAL==='obra';
       const servico=_tipoIAL==='servico';
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
       const displayType=item.tipo.replace(/\n.*/,'');
+      const multiSub=agg.multi?` · ${agg.concluidas}/${agg.total} concluídas`:'';
       out+=`<div onclick="selectInlineAction('${inst}','${safeType}')"
         style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:6px;cursor:pointer;background:${obra?'#FFF8F0':'var(--white)'};transition:all .15s"
         onmouseover="this.style.borderColor='var(--g400)';this.style.background='var(--g50)'"
@@ -2700,7 +2714,7 @@ function renderInlineActionList(){
         <span style="font-size:16px;flex-shrink:0">${obra?'🏗️':servico?'🛠️':'📦'}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${displayType}</div>
-          <div style="font-size:11px;color:var(--ink3);margin-top:2px">R$ ${item.valor?Number(item.valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'} · ${item.eixo}</div>
+          <div style="font-size:11px;color:var(--ink3);margin-top:2px">R$ ${item.valor?Number(item.valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'} · ${item.eixo}${multiSub}</div>
         </div>
         <span style="font-size:13px;flex-shrink:0">${STATUS_DOT[st]}</span>
       </div>`;
@@ -2710,10 +2724,13 @@ function renderInlineActionList(){
 }
 
 async function selectInlineAction(instrumento, tipo){
-  const planActions=getAllPlanActions(municipio.municipio||'');
+  const ben=municipio.municipio||'';
+  const planActions=getAllPlanActions(ben);
   const item=planActions.find(a=>a.instrumento===instrumento&&a.tipo.replace(/\n/g,' ')===tipo.replace(/\n/g,' '));
   if(!item)return;
-  const idx=getOrCreateAcq(instrumento,item.tipo,item);
+  const idxs=getOrCreateAcqsParaItem(ben,item);
+  let idx=idxs.find(function(i){return !(aquisicoes[i]&&aquisicoes[i]._locked);});
+  if(idx===undefined)idx=idxs[0];
   if(aquisicoes[idx]&&aquisicoes[idx]._locked){
     const ok=await showConfirmModal('Ação concluída','Esta ação foi marcada como concluída. Deseja reabri-la para edição?','Reabrir','🔓');
     if(!ok)return;
@@ -2724,7 +2741,7 @@ async function selectInlineAction(instrumento, tipo){
   // Carregar histórico do bimestre anterior se ação ainda não preenchida
   const _acqSIA=aquisicoes[idx];
   if(_acqSIA&&!_acqSIA._sent&&!_acqSIA.modalidade_objeto){
-    carregarHistoricoBimestreAnterior(instrumento,tipo).then(function(regs){
+    carregarHistoricoBimestreAnterior(instrumento,_acqSIA.acao_tipo||tipo).then(function(regs){
       if(regs&&regs.length){aplicarHistoricoNaAcao(regs,_acqSIA).then(function(){renderAll();setTimeout(carregarExecutadoHistorico,500);});}
       else{setTimeout(carregarExecutadoHistorico,800);}
     });
@@ -4313,48 +4330,75 @@ function _tipoContemUnidade(tipo,unidade){
   const hits=uWords.filter(function(w){return tWords.has(w);}).length;
   return hits>=Math.ceil(uWords.length*0.6);
 }
-function expandirUnidadesIndividuais(dados){
-  if(!dados||!dados.unidades)return dados;
-  ['RES_Investimento','Convenio'].forEach(function(inst){
-    if(!dados[inst])return;
-    Object.keys(dados.unidades).forEach(function(benef){
-      const rowsOrig=(dados.unidades[benef]||{})[inst];
-      if(!rowsOrig||!rowsOrig.length)return;
-      const rows=rowsOrig.map(function(r){return {unidade:r.unidade,valor:r.valor};});
-      const originalItems=dados[inst][benef]||[];
-      const idxRemover=new Set();
-      const novosItens=[];
-      originalItems.forEach(function(item,idx){
-        const matched=rows.filter(function(r){return r._usado!==true&&_tipoContemUnidade(item.tipo,r.unidade);});
-        if(matched.length<2)return; // só desmembra quando há >1 unidade (senão já está individual)
-        const somaMatched=matched.reduce(function(s,r){return s+(r.valor||0);},0);
-        if(Math.abs(somaMatched-(item.valor||0))>2)return; // soma não bate: não arriscar desmembrar
-        matched.forEach(function(r){r._usado=true;});
-        idxRemover.add(idx);
+// Dado um item agregado do plano (ex: "4 UBS tipo I" / R$8.000.000), retorna a
+// lista de unidades individuais (ex: 4x "UBS tipo I — Unidade N de 4") quando
+// existir detalhamento na aba DEIXA_AQUI cuja soma bata com o valor do item;
+// caso contrário retorna null (o item permanece como uma única ação, igual
+// antes). O resultado fica em cache por município+instrumento+tipo.
+const _unidadesCache={};
+function unidadesDoItem(benef,item){
+  const cacheKey=benef+'||'+item.instrumento+'||'+item.tipo;
+  if(_unidadesCache.hasOwnProperty(cacheKey))return _unidadesCache[cacheKey];
+  let resultado=null;
+  const rows=(PLANO_DATA.unidades&&PLANO_DATA.unidades[benef]&&PLANO_DATA.unidades[benef][item.instrumento])||[];
+  if(rows.length){
+    const matched=rows.filter(function(r){return _tipoContemUnidade(item.tipo,r.unidade);});
+    if(matched.length>1){
+      const soma=matched.reduce(function(s,r){return s+(r.valor||0);},0);
+      if(Math.abs(soma-(item.valor||0))<=2){
         const porLabel={};
         matched.forEach(function(r){(porLabel[r.unidade]=porLabel[r.unidade]||[]).push(r);});
+        resultado=[];
         Object.keys(porLabel).forEach(function(label){
           const lista=porLabel[label];
           lista.forEach(function(r,i){
-            novosItens.push({
-              acao:item.acao,eixo:item.eixo,instrumento:inst,num:item.num,sei:item.sei,
-              tipo:label+(lista.length>1?' — Unidade '+(i+1)+' de '+lista.length:''),
-              valor:r.valor,_unidadeIndividual:true
-            });
+            resultado.push({tipo:label+(lista.length>1?' — Unidade '+(i+1)+' de '+lista.length:''),valor:r.valor});
           });
         });
-      });
-      if(idxRemover.size){
-        dados[inst][benef]=originalItems.filter(function(_,idx){return !idxRemover.has(idx);}).concat(novosItens);
       }
-    });
+    }
+  }
+  _unidadesCache[cacheKey]=resultado;
+  return resultado;
+}
+// Garante que existam (criando se necessário) as aquisições correspondentes
+// a um item do plano — 1 aquisição normalmente, ou N quando o item tem
+// detalhamento por unidade (ver unidadesDoItem). Retorna a lista de índices
+// em `aquisicoes`.
+function getOrCreateAcqsParaItem(benef,item){
+  const unidades=unidadesDoItem(benef,item);
+  if(!unidades)return[getOrCreateAcq(item.instrumento,item.tipo,item)];
+  return unidades.map(function(u){
+    return getOrCreateAcq(item.instrumento,u.tipo,{tipo:item.tipo,acao:item.acao,eixo:item.eixo,valor:u.valor});
   });
-  return dados;
+}
+// Status agregado de um item do plano para exibição na lista (ETAPA 1):
+// quando o item tem múltiplas unidades, mostra "X/N iniciadas" em vez de um
+// único status — a linha do item continua única na lista lateral.
+function calcAcqStatusAgregado(benef,item){
+  const unidades=unidadesDoItem(benef,item);
+  if(!unidades){
+    const key=acqKey(item.instrumento,item.tipo);
+    const aIdx=aquisicoes.findIndex(function(a){return a._key===key;});
+    const a=aIdx>=0?aquisicoes[aIdx]:null;
+    return{multi:false,status:calcAcqStatus(a),a:a,aIdx:aIdx};
+  }
+  const idxs=unidades.map(function(u){
+    const key=acqKey(item.instrumento,u.tipo);
+    return aquisicoes.findIndex(function(a){return a._key===key;});
+  });
+  const statuses=idxs.map(function(i){return calcAcqStatus(i>=0?aquisicoes[i]:null);});
+  const concluidas=statuses.filter(function(s){return s==='complete'||s==='locked';}).length;
+  const iniciadas=statuses.filter(function(s){return s!=='empty';}).length;
+  let status='empty';
+  if(concluidas===statuses.length)status='complete';
+  else if(iniciadas>0)status='partial';
+  return{multi:true,status:status,total:statuses.length,concluidas:concluidas,iniciadas:iniciadas,idxs:idxs};
 }
 
 async function carregarPlanoDataDoServidor(){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER')){
-    PLANO_DATA=expandirUnidadesIndividuais(PLANO_DATA_FALLBACK);
+    PLANO_DATA=PLANO_DATA_FALLBACK;
     return;
   }
   try{
@@ -4362,14 +4406,14 @@ async function carregarPlanoDataDoServidor(){
     const data=await resp.json();
     if(data&&data.all_beneficiarios&&data.all_beneficiarios.length){
       if(!data.unidades&&PLANO_DATA_FALLBACK.unidades)data.unidades=PLANO_DATA_FALLBACK.unidades;
-      PLANO_DATA=expandirUnidadesIndividuais(data);
+      PLANO_DATA=data;
     }else{
       console.warn('PlanoData do servidor veio vazio — usando fallback local.');
-      PLANO_DATA=expandirUnidadesIndividuais(PLANO_DATA_FALLBACK);
+      PLANO_DATA=PLANO_DATA_FALLBACK;
     }
   }catch(e){
     console.warn('Falha ao buscar PlanoData do servidor — usando fallback local.',e);
-    PLANO_DATA=expandirUnidadesIndividuais(PLANO_DATA_FALLBACK);
+    PLANO_DATA=PLANO_DATA_FALLBACK;
   }
 }
 
