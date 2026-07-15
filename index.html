@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-24</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-26</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1728,13 +1728,9 @@ function contentHTML(){
         </div>
         <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
           <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
-            <span>Já pago (bimestres anteriores)</span>
+            <span>Valor total utilizado (bimestres anteriores)</span>
             <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
           </div>
-          <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
-        </div>
-        <div class="resumo-item">
-          <div class="r-lbl">Valor total utilizado</div>
           <div class="r-val" id="val_custeio_total" style="color:var(--g700);font-weight:700;font-size:15px">R$ 0,00</div>
         </div>
       </div>
@@ -1775,13 +1771,9 @@ function contentHTML(){
         </div>
         <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
           <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
-            <span>Já pago (bimestres anteriores)</span>
+            <span>Valor total utilizado (bimestres anteriores)</span>
             <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
           </div>
-          <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
-        </div>
-        <div class="resumo-item">
-          <div class="r-lbl">Valor total utilizado</div>
           <div class="r-val" id="val_total_auto_equip" style="color:var(--g700);font-weight:700;font-size:15px">R$ 0,00</div>
         </div>
       </div>
@@ -4392,10 +4384,11 @@ function _verificarEstouroOrcamento(a,totalUtilizado,elResumo,cardId,corPadrao){
   const avisoId='aviso-estouro-'+cardId;
   document.getElementById(avisoId)?.remove();
   if(estourou&&cardEl){
+    const excedente=totalUtilizado-valorPlano;
     const aviso=document.createElement('div');
     aviso.id=avisoId;
-    aviso.style.cssText='background:#FDEDEC;border:1.5px solid #C0392B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:#C0392B;font-weight:600';
-    aviso.textContent='⚠️ O valor utilizado ('+fmt(totalUtilizado)+') ultrapassa o valor total da ação no plano ('+fmt(valorPlano)+').';
+    aviso.style.cssText='background:#FDEDEC;border:1.5px solid #C0392B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:#C0392B;font-weight:600;line-height:1.5';
+    aviso.innerHTML='⚠️ O valor utilizado ('+fmt(totalUtilizado)+') ultrapassa o valor total da ação no plano ('+fmt(valorPlano)+'). O excedente de <u>'+fmt(excedente)+'</u> deve ser coberto com recurso próprio.';
     const titleEl=cardEl.querySelector('.card-title');
     if(titleEl)titleEl.insertAdjacentElement('afterend',aviso);else cardEl.prepend(aviso);
   }
@@ -5178,7 +5171,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-24 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-26 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
@@ -5493,7 +5486,7 @@ function calcAtividades(){
     el1.textContent=fmt(vlrC);
     _verificarEstouroOrcamento(a,vlrC,el1,'card-financeiro-custeio','var(--g700)');
   }
-  if(el3)el3.textContent=fmt(total);
+  if(el3){el3.textContent=fmt(total);_verificarEstouroOrcamento(a,total,el3,'card-financeiro-custeio','var(--g700)');}
   if(elH)elH.textContent=fmt(hist+pago);if(elG)elG.textContent=fmt(vlrC);
   a.valor_executado=vlrC.toLocaleString('pt-BR',{minimumFractionDigits:2});
   a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
