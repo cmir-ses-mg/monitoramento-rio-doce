@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-27</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-28</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1733,6 +1733,10 @@ function contentHTML(){
           </div>
           <div class="r-val" id="val_custeio_total" style="color:var(--g700);font-weight:700;font-size:15px">R$ 0,00</div>
         </div>
+        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
+          <div class="r-lbl">Financiamento do contrato</div>
+          <div id="val_financiamento_custeio" style="font-size:12px;line-height:1.7;margin-top:4px;color:var(--ink2)">—</div>
+        </div>
       </div>
       <div class="row2">
         ${fld('Recurso próprio (R$)','valor_proprio','money')}
@@ -1755,7 +1759,7 @@ function contentHTML(){
         ${fld('Recurso próprio (R$)','valor_proprio','money')}
         ${fld('Fonte do recurso próprio','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
-      <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(maior entre executado atual e histórico, + recurso próprio)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
+      <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(maior entre executado atual e histórico)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -1775,6 +1779,10 @@ function contentHTML(){
             <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
           </div>
           <div class="r-val" id="val_total_auto_equip" style="color:var(--g700);font-weight:700;font-size:15px">R$ 0,00</div>
+        </div>
+        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
+          <div class="r-lbl">Financiamento do contratado</div>
+          <div id="val_financiamento_equip" style="font-size:12px;line-height:1.7;margin-top:4px;color:var(--ink2)">—</div>
         </div>
       </div>
       <div class="row2">
@@ -4420,16 +4428,15 @@ function calcTotalUtilizado(){
     executado=parseBRL(acq().valor_executado||'');
     const historico=parseBRL(acq()._executado_historico||0);
     const baseSemProprio=Math.max(executado,historico);
-    const totalComHistorico=baseSemProprio+proprio;
     const elAuto=document.getElementById('val_total_auto');
-    if(elAuto){elAuto.value=totalComHistorico>0?totalComHistorico.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';acq().valor_total_utilizado=elAuto.value;}
+    if(elAuto){elAuto.value=baseSemProprio>0?baseSemProprio.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';acq().valor_total_utilizado=elAuto.value;}
     _verificarEstouroOrcamento(acq(),baseSemProprio,proprio,elAuto,'card-financeiro-obra','var(--g700)');
     const elHistObra=document.getElementById('val_executado_historico');
     if(elHistObra&&acq()._executado_historico!==undefined)elHistObra.textContent='R$ '+historico.toLocaleString('pt-BR',{minimumFractionDigits:2});
     executado=Math.max(executado,historico);
   }
 
-  const total=executado+proprio;
+  const total=executado;
   const formatted=total>0?total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
   acq().valor_total_utilizado=formatted;
 
@@ -4466,18 +4473,33 @@ function calcExecutadoLotes(){
   const historico=historicoServidor+pagoLotesAtual;
   const lista=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
   const proprio=parseBRL(a.valor_proprio||'');
-  // Valor Total Utilizado = Já Pago + Recurso Próprio (sem somar o executado/contratado)
-  const total=historico+proprio;
+  // Valor Total Utilizado = o que já foi de fato pago — o recurso próprio NÃO
+  // é somado aqui (é fonte de financiamento do mesmo valor contratado, não
+  // gasto adicional).
+  const total=historico;
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
   const elLi=document.getElementById('val_lista_total');
   const elHist=document.getElementById('val_executado_historico');
   const elTot=document.getElementById('val_total_auto_equip');
   const elGrand=document.getElementById('lotes_grand_total');
+  const elFin=document.getElementById('val_financiamento_equip');
   if(elLi)elLi.textContent=fmt(lista);
   if(elHist)elHist.textContent=fmt(historico);
   if(elTot)elTot.textContent=fmt(total);
   if(elGrand)elGrand.textContent=fmt(lista);
-  _verificarEstouroOrcamento(a,historico,proprio,elTot,'card-financeiro-equip','var(--g700)');
+  _verificarEstouroOrcamento(a,exec,proprio,elTot,'card-financeiro-equip','var(--g700)');
+  if(elFin){
+    const valorPlano=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
+    if(!exec){
+      elFin.innerHTML='<span style="color:var(--ink3)">Nenhum lote confirmado ainda.</span>';
+    }else if(valorPlano<=0||exec<=valorPlano){
+      elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(exec)+'</strong>';
+    }else{
+      const excedente=exec-valorPlano;
+      const coberto=proprio>=excedente;
+      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(proprio)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'');
+    }
+  }
   a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
 }
 
@@ -5184,7 +5206,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-27 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-28 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
@@ -5489,18 +5511,33 @@ function calcAtividades(){
   const vlrC=ativConf.reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
   const pago=ativConf.filter(function(at){return SPAG.includes(at._status);}).reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
   const hist=a._executado_historico||0;const prop=parseBRL(a.valor_proprio||'');
-  // Valor Total Utilizado = Já Pago (histórico + atividades pagas) + Recurso Próprio
-  const total=pago+hist+prop;
+  // Valor Total Utilizado = o que já foi de fato executado/pago (histórico +
+  // atividades pagas) — o recurso próprio NÃO é somado aqui: ele é uma fonte
+  // de financiamento do MESMO valor contratado, não um gasto adicional.
+  const total=pago+hist;
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
   const el1=document.getElementById('val_custeio_contratado');
   const el3=document.getElementById('val_custeio_total');const elH=document.getElementById('val_executado_historico');
   const elG=document.getElementById('ativ_grand_total');
+  const elFin=document.getElementById('val_financiamento_custeio');
   if(el1){
     el1.textContent=fmt(vlrC);
     _verificarEstouroOrcamento(a,vlrC,prop,el1,'card-financeiro-custeio','var(--g700)');
   }
   if(el3){el3.textContent=fmt(total);_verificarEstouroOrcamento(a,pago+hist,prop,el3,'card-financeiro-custeio','var(--g700)');}
   if(elH)elH.textContent=fmt(hist+pago);if(elG)elG.textContent=fmt(vlrC);
+  if(elFin){
+    const valorPlano=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
+    if(!vlrC){
+      elFin.innerHTML='<span style="color:var(--ink3)">Nenhuma atividade contratada ainda.</span>';
+    }else if(valorPlano<=0||vlrC<=valorPlano){
+      elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(vlrC)+'</strong>';
+    }else{
+      const excedente=vlrC-valorPlano;
+      const coberto=prop>=excedente;
+      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(prop)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'');
+    }
+  }
   a.valor_executado=vlrC.toLocaleString('pt-BR',{minimumFractionDigits:2});
   a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
 }
