@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-12</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-13</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -2992,16 +2992,26 @@ function detectarTipoMonitoramento(instrumento, tipo){
   // Veículos e móveis → equipamento (mesmo que tenha "móvel")
   if(t.includes('móvel')||t.includes('movel')||t.includes('veículo')||t.includes('veiculo')) return 'equipamento';
 
-  // Obras: palavras-chave de construção/reforma
-  const obrasKw=['construção','construcao','construir','obra','reform','ampliação','ampliacao','ampliar',
-    'adequa','implant','polo','caps','ubs','centro','unidade','base samu','ponto de apoio',
-    'serviço de atenção especializada','sae'];
-  if(obrasKw.some(k=>t.includes(k))) return 'obra';
+  // 1) Verbos fortes de obra (inequívocos) — sempre vencem, mesmo se o texto
+  // também mencionar equipamento (ex: "Reforma e equipamento para o Centro
+  // de Hemodiálise" é obra).
+  const obrasVerbos=['construção','construcao','construir','obra','reform','ampliação','ampliacao','ampliar','adequa','implant'];
+  if(obrasVerbos.some(k=>t.includes(k))) return 'obra';
 
-  // Equipamentos: palavras-chave explícitas
+  // 2) Equipamentos: palavras-chave explícitas — checadas antes das palavras
+  // genéricas de local (abaixo), porque "centro"/"unidade" também aparecem em
+  // ações de equipamento para unidades já existentes (ex: "Equipamentos e
+  // mobiliários para os Centros de Referência em Saúde do Trabalhador" não é
+  // uma obra).
   const equipKw=['equipamento','material permanente','mobiliário','mobiliario','tomógrafo','tomografo',
     'ultrassom','ressonância','ressonancia','endoscopia','raios','arco cirúrgico','foco cirúrgico'];
   if(equipKw.some(k=>t.includes(k))) return 'equipamento';
+
+  // 3) Palavras genéricas de local que normalmente indicam construção de uma
+  // unidade nova (quando não caiu em nenhum caso acima).
+  const obrasLocais=['polo','caps','ubs','centro','unidade','base samu','ponto de apoio',
+    'serviço de atenção especializada','sae'];
+  if(obrasLocais.some(k=>t.includes(k))) return 'obra';
 
   // Default por instrumento
   if(instrumento==='RES_Investimento') return 'equipamento';
@@ -3841,7 +3851,7 @@ function _spFieldGeneric(obj,field,label,type,placeholder,idx,setterName){
 function _setAtivField(idx,field,value){
   var a=acq();
   if(a._atividades&&a._atividades[idx]){a._atividades[idx][field]=value;}
-  renderMain();
+  if(phase>=1&&aquisicoes[acqIdx])aquisicoes[acqIdx]._touchedAt=Date.now();
 }
 
 function renderContratacaoLotes(lotes,lockedBanner,modeBadge){
@@ -4498,62 +4508,70 @@ function _popularMunicipiosCad(){
 
 async function _verificarSessaoExistente(){
   if(!municipio.municipio||!municipio.bimestre||!municipio.ano)return;
-  const key=sessionKey();
-  let sess=null;
-  if(key){
-    const saved=localStorage.getItem(key);
-    if(saved){ try{ sess=JSON.parse(saved); }catch(e){ sess=null; } }
-  }
   const mc=document.getElementById('mainContent');if(!mc)return;
   document.getElementById('sessao-banner-temp')?.remove();
+  const mun0=municipio.municipio,bim0=municipio.bimestre,ano0=municipio.ano;
 
-  function _mostrarBanner(qtdAcoes,texto,onclickAttr){
-    const banner=document.createElement('div');
-    banner.id='sessao-banner-temp';
-    banner.style.cssText='background:#E8F5E9;border:1.5px solid var(--g400);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px';
-    banner.innerHTML='<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--g800)">📋 '+texto+'</div>'
-      +'<div style="font-size:12px;color:var(--g600)">'+municipio.bimestre+' '+municipio.ano+' · '+qtdAcoes+' ações</div></div>'
-      +'<button onclick="'+onclickAttr+'" style="padding:6px 16px;font-size:12px;font-weight:700;font-family:var(--font);border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">Continuar →</button>'
-      +'<button onclick="document.getElementById(\'sessao-banner-temp\')?.remove()" style="padding:6px 10px;font-size:12px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink3);cursor:pointer;font-family:var(--font)">×</button>';
+  function _mostrarCarregando(){
+    const div=document.createElement('div');
+    div.id='sessao-banner-temp';
+    div.style.cssText='background:var(--g50);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:var(--ink3)';
+    div.textContent='⏳ Carregando dados da planilha...';
     const sh=mc.querySelector('.step-head');
-    if(sh)mc.insertBefore(banner,sh);else mc.prepend(banner);
+    if(sh)mc.insertBefore(div,sh);else mc.prepend(div);
   }
+  _mostrarCarregando();
 
-  // 1) Sessão local (mesmo navegador/dispositivo) — comportamento original.
-  if(sess&&sess.aquisicoes&&sess.aquisicoes.length){
-    _mostrarBanner(sess.aquisicoes.length,'Preenchimento salvo encontrado','loadAndResume(\''+key+'\')');
-    return;
-  }
-
-  // 2) Nada localmente: pode ser outro navegador/dispositivo/usuário. Checar
-  // primeiro a sessão PARCIAL no servidor (preenchimento em andamento de
-  // colegas), depois os registros já concluídos na planilha.
+  // Sempre busca da planilha (fonte de verdade) — nunca confia só no que está
+  // salvo no navegador. Isso evita duas máquinas/navegadores divergirem.
+  let registros=null,itensParciais=[];
   try{
-    const mun0=municipio.municipio,bim0=municipio.bimestre,ano0=municipio.ano;
-    let qtdParcial=0;
-    if(APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('PLACEHOLDER')){
-      try{
-        const url=APPS_SCRIPT_URL+'?acao=buscarSessaoParcial'
-          +'&municipio='+encodeURIComponent(mun0)
-          +'&bimestre='+encodeURIComponent(bim0)
-          +'&ano='+encodeURIComponent(ano0);
-        const resp=await fetch(url);
-        const d=await resp.json();
-        if(d&&d.status==='ok'&&d.itens)qtdParcial=d.itens.length;
-      }catch(e){}
-    }
-    // Checagem de corrida: usuário pode ter mudado o período durante a busca.
-    if(municipio.municipio!==mun0||municipio.bimestre!==bim0||municipio.ano!==ano0)return;
-    if(qtdParcial>0){
-      _mostrarBanner(qtdParcial,'Preenchimento em andamento encontrado no servidor','carregarDoServidorEContinuar()');
-      return;
-    }
-    const registros=await buscarRegistrosPlanilha(mun0,bim0,ano0);
-    if(municipio.municipio!==mun0||municipio.bimestre!==bim0||municipio.ano!==ano0)return;
-    if(registros&&registros.length){
-      _mostrarBanner(registros.length,'Preenchimento salvo encontrado no servidor','carregarDoServidorEContinuar()');
-    }
+    registros=await buscarRegistrosPlanilha(mun0,bim0,ano0);
   }catch(e){}
+  if(APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('PLACEHOLDER')){
+    try{
+      const url=APPS_SCRIPT_URL+'?acao=buscarSessaoParcial'
+        +'&municipio='+encodeURIComponent(mun0)
+        +'&bimestre='+encodeURIComponent(bim0)
+        +'&ano='+encodeURIComponent(ano0);
+      const resp=await fetch(url);
+      const d=await resp.json();
+      if(d&&d.status==='ok'&&d.itens)itensParciais=d.itens;
+    }catch(e){}
+  }
+  // Checagem de corrida: usuário pode ter mudado o período durante a busca.
+  if(municipio.municipio!==mun0||municipio.bimestre!==bim0||municipio.ano!==ano0)return;
+  document.getElementById('sessao-banner-temp')?.remove();
+
+  aquisicoes.length=0;
+  if(registros&&registros.length){
+    registros.forEach(function(reg){aquisicoes.push(registroParaAcq(reg));});
+  }
+  itensParciais.forEach(function(it){
+    if(!it.acaoKey||!it.payload)return;
+    let remoto=null;
+    try{remoto=JSON.parse(it.payload);}catch(e){return;}
+    remoto._touchedAt=Number(it.touchedAt)||remoto._touchedAt||0;
+    const idxLocal=aquisicoes.findIndex(function(a){return a._key===it.acaoKey;});
+    if(idxLocal===-1){
+      aquisicoes.push(remoto);
+      _ultimoSyncEnviado[it.acaoKey]=remoto._touchedAt;
+    }else if((remoto._touchedAt||0)>(aquisicoes[idxLocal]._touchedAt||0)){
+      aquisicoes[idxLocal]=remoto;
+      _ultimoSyncEnviado[it.acaoKey]=remoto._touchedAt;
+    }
+  });
+  aquisicoes.forEach(function(a){
+    if((a.acao_instrumento||a.acao_tipo)&&!a.modalidade_objeto){
+      a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
+    }
+  });
+  migrarAquisicoesAgregadas();
+  if(aquisicoes.length){
+    acqIdx=0;phase=1;
+    renderAll();
+    setTimeout(function(){restoreInputs();applyConditionals();},100);
+  }
 }
 
 // Usado quando o preenchimento existente só está no servidor (outro
@@ -5012,7 +5030,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-12 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-13 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
