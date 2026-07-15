@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-17</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-18</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1686,10 +1686,10 @@ function contentHTML(){
       <div class="card-title">Ação selecionada</div>
       ${a.acao_tipo?`
         <div class="acao-detail-box" style="display:block">
-          <div class="acao-detail-label">${ILBL[a.acao_instrumento]||a.acao_instrumento||''} · ${a.acao_eixo||''}</div>
+          <div class="acao-detail-label">${ILBL[a.acao_instrumento]||a.acao_instrumento||''} · ${a.acao_eixo||(_dadosPlanoParaAcq(a)||{}).eixo||''}</div>
           <div class="acao-detail-name">${a.acao_tipo||''}</div>
-          <div class="acao-detail-tipo">Ação: ${a.acao_descricao||''}</div>
-          <div class="acao-detail-valor">R$ ${a.acao_valor?Number(a.acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}</div>
+          <div class="acao-detail-tipo">Ação: ${a.acao_descricao||(_dadosPlanoParaAcq(a)||{}).acao||''}</div>
+          <div class="acao-detail-valor">R$ ${(a.acao_valor||(_dadosPlanoParaAcq(a)||{}).valor)?Number(a.acao_valor||(_dadosPlanoParaAcq(a)||{}).valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}</div>
         </div>
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border2)">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin-bottom:10px">Tipo de monitoramento <span class="req">*</span></div>
@@ -1716,7 +1716,7 @@ function contentHTML(){
       <div class="resumo-grid" style="margin-bottom:14px">
         <div class="resumo-item">
           <div class="r-lbl">Valor total da ação (plano)</div>
-          <div class="r-val" style="color:var(--g700);font-weight:700">${acq().acao_valor?'R$ '+Number(acq().acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</div>
+          <div class="r-val" style="color:var(--g700);font-weight:700">${(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor)?'R$ '+Number(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</div>
         </div>
         <div class="resumo-item">
           <div class="r-lbl">Valor contratado (atividades)</div>
@@ -1763,7 +1763,7 @@ function contentHTML(){
       <div class="resumo-grid" style="margin-bottom:14px">
         <div class="resumo-item">
           <div class="r-lbl">Valor total da ação (plano)</div>
-          <div class="r-val" style="color:var(--g700);font-weight:700">${acq().acao_valor?'R$ '+Number(acq().acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</div>
+          <div class="r-val" style="color:var(--g700);font-weight:700">${(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor)?'R$ '+Number(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</div>
         </div>
         <div class="resumo-item">
           <div class="r-lbl">Valor total da lista de itens</div>
@@ -2050,6 +2050,23 @@ function renderNav(){
   }
 }
 
+function _dadosPlanoParaAcq(a){
+  if(!a||!a.acao_instrumento)return null;
+  const ben=municipio.municipio||'';
+  const planActions=getAllPlanActions(ben);
+  // 1) Match direto (ação não desmembrada)
+  const direto=planActions.find(function(p){return p.instrumento===a.acao_instrumento&&p.tipo===a.acao_tipo;});
+  if(direto)return{acao:direto.acao,eixo:direto.eixo,valor:direto.valor};
+  // 2) Ação desmembrada (ex: "UBS tipo I — Unidade 2 de 4") — procurar no item agregado
+  for(const item of planActions){
+    if(item.instrumento!==a.acao_instrumento)continue;
+    const unidades=unidadesDoItem(ben,item);
+    if(!unidades)continue;
+    const u=unidades.find(function(x){return x.tipo===a.acao_tipo;});
+    if(u)return{acao:item.acao,eixo:item.eixo,valor:u.valor};
+  }
+  return null;
+}
 function nextPhase(){
   saveAllInputs();
   if(phase===0){
@@ -2684,6 +2701,10 @@ async function mesclarSessaoDoServidor(){
         if((a.acao_instrumento||a.acao_tipo)&&!a.modalidade_objeto){
           a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
         }
+        if(!a.acao_descricao||!a.acao_valor){
+          const _meta=buscarMetadadosPlano(municipio.municipio,a.acao_instrumento,a.acao_tipo);
+          if(_meta){a.acao_descricao=a.acao_descricao||_meta.acao;a.acao_eixo=a.acao_eixo||_meta.eixo;a.acao_valor=a.acao_valor||_meta.valor;}
+        }
       });
       acqIdx=Math.min(acqIdx,Math.max(0,aquisicoes.length-1));
     }
@@ -2784,6 +2805,10 @@ function resumeSession(){
       if(a.acao_instrumento||a.acao_tipo){
         a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
       }
+      if(!a.acao_descricao||!a.acao_valor){
+        const _meta=buscarMetadadosPlano(municipio.municipio,a.acao_instrumento,a.acao_tipo);
+        if(_meta){a.acao_descricao=a.acao_descricao||_meta.acao;a.acao_eixo=a.acao_eixo||_meta.eixo;a.acao_valor=a.acao_valor||_meta.valor;}
+      }
     });
     migrarAquisicoesAgregadas();
     phase=1; // Voltar para instrumento para garantir renderização correta
@@ -2811,6 +2836,10 @@ async function loadAndResume(key){
   aquisicoes.forEach(function(a){
     if(a.acao_instrumento||a.acao_tipo){
       a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
+    }
+    if(!a.acao_descricao||!a.acao_valor){
+      const _meta=buscarMetadadosPlano(municipio.municipio,a.acao_instrumento,a.acao_tipo);
+      if(_meta){a.acao_descricao=a.acao_descricao||_meta.acao;a.acao_eixo=a.acao_eixo||_meta.eixo;a.acao_valor=a.acao_valor||_meta.valor;}
     }
   });
   migrarAquisicoesAgregadas();
@@ -3058,16 +3087,36 @@ async function buscarRegistrosPlanilha(mun, bim, ano){
     return null;
   }
 }
+// Busca acao/eixo/valor no PLANO_DATA para um instrumento+tipo — funciona
+// tanto para itens agregados quanto para unidades individuais desmembradas
+// (ex: "UBS tipo I — Unidade 2 de 4"). Usado para sempre preencher esses
+// campos a partir do plano (fonte confiável), já que a planilha de registros
+// nunca guardou o valor do plano e às vezes nem a descrição.
+function buscarMetadadosPlano(benef, instrumento, tipoAcao){
+  if(!benef||!instrumento||!tipoAcao)return null;
+  const itens=((PLANO_DATA[instrumento]||{})[benef])||[];
+  for(const item of itens){
+    if(item.tipo===tipoAcao)return{acao:item.acao,eixo:item.eixo,valor:item.valor};
+    const unidades=unidadesDoItem(benef,item);
+    if(unidades){
+      const u=unidades.find(function(u){return u.tipo===tipoAcao;});
+      if(u)return{acao:item.acao,eixo:item.eixo,valor:u.valor};
+    }
+  }
+  return null;
+}
 
 // Mapeia um registro da planilha para o objeto de aquisição do formulário
 function registroParaAcq(reg){
   const tipo = reg.tipo_monitoramento || 'equipamento';
+  const _meta=buscarMetadadosPlano(municipio.municipio,reg.acao_instrumento,reg.acao_tipo);
   const a = {
     _editadoPor:           reg.editado_por      || '',
     acao_instrumento:      reg.acao_instrumento || '',
-    acao_descricao:        reg.acao_descricao   || '',
+    acao_descricao:        (_meta&&_meta.acao)  || reg.acao_descricao || '',
     acao_tipo:             reg.acao_tipo        || '',
-    acao_eixo:             reg.acao_eixo        || '',
+    acao_eixo:             (_meta&&_meta.eixo)  || reg.acao_eixo || '',
+    acao_valor:            (_meta?_meta.valor:undefined) ?? reg.acao_valor ?? '',
     modalidade_objeto:     tipo,
     descricao_item:        reg.descricao_item   || '',
     quantidade:            String(reg.quantidade || ''),
@@ -4614,6 +4663,10 @@ async function _verificarSessaoExistente(){
     if((a.acao_instrumento||a.acao_tipo)&&!a.modalidade_objeto){
       a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
     }
+    if(!a.acao_descricao||!a.acao_valor){
+      const _meta=buscarMetadadosPlano(municipio.municipio,a.acao_instrumento,a.acao_tipo);
+      if(_meta){a.acao_descricao=a.acao_descricao||_meta.acao;a.acao_eixo=a.acao_eixo||_meta.eixo;a.acao_valor=a.acao_valor||_meta.valor;}
+    }
   });
   migrarAquisicoesAgregadas();
   // Sempre re-renderiza, mesmo se o novo período estiver vazio — senão a tela
@@ -5083,7 +5136,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-17 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-18 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
