@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-11</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-12</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -2412,6 +2412,9 @@ async function buscarListasPendentesSheet(instrumento, tipo){
 function saveAndContinueLater(){
   saveAllInputs();
   salvarListasPendentesSheet(aquisicoes[acqIdx]);
+  saveSession(); // persiste localmente e agenda o envio ao servidor
+  if(_syncTimer){clearTimeout(_syncTimer);_syncTimer=null;} // não esperar o debounce: enviar agora
+  enviarSessaoServidor();
   // Permanece na mesma etapa — apenas salva
   const info=document.getElementById('navInfo');
   if(info){const prev=info.innerHTML;info.innerHTML='<span style="color:var(--g600)">✓ Salvo</span>';setTimeout(()=>{info.innerHTML=prev;},1500);}
@@ -4680,29 +4683,11 @@ function calcAcqStatusAgregado(benef,item){
 }
 
 async function carregarPlanoDataDoServidor(){
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER')){
-    PLANO_DATA=PLANO_DATA_FALLBACK;
-    return;
-  }
-  try{
-    const resp=await fetch(APPS_SCRIPT_URL+'?acao=buscarPlanoData');
-    const data=await resp.json();
-    if(data&&data.all_beneficiarios&&data.all_beneficiarios.length){
-      // O detalhamento por unidade (DEIXA_AQUI) não vem de nenhuma planilha
-      // vinculada — sempre usar o do front-end quando o servidor não trouxer
-      // um conjunto não-vazio, independente do restante do PlanoData.
-      if((!data.unidades||Object.keys(data.unidades).length===0)&&PLANO_DATA_FALLBACK.unidades){
-        data.unidades=PLANO_DATA_FALLBACK.unidades;
-      }
-      PLANO_DATA=data;
-    }else{
-      console.warn('PlanoData do servidor veio vazio — usando fallback local.');
-      PLANO_DATA=PLANO_DATA_FALLBACK;
-    }
-  }catch(e){
-    console.warn('Falha ao buscar PlanoData do servidor — usando fallback local.',e);
-    PLANO_DATA=PLANO_DATA_FALLBACK;
-  }
+  // Os dados do plano (ações, valores, eixos) não vêm de nenhuma planilha
+  // vinculada de verdade — vivem só aqui no arquivo (PLANO_DATA_FALLBACK).
+  // Qualquer resposta do servidor para essa rota pode estar desatualizada,
+  // então não é mais usada para não sobrescrever silenciosamente dados corretos.
+  PLANO_DATA=PLANO_DATA_FALLBACK;
 }
 
 function initLogin(){
@@ -5027,7 +5012,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-11 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-12 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
