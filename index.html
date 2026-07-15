@@ -46,8 +46,9 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
 .phase-bar{background:var(--white);border-bottom:1px solid var(--border2);padding:0 24px;overflow-x:auto;scrollbar-width:none;position:sticky;top:56px;z-index:100}
 .phase-bar::-webkit-scrollbar{display:none}
 .phase-inner{display:flex;min-width:max-content}
-.phase-item{display:flex;align-items:center;gap:7px;padding:13px 14px 11px;font-size:12px;font-weight:500;color:var(--ink3);border-bottom:2px solid transparent;white-space:nowrap;user-select:none;transition:color var(--t),border-color var(--t)}
-.phase-item.done{color:var(--g600);cursor:pointer}
+.phase-item{display:flex;align-items:center;gap:7px;padding:13px 14px 11px;font-size:12px;font-weight:500;color:var(--ink3);border-bottom:2px solid transparent;white-space:nowrap;user-select:none;transition:color var(--t),border-color var(--t);cursor:pointer}
+.phase-item:hover{color:var(--g700)}
+.phase-item.done{color:var(--g600)}
 .phase-item.done:hover{color:var(--g800)}
 .phase-item.active{color:var(--g900);border-bottom-color:var(--g400)}
 .phase-dot{width:19px;height:19px;border-radius:50%;background:var(--border2);color:var(--ink3);font-family:var(--mono);font-size:9px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background var(--t),color var(--t)}
@@ -718,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-5</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-7</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1008,7 +1009,7 @@ function renderPhaseBar(){
   if(!inner)return;
   const pi=Math.max(0,phase-1);
   inner.innerHTML=ph.map((p,i)=>`
-    <div class="phase-item ${i<pi?'done':i===pi?'active':''}" ${i<=pi?`onclick="navToPhase(${i+1})"`:''} style="${i<=pi?'cursor:pointer':''}">
+    <div class="phase-item ${i<pi?'done':i===pi?'active':''}" onclick="navToPhase(${i+1})" style="cursor:pointer">
       <span class="phase-dot">${i<pi?'✓':i+1}</span>${p.label}
     </div>`).join('');
 }
@@ -1021,7 +1022,7 @@ function calcAcqStatus(a){
   const steps=[
     !!(a.modalidade_objeto),                                          // tipo monitoramento
     !!(a.status_aquisicao),                                           // contratação
-    !!(isAcqObra(a)?a.pct_execucao||a.andamento_cronograma:a.situacao_entrega), // entrega/execução
+    !!(isAcqObra(a)?a.andamento_cronograma:a.situacao_entrega), // entrega/execução
     !!(a.val_empenhado||a.val_pago||a.val_liquidado),                  // financeiro
   ];
   const done=steps.filter(Boolean).length;
@@ -1080,7 +1081,7 @@ function renderAcqBar(){
     if(!a)return false;
     if(s===2)return !!(a.acao_tipo&&a.modalidade_objeto);
     if(s===3)return !!(a.status_aquisicao);
-    if(s===4)return isAcqObra(a)?!!(a.pct_execucao||a.andamento_cronograma):!!(a.situacao_entrega);
+    if(s===4)return isAcqObra(a)?!!(a.andamento_cronograma):!!(a.situacao_entrega);
     if(s===5)return !!(a.problemas||a.medidas||a.impactos);
     return false;
   }
@@ -1789,9 +1790,8 @@ function contentHTML(){
   // Phase 3 — OBRA
   if(phase===3&&obra) return`
     ${lockedBanner}<div class="step-head"><h2>Execução Física <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Acompanhamento do andamento físico da obra.</p></div>
-    <div class="card card-obra">
-      <div class="card-title obra">Percentual de execução física</div>
-      ${fld('Percentual executado (%)','pct_execucao','pct','0','',true)}
+    <div class="card card-obra" style="background:var(--g50);border-style:dashed">
+      <div style="font-size:12px;color:var(--ink3)">📊 O percentual de execução física agora é calculado automaticamente a partir dos boletins de medição abaixo (valor medido ÷ valor do contrato) e aparece na etapa de Revisão e Envio.</div>
     </div>
     <div class="card card-obra">
       <div class="card-title obra">Cronograma</div>
@@ -1951,7 +1951,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
@@ -2326,7 +2326,7 @@ function gerarPDFBase64(){
       });
       if(ob){
         sec('EXECUÇÃO FÍSICA',true);
-        row('% Executado:',a.pct_execucao?a.pct_execucao+'%':'');
+        row('% Executado (automático, boletins):',calcPctExecucaoAuto(a)?calcPctExecucaoAuto(a)+'%':'');
         row('Andamento:',a.andamento_cronograma);row('Obs. Cronograma:',a.obs_cronograma);
         row('Conclusão Contrato:',a.data_conclusao_contrato);row('Nova Previsão:',a.data_conclusao_nova);
         (a._medicoes||[]).forEach(function(m,mi){row('BM '+(mi+1)+' — Nº:',m.num);row('BM '+(mi+1)+' — Data:',m.data);row('BM '+(mi+1)+' — Valor:',m.valor?'R$ '+m.valor:'');});
@@ -2505,6 +2505,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_contratado:valorExecutadoFinal,
       valor_executado:valorExecutadoFinal,
       valor_total_utilizado:valorTotalUtilizadoFinal,
+      pct_execucao:obra?calcPctExecucaoAuto(a):(a.pct_execucao||''),
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
@@ -3930,11 +3931,6 @@ function restoreInputs(){
     if(phase===1||phase===2){
       setTimeout(function(){calcTotalUtilizado();},50);
     }
-    if(a.pct_execucao){
-      const bar=document.getElementById('pct-bar');const lbl=document.getElementById('pct-lbl');
-      if(bar)bar.style.width=a.pct_execucao+'%';
-      if(lbl)lbl.textContent=a.pct_execucao+'% executado';
-    }
     // Aplicar condicionais com base nos valores salvos
     applyConditionals();
     // Restaurar lista de empresas se visível
@@ -4143,6 +4139,19 @@ function parseBRL(v){
   if(!v)return 0;
   const s=String(v).replace(/[R$\s.]/g,'').replace(',','.');
   return parseFloat(s)||0;
+}
+// Calcula o percentual de execução física automaticamente a partir dos
+// boletins de medição (soma dos valores medidos ÷ valor do contrato), em vez
+// de pedir esse número manualmente. Usado só na Revisão e Envio.
+function calcPctExecucaoAuto(a){
+  if(!a)return 0;
+  const meds=a._medicoes||[];
+  const totalMedido=meds.reduce(function(s,m){return s+parseBRL(m.valor||'');},0);
+  const emps=a._empresas||[];
+  const totalEmpresas=emps.reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
+  const totalContrato=totalEmpresas||parseBRL(a.valor_contratado||'')||parseBRL(a.acao_valor||'')||0;
+  if(!totalContrato||!totalMedido)return 0;
+  return Math.max(0,Math.min(100,Math.round((totalMedido/totalContrato)*100)));
 }
 function calcTotalUtilizado(){
   const proprio=parseBRL(acq().valor_proprio||'');
@@ -4915,7 +4924,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-5 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-7 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
