@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-7</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-8</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1463,7 +1463,7 @@ function renderMedList(){
         <div class="field" style="margin:0"><label>Data</label><input type="date" value="${m.data||''}" oninput="getMeds()[${i}].data=this.value"/></div>
       </div>
       <div class="field" style="margin-bottom:10px"><label>Valor medido (R$)</label>
-        <input type="text" value="${m.valor||''}" placeholder="0,00" oninput="onMoneyInput(this)" onblur="getMeds()[${i}].valor=fmtBRL(this.value);this.value=getMeds()[${i}].valor"/>
+        <input type="text" value="${m.valor||''}" placeholder="0,00" oninput="onMoneyInput(this)" onblur="getMeds()[${i}].valor=fmtBRL(this.value);this.value=getMeds()[${i}].valor;refreshPctAutoDisplay()"/>
       </div>
       <input type="file" style="display:none" id="file_med_${i}" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('med_${i}',this.files)"/>
       <div class="upload-zone" onclick="triggerUpload('med_${i}')">
@@ -1473,7 +1473,7 @@ function renderMedList(){
     </div>`).join('');
 }
 function addMed(){getMeds().push({num:'',data:'',valor:'',pct:''});renderMedList();}
-function removeMed(i){if(getMeds().length>1){getMeds().splice(i,1);renderMedList();}}
+function removeMed(i){if(getMeds().length>1){getMeds().splice(i,1);renderMedList();refreshPctAutoDisplay();}}
 
 // Upload
 function triggerUpload(key){document.getElementById('file_'+key)?.click();}
@@ -1790,8 +1790,10 @@ function contentHTML(){
   // Phase 3 — OBRA
   if(phase===3&&obra) return`
     ${lockedBanner}<div class="step-head"><h2>Execução Física <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Acompanhamento do andamento físico da obra.</p></div>
-    <div class="card card-obra" style="background:var(--g50);border-style:dashed">
-      <div style="font-size:12px;color:var(--ink3)">📊 O percentual de execução física agora é calculado automaticamente a partir dos boletins de medição abaixo (valor medido ÷ valor do contrato) e aparece na etapa de Revisão e Envio.</div>
+    <div class="card card-obra" id="pct-auto-card">
+      <div class="card-title obra">Percentual de execução física <span style="font-weight:400;font-size:11px;color:var(--ink3);text-transform:none;letter-spacing:0">(automático — calculado a partir dos boletins de medição)</span></div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="pct-auto-bar" style="width:${calcPctExecucaoAuto(acq())}%"></div></div>
+      <div class="progress-label" id="pct-auto-lbl">${calcPctExecucaoAuto(acq())}% executado</div>
     </div>
     <div class="card card-obra">
       <div class="card-title obra">Cronograma</div>
@@ -3671,12 +3673,17 @@ function _camposContrato(obj,isContratado,idxOrNull){
       +'<button type="button" onclick="addEmpresa()" style="margin:4px 0 14px;padding:6px 14px;font-size:12px;font-weight:600;border:1.5px dashed var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar empresa</button>')
     // Lote: mantém o campo único de empresa (cada lote já é uma contratação própria).
     : ('<div class="row2">'+sp('empresa_nome','Empresa contratada','text','Razão social')+sp('empresa_cnpj','CNPJ','text','00.000.000/0000-00')+'</div>');
-  var blocoContrato='<div style="'+lockStyleContrato+'">'+avisoContrato
-    +blocoEmpresa
-    +'<div class="row2">'+sp('num_contrato','Nº do contrato','text','CT-001/2025')+sp('valor_contratado','Valor do contrato (R$)','text','0,00')+'</div>'
-    +'<div class="row2">'+sp('data_assinatura','Data de assinatura','date','')+sp('prazo_entrega','Prazo de entrega (dias)','text','Ex: 60')+'</div>'
-    +sp('data_prev_entrega','Data prevista de entrega','date','')
-    +'</div>';
+  var blocoContrato=(idxOrNull===undefined)
+    ? ('<div style="'+lockStyleContrato+'">'+avisoContrato
+      +blocoEmpresa
+      +'<div class="row2">'+sp('num_contrato','Nº do contrato','text','CT-001/2025')+sp('data_assinatura','Data de assinatura','date','')+'</div>'
+      +'</div>')
+    : ('<div style="'+lockStyleContrato+'">'+avisoContrato
+      +blocoEmpresa
+      +'<div class="row2">'+sp('num_contrato','Nº do contrato','text','CT-001/2025')+sp('valor_contratado','Valor do contrato (R$)','text','0,00')+'</div>'
+      +'<div class="row2">'+sp('data_assinatura','Data de assinatura','date','')+sp('prazo_entrega','Prazo de entrega (dias)','text','Ex: 60')+'</div>'
+      +sp('data_prev_entrega','Data prevista de entrega','date','')
+      +'</div>');
 
   // Bloco 2: dados de entrega — aparece a partir de "Em entrega"
   var lockStyleEntrega=emEntrega?'':'opacity:.5;pointer-events:none';
@@ -4060,8 +4067,9 @@ function cnpjValido(cnpj){
   return calc(n.substring(0,12),14)===parseInt(n[12])&&calc(n.substring(0,13),15)===parseInt(n[13]);
 }
 
-function onCNPJInput(el){
+function onCNPJInput(el,idx){
   el.value=cnpjMask(el.value);
+  if(idx!==undefined&&getEmpresas()[idx])getEmpresas()[idx].cnpj=el.value;
 }
 
 function onCNPJBlur(el,idx){
@@ -4107,7 +4115,7 @@ function renderEmpresaList(){
       </div>
       ${fld('Razão social','_emp_nome_'+i,'text','Nome da empresa')}
       <div class="row2">
-        <div class="field"><label>CNPJ</label><input type="text" name="_emp_cnpj_${i}" placeholder="xx.xxx.xxx/xxxx-xx" maxlength="18" oninput="onCNPJInput(this)" onblur="onCNPJBlur(this,${i})" inputmode="numeric"/></div>
+        <div class="field"><label>CNPJ</label><input type="text" name="_emp_cnpj_${i}" placeholder="xx.xxx.xxx/xxxx-xx" maxlength="18" oninput="onCNPJInput(this,${i})" onblur="onCNPJBlur(this,${i})" inputmode="numeric"/></div>
         ${fld('Valor contratado (R$)','_emp_valor_'+i,'money')}
       </div>
       <div class="row3">
@@ -4126,10 +4134,29 @@ function renderEmpresaList(){
   // Add listeners
   ems.forEach((em,i)=>{
     const bindT=(name,key)=>{const el=document.querySelector(`[name="${name}"]`);if(el){el.oninput=()=>{getEmpresas()[i][key]=el.value;};el.onblur=()=>{getEmpresas()[i][key]=el.value;};}};
-    bindT('_emp_nome_'+i,'nome');bindT('_emp_cnpj_'+i,'cnpj');bindT('_emp_hom_'+i,'homologacao');bindT('_emp_prev_'+i,'prev_entrega');bindT('_emp_prazo_'+i,'prazo');
+    bindT('_emp_nome_'+i,'nome');bindT('_emp_prev_'+i,'prev_entrega');
+    (function(){
+      const elHom=document.querySelector('[name="_emp_hom_'+i+'"]');
+      if(elHom){elHom.oninput=()=>{getEmpresas()[i].homologacao=elHom.value;};elHom.onblur=()=>{getEmpresas()[i].homologacao=elHom.value;calcDataPrevEmpresa(i);};}
+      const elPrazo=document.querySelector('[name="_emp_prazo_'+i+'"]');
+      if(elPrazo){elPrazo.oninput=()=>{getEmpresas()[i].prazo=elPrazo.value;};elPrazo.onblur=()=>{getEmpresas()[i].prazo=elPrazo.value;calcDataPrevEmpresa(i);};}
+    })();
     const ve=document.querySelector(`[name="_emp_valor_${i}"]`);
-    if(ve){ve.oninput=()=>onMoneyInput(ve);ve.onblur=()=>{getEmpresas()[i].valor=fmtBRL(ve.value);ve.value=getEmpresas()[i].valor;};}
+    if(ve){ve.oninput=()=>onMoneyInput(ve);ve.onblur=()=>{getEmpresas()[i].valor=fmtBRL(ve.value);ve.value=getEmpresas()[i].valor;refreshPctAutoDisplay();};}
   });
+}
+function calcDataPrevEmpresa(idx){
+  const emp=getEmpresas()[idx];
+  if(!emp)return;
+  const prazo=parseInt((emp.prazo||'').toString().replace(/[^0-9]/g,''),10);
+  if(!emp.homologacao||!prazo)return;
+  const d=new Date(emp.homologacao+'T00:00');if(isNaN(d.getTime()))return;
+  let dias=prazo;let cur=new Date(d);
+  while(dias>0){cur.setDate(cur.getDate()+1);const dw=cur.getDay();if(dw!==0&&dw!==6)dias--;}
+  const dataPrev=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0');
+  emp.prev_entrega=dataPrev;
+  const input=document.querySelector('[name="_emp_prev_'+idx+'"]');
+  if(input)input.value=dataPrev;
 }
 function addEmpresa(){getEmpresas().push({nome:'',cnpj:'',valor:'',homologacao:'',prazo:'',prev_entrega:''});renderEmpresaList();}
 function removeEmpresa(i){if(getEmpresas().length>1){getEmpresas().splice(i,1);renderEmpresaList();}}
@@ -4152,6 +4179,12 @@ function calcPctExecucaoAuto(a){
   const totalContrato=totalEmpresas||parseBRL(a.valor_contratado||'')||parseBRL(a.acao_valor||'')||0;
   if(!totalContrato||!totalMedido)return 0;
   return Math.max(0,Math.min(100,Math.round((totalMedido/totalContrato)*100)));
+}
+function refreshPctAutoDisplay(){
+  const pct=calcPctExecucaoAuto(acq());
+  const bar=document.getElementById('pct-auto-bar');const lbl=document.getElementById('pct-auto-lbl');
+  if(bar)bar.style.width=pct+'%';
+  if(lbl)lbl.textContent=pct+'% executado';
 }
 function calcTotalUtilizado(){
   const proprio=parseBRL(acq().valor_proprio||'');
@@ -4924,7 +4957,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-7 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-8 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
