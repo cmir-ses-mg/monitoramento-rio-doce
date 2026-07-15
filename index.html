@@ -712,6 +712,10 @@ window.onerror = function(msg, src, line, col, err) {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
       Exportar PDF
     </button>
+    <button class="btn" onclick="resetApp()" style="margin-left:8px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/></svg>
+      Voltar ao início
+    </button>
   </div>
 </div>
 
@@ -719,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-18</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-22</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1938,7 +1942,8 @@ function contentHTML(){
     </div>`;
 
   if(phase===5){
-    const muItems=[['Município',municipio.municipio],['Bimestre',`${municipio.bimestre||''} / ${municipio.ano||''}`],['Responsável',municipio.responsavel],['Cargo',municipio.cargo]];
+    const _valorGlobal=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);
+    const muItems=[['Município',municipio.municipio],['Bimestre',`${municipio.bimestre||''} / ${municipio.ano||''}`],['Valor total do plano',_valorGlobal?'R$ '+_valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'']];
     const planAll=getAllPlanActions(municipio.municipio||'');
     const ILBL4={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
     // Desmembra itens com múltiplas unidades (ex: "4 UBS tipo I") em N linhas
@@ -2289,6 +2294,16 @@ function gerarPDFBase64(){
       doc.setFont('helvetica','normal');doc.setTextColor(...BK);
       const lines=doc.splitTextToSize(String(v),128);doc.text(lines,62,y);y+=Math.max(6,lines.length*5.2);
     }
+    // Linha destacada com fundo colorido — usada para chamar atenção pra quem
+    // foi responsável por preencher/editar cada ação especificamente.
+    function rowDestacado(l,v){
+      if(!v||String(v).trim()===''||v==='undefined')return;
+      chk(9);
+      doc.setFillColor(232,245,233);doc.rect(12,y-4.5,184,8,'F');
+      doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GD);doc.text('✎ '+l,14,y);
+      doc.setTextColor(...BK);
+      const lines=doc.splitTextToSize(String(v),110);doc.text(lines,72,y);y+=Math.max(8,lines.length*5.2+2);
+    }
     doc.setFillColor(...GD);doc.rect(0,0,210,28,'F');
     doc.setFontSize(13);doc.setFont('helvetica','bold');doc.setTextColor(...WH);
     doc.text('MONITORAMENTO BIMESTRAL — PLANO DE AÇÃO EM SAÚDE DO RIO DOCE',14,11);
@@ -2299,7 +2314,7 @@ function gerarPDFBase64(){
     y=36;
     sec('IDENTIFICAÇÃO DO MUNICÍPIO');
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
-    row('Responsável:',municipio.responsavel);row('Cargo:',municipio.cargo);row('E-mail:',municipio.email);row('Telefone:',municipio.telefone);
+    row('Valor Total do Plano:',(function(){const t=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
     const _acqsValidas=aquisicoes.filter(function(a){return a.acao_tipo;});
     _acqsValidas.forEach(function(a,i){
       const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
@@ -2374,7 +2389,7 @@ function gerarPDFBase64(){
       row('Documentos anexados:',docsOk);
       sec('OBSERVAÇÕES');
       row('Problemas/Riscos:',a.problemas);row('Medidas saneadoras:',a.medidas);row('Impactos gerados:',a.impactos);
-      row('Preenchido/editado por:',a._editadoPor||municipio.responsavel||'');
+      rowDestacado('Preenchido/editado por:',a._editadoPor||municipio.responsavel||'');
     });
     y+=8;chk(28);
     doc.setDrawColor(...GM);doc.setLineWidth(0.3);doc.line(14,y,98,y);doc.line(112,y,196,y);
@@ -2545,6 +2560,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_total_utilizado:valorTotalUtilizadoFinal,
       pct_execucao:obra?calcPctExecucaoAuto(a):(a.pct_execucao||''),
       editado_por:a._editadoPor||municipio.responsavel||'',
+      valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
@@ -5136,7 +5152,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-18 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-22 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
