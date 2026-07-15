@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-10</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-11</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -2582,6 +2582,28 @@ function agendarSyncSessaoServidor(){
   _syncTimer=setTimeout(enviarSessaoServidor,4000); // debounce 4s
 }
 
+// ── ATUALIZAÇÃO PERIÓDICA EM SEGUNDO PLANO (multi-usuário) ───────────────────
+// Sem isso, duas pessoas preenchendo o mesmo município ao mesmo tempo (em
+// máquinas ou navegadores diferentes) só veem o trabalho uma da outra ao
+// reabrir a sessão. Aqui, a cada ~20s, busca silenciosamente o que mudou no
+// servidor e atualiza a lista lateral — sem tocar na ação que a pessoa está
+// editando neste momento (ver proteção em mesclarSessaoDoServidor).
+let _pollTimer=null;
+function iniciarPollingSessao(){
+  if(_pollTimer)return; // já rodando
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  _pollTimer=setInterval(async function(){
+    if(!municipio.municipio||!municipio.bimestre||!municipio.ano)return;
+    if(document.hidden)return; // não gasta cota de API com a aba em segundo plano
+    const aplicadas=await mesclarSessaoDoServidor();
+    if(aplicadas>0){
+      renderAcqBar(); // só a lista lateral — não interrompe o que está sendo digitado
+      if(phase===1)renderMain(); // a tela de seleção de ação também reflete o progresso
+    }
+  },20000);
+}
+function pararPollingSessao(){if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;}}
+
 async function enviarSessaoServidor(){
   _syncTimer=null;
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
@@ -2621,9 +2643,13 @@ async function mesclarSessaoDoServidor(){
     const resp=await fetch(url);
     const data=await resp.json();
     if(!data||data.status!=='ok'||!data.itens||!data.itens.length)return 0;
+    // A ação que está aberta agora nunca é sobrescrita por uma sincronização em
+    // segundo plano — evita perder o que a pessoa está digitando neste instante.
+    const chaveAtual=(phase>=1&&aquisicoes[acqIdx])?aquisicoes[acqIdx]._key:null;
     let aplicadas=0;
     data.itens.forEach(function(it){
       if(!it.acaoKey||!it.payload)return;
+      if(it.acaoKey===chaveAtual)return;
       let remoto=null;
       try{remoto=JSON.parse(it.payload);}catch(e){return;}
       remoto._touchedAt=Number(it.touchedAt)||remoto._touchedAt||0;
@@ -3917,7 +3943,7 @@ function renderAll(){
   const pbw=document.getElementById('phaseBarWrap');
   if(pbw)pbw.style.display=phase===0?'none':'';
   window.scrollTo({top:0,behavior:'smooth'});
-  if(municipio.municipio&&municipio.bimestre&&municipio.ano){saveSession();}
+  if(municipio.municipio&&municipio.bimestre&&municipio.ano){saveSession();iniciarPollingSessao();}
 }
 function renderMain(){
   let html='';
@@ -4449,6 +4475,7 @@ function aplicarSessao(sess){
 }
 
 function doLogout(){
+  pararPollingSessao();
   _sessaoUsuario=null;
   localStorage.removeItem('rdoce_sessao');
   Object.keys(municipio).forEach(k=>delete municipio[k]);
@@ -5000,7 +5027,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-10 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-11 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
