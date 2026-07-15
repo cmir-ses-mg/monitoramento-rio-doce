@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-8</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-10</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1739,11 +1739,18 @@ function contentHTML(){
     <div class="card">
       <div class="card-title">Dados financeiros</div>
       ${fld('Valor já executado (R$)','valor_executado','money','','',true)}
+      <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px;margin-top:10px">
+        <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Já executado (bimestres anteriores)</span>
+          <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
+        </div>
+        <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
+      </div>
       <div class="row2">
         ${fld('Recurso próprio (R$)','valor_proprio','money')}
         ${fld('Fonte do recurso próprio','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
-      <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(executado + recurso próprio)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
+      <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(maior entre executado atual e histórico, + recurso próprio)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -2328,7 +2335,7 @@ function gerarPDFBase64(){
       });
       if(ob){
         sec('EXECUÇÃO FÍSICA',true);
-        row('% Executado (automático, boletins):',calcPctExecucaoAuto(a)?calcPctExecucaoAuto(a)+'%':'');
+        row('% Executado (auto):',calcPctExecucaoAuto(a)?calcPctExecucaoAuto(a)+'%':'');
         row('Andamento:',a.andamento_cronograma);row('Obs. Cronograma:',a.obs_cronograma);
         row('Conclusão Contrato:',a.data_conclusao_contrato);row('Nova Previsão:',a.data_conclusao_nova);
         (a._medicoes||[]).forEach(function(m,mi){row('BM '+(mi+1)+' — Nº:',m.num);row('BM '+(mi+1)+' — Data:',m.data);row('BM '+(mi+1)+' — Valor:',m.valor?'R$ '+m.valor:'');});
@@ -3555,7 +3562,7 @@ function abrirColarModal(li){
 function fecharColarModal(){document.getElementById('colar-modal').style.display='none';_colarLoteIdx=-1;}
 function confirmarColarModal(){
   const ta=document.getElementById('colar-textarea');
-  if(_colarLoteIdx>=0&&ta)colarTabela(_colarLoteIdx,ta.value);
+  if(ta)colarTabela(_colarLoteIdx,ta.value);
   fecharColarModal();
 }
 
@@ -3879,7 +3886,33 @@ function renderLotesCard_init(){
   },100);
 }
 
+function deduplicarAquisicoes(){
+  const porKey={};
+  const resultado=[];
+  aquisicoes.forEach(function(a){
+    if(!a._key){resultado.push(a);return;}
+    if(!porKey[a._key]){
+      porKey[a._key]=a;
+      resultado.push(a);
+    }else{
+      const existente=porKey[a._key];
+      const scoreExistente=Object.keys(existente).filter(function(k){return existente[k];}).length;
+      const scoreAtual=Object.keys(a).filter(function(k){return a[k];}).length;
+      if(scoreAtual>scoreExistente){
+        const idx=resultado.indexOf(existente);
+        resultado[idx]=a;
+        porKey[a._key]=a;
+      }
+    }
+  });
+  if(resultado.length!==aquisicoes.length){
+    aquisicoes.length=0;
+    resultado.forEach(function(a){aquisicoes.push(a);});
+  }
+}
 function renderAll(){
+  deduplicarAquisicoes();
+  if(aquisicoes.length&&acqIdx>=aquisicoes.length)acqIdx=aquisicoes.length-1;
   renderPhaseBar();renderAcqBar();renderBadge();renderMain();renderNav();
   const pbw=document.getElementById('phaseBarWrap');
   if(pbw)pbw.style.display=phase===0?'none':'';
@@ -4002,8 +4035,12 @@ async function doSubmit(){
   const appLayout=document.querySelector('.app-layout');if(appLayout)appLayout.style.display='none';
   cienciaAceita=false;
   const _planAll2=getAllPlanActions(municipio.municipio||'');
+  const _totalUnidades2=_planAll2.reduce(function(s,item){
+    const un=unidadesDoItem(municipio.municipio||'',item);
+    return s+(un?un.length:1);
+  },0);
   document.getElementById('successAcqsList').innerHTML=
-    `<div class="sac-title">${aquisicoes.filter(a=>a.modalidade_objeto).length} de ${_planAll2.length} ações preenchidas</div>`+
+    `<div class="sac-title">${aquisicoes.filter(a=>a.modalidade_objeto).length} de ${_totalUnidades2} ações preenchidas</div>`+
     aquisicoes.filter(a=>a.acao_tipo).map((a,i)=>{
       const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
     const ob=_tipoAuto==='obra';
@@ -4199,8 +4236,13 @@ function calcTotalUtilizado(){
     if(elLista)elLista.textContent='R$ '+totalLista.toLocaleString('pt-BR',{minimumFractionDigits:2});
   } else {
     executado=parseBRL(acq().valor_executado||'');
+    const historico=parseBRL(acq()._executado_historico||0);
+    const totalComHistorico=Math.max(executado,historico)+proprio;
     const elAuto=document.getElementById('val_total_auto');
-    if(elAuto){elAuto.value=executado>0||proprio>0?(executado+proprio).toLocaleString('pt-BR',{minimumFractionDigits:2}):'';acq().valor_total_utilizado=elAuto.value;}
+    if(elAuto){elAuto.value=totalComHistorico>0?totalComHistorico.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';acq().valor_total_utilizado=elAuto.value;}
+    const elHistObra=document.getElementById('val_executado_historico');
+    if(elHistObra&&acq()._executado_historico!==undefined)elHistObra.textContent='R$ '+historico.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    executado=Math.max(executado,historico);
   }
 
   const total=executado+proprio;
@@ -4674,12 +4716,13 @@ async function carregarExecutadoHistorico(){
   const r=await buscarExecutadoHistoricoDetalhado(a.acao_instrumento,a.acao_tipo);
   if(r.valor>0){
     a._executado_historico=r.valor;
-    calcExecutadoLotes();
-    if(elHist)elHist.title=r.registros+' registro(s) "Concluído" encontrado(s) na planilha para esta ação.';
+    if(elHist){elHist.textContent='R$ '+r.valor.toLocaleString('pt-BR',{minimumFractionDigits:2});elHist.title=r.registros+' registro(s) "Concluído" encontrado(s) na planilha para esta ação.';}
   }else{
     a._executado_historico=0;
     if(elHist){elHist.textContent='R$ 0,00';elHist.title='Nenhum registro "Concluído" encontrado para esta ação.';}
   }
+  if(a.modalidade_objeto==='equipamento')calcExecutadoLotes();
+  else calcTotalUtilizado();
 }
 
 // Permite zerar manualmente o "já pago" quando o valor carregado estiver
@@ -4957,7 +5000,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-8 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-10 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
