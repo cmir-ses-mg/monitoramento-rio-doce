@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-15</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-17</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -2383,13 +2383,16 @@ function gerarPDFBase64(){
 function salvarListasPendentesSheet(a){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
   if(!a||!a._listas||!a._listas.length)return;
+  if(!a.acao_instrumento||!a.acao_tipo)return; // sem ação vinculada — nada a salvar
+  const listasComItens=a._listas.filter(function(ls){return ls.itens&&ls.itens.length>0;});
+  if(!listasComItens.length)return; // nunca salvar listas vazias (stub) na planilha
   try{
     const payload={
       acao:'salvarListasPendentes',
       municipio:municipio.municipio||'',
       acao_instrumento:a.acao_instrumento||'',
       acao_tipo:a.acao_tipo||'',
-      listas:a._listas.map(function(ls){return {id:ls.id,nome:ls.nome,itens:ls.itens||[]};})
+      listas:listasComItens.map(function(ls){return {id:ls.id,nome:ls.nome,itens:ls.itens||[]};})
     };
     fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)}).catch(function(){});
   }catch(e){}
@@ -2934,6 +2937,13 @@ async function selectInlineAction(instrumento, tipo){
       else{setTimeout(carregarExecutadoHistorico,800);}
     });
   }else{setTimeout(carregarExecutadoHistorico,800);}
+  // Listas pendentes (itens ainda não distribuídos) vêm do servidor — faltava
+  // essa chamada aqui, por isso a lista sumia ao reabrir a ação por este card.
+  if(_acqSIA&&(!_acqSIA._listas||!_acqSIA._listas.length)){
+    sincronizarListasDoServidor(_acqSIA,instrumento,_acqSIA.acao_tipo||tipo).then(function(achou){
+      if(achou)renderAll();
+    });
+  }
 }
 
 
@@ -3201,12 +3211,18 @@ function renderLotesCard(){
     +'<div style="font-size:12.5px;color:var(--ink2);margin-bottom:14px">Organize os itens desta ação por modalidade de licitação. Importe a planilha do município ou adicione manualmente.</div>'
     +'<div id="lotes-container"></div>'
 
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2);flex-wrap:wrap;gap:8px">'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
     +'<label style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">'
       +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
       +'Carregar nova lista'
       +'<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadNovaLista(this)"/>'
     +'</label>'
+    +'<button onclick="colarNovaLista()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">'
+      +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+      +'Colar lista'
+    +'</button>'
+    +'</div>'
     +'<div style="display:flex;align-items:center;gap:10px">'
       +'<div style="font-size:12px;color:var(--ink3)">Total geral:</div>'
       +'<div id="lotes_grand_total" style="font-size:15px;font-weight:700;color:var(--g700)">R$ 0,00</div>'
@@ -3549,10 +3565,10 @@ function uploadExcelPool(input){
   reader.readAsArrayBuffer(file);
 }
 
-function colarTabela(li,texto){
+function colarTabela(li,texto,modo,nomeListaForcado){
   if(!texto.trim())return;
   const linhas=texto.trim().split('\n').map(l=>l.split('\t'));
-  processarDadosPool(linhas);
+  processarDadosPool(linhas,modo,nomeListaForcado);
 }
 
 function processarDadosPool(data,modo,nomeListaForcado){
@@ -3600,17 +3616,42 @@ function processarDadosPool(data,modo,nomeListaForcado){
 
 // Modal para colar lista
 let _colarLoteIdx=-1;
+let _colarModo=undefined,_colarNomeNovaLista=undefined;
 function abrirColarModal(li){
   _colarLoteIdx=li;
   document.getElementById('colar-modal').style.display='flex';
   const ta=document.getElementById('colar-textarea');
   if(ta){ta.value='';ta.focus();}
 }
-function fecharColarModal(){document.getElementById('colar-modal').style.display='none';_colarLoteIdx=-1;}
+function fecharColarModal(){document.getElementById('colar-modal').style.display='none';_colarLoteIdx=-1;_colarModo=undefined;_colarNomeNovaLista=undefined;}
 function confirmarColarModal(){
   const ta=document.getElementById('colar-textarea');
-  if(ta)colarTabela(_colarLoteIdx,ta.value);
+  if(ta)colarTabela(_colarLoteIdx,ta.value,_colarModo,_colarNomeNovaLista);
   fecharColarModal();
+}
+
+// Colar uma lista quando já existe(m) lista(s) carregada(s) — mesma pergunta de
+// "manter separado vs substituir tudo" que já existia para upload de Excel,
+// só que abrindo o modal de colar em vez do seletor de arquivo.
+async function colarNovaLista(){
+  const a=acq();
+  const listasAtuais=a._listas||[];
+  if(listasAtuais.length===0){ abrirColarModal(-1); return; }
+  const resumoListas=listasAtuais.map(function(ls){return ls.nome+' ('+ls.itens.length+' itens)';}).join(', ');
+  const escolha=await showConfirmModal3(
+    'Colar nova lista',
+    'Você já tem '+listasAtuais.length+' lista(s) carregada(s): <b>'+resumoListas+'</b>.<br><br>Quer <b>manter essas listas separadas</b> e adicionar uma nova lista independente, ou <b>substituir tudo</b> pela nova lista?',
+    'Manter e adicionar nova','Substituir tudo','Cancelar','📋'
+  );
+  if(escolha===false||escolha===undefined)return;
+  _colarModo=escolha==='extra'?'substituir':'adicionar';
+  _colarNomeNovaLista=null;
+  if(_colarModo==='adicionar'){
+    _colarNomeNovaLista=prompt('Nome para esta nova lista (ex: Lista 2, Lote complementar):','Lista '+(listasAtuais.length+1));
+    if(_colarNomeNovaLista===null)return;
+    _colarNomeNovaLista=_colarNomeNovaLista.trim()||('Lista '+(listasAtuais.length+1));
+  }
+  abrirColarModal(-1);
 }
 
 
@@ -5042,7 +5083,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-15 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-17 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
