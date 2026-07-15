@@ -719,7 +719,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-13</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-14</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1305,12 +1305,17 @@ function saveAllInputs(){
       }
     });
   }
-  if(mudou&&phase>=1&&aquisicoes[acqIdx])aquisicoes[acqIdx]._touchedAt=Date.now();
+  if(mudou&&phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
+}
+function _marcarTocado(a){
+  if(!a)return;
+  a._touchedAt=Date.now();
+  a._editadoPor=(_sessaoUsuario&&(_sessaoUsuario.nome||_sessaoUsuario.email))||municipio.responsavel||'';
 }
 function sv(el){
   if(!el.name)return;
   if(el.dataset.store==='mun')municipio[el.name]=el.value;
-  else if(el.dataset.store==='acq'){acq()[el.name]=el.value;if(phase>=1&&aquisicoes[acqIdx])aquisicoes[acqIdx]._touchedAt=Date.now();}
+  else if(el.dataset.store==='acq'){acq()[el.name]=el.value;if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);}
   if(el.name==='municipio'||el.name==='bimestre'){
     renderAll();
   }
@@ -2352,11 +2357,12 @@ function gerarPDFBase64(){
       row('Documentos anexados:',docsOk);
       sec('OBSERVAÇÕES');
       row('Problemas/Riscos:',a.problemas);row('Medidas saneadoras:',a.medidas);row('Impactos gerados:',a.impactos);
+      row('Preenchido/editado por:',a._editadoPor||municipio.responsavel||'');
     });
     y+=8;chk(28);
     doc.setDrawColor(...GM);doc.setLineWidth(0.3);doc.line(14,y,98,y);doc.line(112,y,196,y);
     doc.setFontSize(8);doc.setTextColor(...GR);
-    doc.text('Responsável pelo preenchimento',14,y+5);doc.text('Secretário(a) Municipal de Saúde',112,y+5);doc.text(municipio.responsavel||'',14,y+10);
+    doc.text('Responsável pelo preenchimento',14,y+5);doc.text('Consórcio/Secretário(a)',112,y+5);doc.text('Municipal de Saúde',112,y+9);doc.text(municipio.responsavel||'',14,y+10);
     if(municipio.obs_gerais){y+=6;chk(20);sec('OBSERVAÇÕES GERAIS DO MONITORAMENTO');row('Observações:',municipio.obs_gerais);}
     const tot=doc.internal.getNumberOfPages();
     for(let p=1;p<=tot;p++){
@@ -2518,6 +2524,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_executado:valorExecutadoFinal,
       valor_total_utilizado:valorTotalUtilizadoFinal,
       pct_execucao:obra?calcPctExecucaoAuto(a):(a.pct_execucao||''),
+      editado_por:a._editadoPor||municipio.responsavel||'',
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
@@ -3046,6 +3053,7 @@ async function buscarRegistrosPlanilha(mun, bim, ano){
 function registroParaAcq(reg){
   const tipo = reg.tipo_monitoramento || 'equipamento';
   const a = {
+    _editadoPor:           reg.editado_por      || '',
     acao_instrumento:      reg.acao_instrumento || '',
     acao_descricao:        reg.acao_descricao   || '',
     acao_tipo:             reg.acao_tipo        || '',
@@ -3851,7 +3859,7 @@ function _spFieldGeneric(obj,field,label,type,placeholder,idx,setterName){
 function _setAtivField(idx,field,value){
   var a=acq();
   if(a._atividades&&a._atividades[idx]){a._atividades[idx][field]=value;}
-  if(phase>=1&&aquisicoes[acqIdx])aquisicoes[acqIdx]._touchedAt=Date.now();
+  if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
 }
 
 function renderContratacaoLotes(lotes,lockedBanner,modeBadge){
@@ -4209,7 +4217,7 @@ function renderEmpresaList(){
   });
   // Add listeners
   ems.forEach((em,i)=>{
-    const bindT=(name,key)=>{const el=document.querySelector(`[name="${name}"]`);if(el){el.oninput=()=>{getEmpresas()[i][key]=el.value;};el.onblur=()=>{getEmpresas()[i][key]=el.value;};}};
+    const bindT=(name,key)=>{const el=document.querySelector(`[name="${name}"]`);if(el){el.oninput=()=>{getEmpresas()[i][key]=el.value;};el.onblur=()=>{getEmpresas()[i][key]=el.value;if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);};}};
     bindT('_emp_nome_'+i,'nome');bindT('_emp_prev_'+i,'prev_entrega');
     (function(){
       const elHom=document.querySelector('[name="_emp_hom_'+i+'"]');
@@ -5030,7 +5038,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-13 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-14 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
