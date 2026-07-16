@@ -4211,8 +4211,7 @@ async function submitForm(){
   if(benCheck){
     const ILBL3={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
     const allCheck=getAcqOptions(benCheck,null,null,true);
-    const usedCheck=new Set(aquisicoes.filter(a=>a.acao_tipo&&a.acao_instrumento).map(a=>a.acao_instrumento+'||'+a.acao_tipo));
-    const missingCheck=allCheck.filter(o=>!usedCheck.has(o.instrumento+'||'+o.tipo));
+    const missingCheck=allCheck.filter(o=>!o._usedByOther);
     if(missingCheck.length>0){
       showMissingModal(missingCheck,ILBL3);
       return;
@@ -5292,7 +5291,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-40 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-41 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
