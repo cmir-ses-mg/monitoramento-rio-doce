@@ -2003,7 +2003,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
