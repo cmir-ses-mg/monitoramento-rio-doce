@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. </span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-35</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1155,7 +1155,8 @@ async function selectPlanAction(instrumento, tipo){
   renderAll();
   // Carregar histórico do bimestre anterior se a ação ainda não foi preenchida
   const _acqAtual = aquisicoes[idx];
-  if(_acqAtual && !_acqAtual._sent && !_acqAtual.modalidade_objeto){
+  if(_acqAtual && !_acqAtual._sent && !_acqAtual._historicoCarregado){
+    _acqAtual._historicoCarregado=true;
     carregarHistoricoBimestreAnterior(instrumento, _acqAtual.acao_tipo||item.tipo).then(function(regs){
       if(regs && regs.length){
         aplicarHistoricoNaAcao(regs, _acqAtual).then(function(){
@@ -2003,7 +2004,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
@@ -3006,7 +3007,8 @@ async function selectInlineAction(instrumento, tipo){
   renderAll();
   // Carregar histórico do bimestre anterior se ação ainda não preenchida
   const _acqSIA=aquisicoes[idx];
-  if(_acqSIA&&!_acqSIA._sent&&!_acqSIA.modalidade_objeto){
+  if(_acqSIA&&!_acqSIA._sent&&!_acqSIA._historicoCarregado){
+    _acqSIA._historicoCarregado=true;
     carregarHistoricoBimestreAnterior(instrumento,_acqSIA.acao_tipo||tipo).then(function(regs){
       if(regs&&regs.length){aplicarHistoricoNaAcao(regs,_acqSIA).then(function(){renderAll();setTimeout(carregarExecutadoHistorico,500);});}
       else{setTimeout(carregarExecutadoHistorico,800);}
@@ -5037,6 +5039,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!acqObj.valor_contratado && reg.valor_contratado) acqObj.valor_contratado = reg.valor_contratado;
   if(!acqObj.data_assinatura && reg.data_assinatura) acqObj.data_assinatura = reg.data_assinatura;
   if(!acqObj.prazo_entrega && reg.prazo_entrega) acqObj.prazo_entrega = reg.prazo_entrega;
+  if(!acqObj.endereco_obra && reg.endereco_obra) acqObj.endereco_obra = reg.endereco_obra;
 
   // 2. Tipo e modalidade
   if(!acqObj.modalidade_objeto && reg.tipo_monitoramento) acqObj.modalidade_objeto = reg.tipo_monitoramento;
@@ -5262,7 +5265,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-34 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-35 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
