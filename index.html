@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-40</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. </span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -2013,7 +2013,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
@@ -4757,7 +4757,7 @@ async function _verificarSessaoExistente(){
     const div=document.createElement('div');
     div.id='sessao-banner-temp';
     div.style.cssText='background:var(--g50);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:var(--ink3)';
-    div.textContent='⏳ Carregando dados da planilha...';
+    div.textContent='⏳ Carregando dados...';
     const sh=mc.querySelector('.step-head');
     if(sh)mc.insertBefore(div,sh);else mc.prepend(div);
   }
