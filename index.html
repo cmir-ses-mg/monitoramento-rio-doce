@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-28</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. </span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1586,9 +1586,16 @@ const DOCS_OBRA=[
   {key:'cronograma',label:'Cronograma físico-financeiro'},
   {key:'outros',label:'Outros documentos'},
 ];
+const DOCS_CUSTEIO=[
+  {key:'contrato',label:'Contrato'},
+  {key:'edital',label:'Edital'},
+  {key:'ordem_servico',label:'Ordem de serviço'},
+  {key:'comprovante_pagamento',label:'Comprovante de pagamento'},
+  {key:'outros',label:'Outros documentos'},
+];
 
 function docsListHTML(){
-  const docs=isAcqObra()?DOCS_OBRA:DOCS_EQUIP;
+  const docs=isAcqObra()?DOCS_OBRA:(acq().modalidade_objeto==='servico'?DOCS_CUSTEIO:DOCS_EQUIP);
   return docs.map(function(d){
     const on=getDocChecked(d.key)?' on':'';
     const key='doc_'+d.key;
@@ -1739,12 +1746,16 @@ function contentHTML(){
         </div>
       </div>
       <div class="row2">
-        ${fld('Recurso próprio (R$)','valor_proprio','money')}
-        ${fld('Fonte do recurso próprio','fonte_recurso','text','Ex: Tesouro Municipal')}
+        ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
+        ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?renderLotesCard():''}
     ${obra&&acq().acao_tipo?`
+    <div class="card">
+      <div class="card-title">Localização da obra</div>
+      ${fld('Endereço','endereco_obra','text','Ex: Rua das Flores, 123, Bairro Centro')}
+    </div>
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Dados financeiros</div>
       ${fld('Valor já executado (R$)','valor_executado','money','','',true)}
@@ -1756,8 +1767,8 @@ function contentHTML(){
         <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
       </div>
       <div class="row2">
-        ${fld('Recurso próprio (R$)','valor_proprio','money')}
-        ${fld('Fonte do recurso próprio','fonte_recurso','text','Ex: Tesouro Municipal')}
+        ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
+        ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
       <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(maior entre executado atual e histórico)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
     </div>`:''}
@@ -1786,8 +1797,8 @@ function contentHTML(){
         </div>
       </div>
       <div class="row2">
-        ${fld('Recurso próprio (R$)','valor_proprio','money')}
-        ${fld('Fonte do recurso próprio','fonte_recurso','text','Ex: Tesouro Municipal')}
+        ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
+        ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
     </div>`:''}`;  
   }
@@ -1863,7 +1874,21 @@ function contentHTML(){
         +'</div>'
         +(status==='Planejamento'||status==='Processo aberto'?'<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Avance o status na etapa "Contratação" para registrar a execução.</div>':'')
       +'</div>';
-    }).join('');
+    }).join('')
+    +'<div class="card">'
+      +'<div class="card-title">Documentos comprobatórios</div>'
+      +'<p class="hint" style="margin-bottom:12px">Clique em cada documento para marcá-lo e anexar o arquivo.</p>'
+      +'<div class="doc-list">'+docsListHTML()+'</div>'
+    +'</div>'
+    +'<div class="card" id="card-fotos" style="border-left:3px solid var(--orange)">'
+      +'<div class="card-title obra">Registro fotográfico</div>'
+      +'<p class="hint" style="margin-bottom:12px">Recomendamos fortemente o envio de fotos da prestação de serviços/atividades.</p>'
+      +'<input type="file" style="display:none" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles(\'fotos_acao\',this.files)"/>'
+      +'<div class="upload-zone" onclick="triggerUpload(\'fotos_acao\')">'
+        +'<div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>'
+      +'</div>'
+      +'<div class="file-list" id="files_fotos_acao">'+renderFilePills('fotos_acao')+'</div>'
+    +'</div>';
 
   // Phase 3 — EQUIPAMENTO
   if(phase===3&&!obra) return (acq()._lotes||[]).filter(l=>l.confirmado).length===0 ? `
@@ -1910,7 +1935,15 @@ function contentHTML(){
         +'</div>'
         +(status==='Planejamento'||status==='Processo aberto'
           ? '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:10px 0 0">Este lote ainda n\u00e3o foi contratado. Atualize o status na etapa de Contrata\u00e7\u00e3o.</div>'
-          : '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 0">Contrato '+(lote.num_contrato||'\u2014')+' \u00b7 Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'\u2014')+'. Para atualizar a situa\u00e7\u00e3o da entrega, use a etapa de Contrata\u00e7\u00e3o.</div>')
+          : '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 0">Contrato '+(lote.num_contrato||'\u2014')+' \u00b7 Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'\u2014')+'. Para atualizar a situa\u00e7\u00e3o da entrega, use a etapa de Contrata\u00e7\u00e3o.</div>'
+            +'<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border2)">'
+              +'<div style="font-size:11.5px;font-weight:600;color:var(--ink2);margin-bottom:6px">\uD83D\uDCF7 Registro fotogr\u00e1fico deste lote</div>'
+              +'<input type="file" style="display:none" id="file_fotos_lote_'+li+'" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles(\'fotos_lote_'+li+'\',this.files)"/>'
+              +'<div class="upload-zone" onclick="triggerUpload(\'fotos_lote_'+li+'\')" style="padding:10px">'
+                +'<div class="upload-zone-text" style="font-size:12px"><strong>Clique para anexar fotos</strong> deste lote (JPG, PNG, HEIC)</div>'
+              +'</div>'
+              +'<div class="file-list" id="files_fotos_lote_'+li+'">'+renderFilePills('fotos_lote_'+li)+'</div>'
+            +'</div>')
       +'</div>';
     }).join('')
     +'<div class="card">'
@@ -1929,7 +1962,7 @@ function contentHTML(){
     +'</div>'
 
   if(phase===4) return`
-    ${lockedBanner}<div class="step-head"><h2>Observações <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Pendências, riscos e observações sobre esta aquisição.</p></div>
+    ${lockedBanner}<div class="step-head"><h2>Observações <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Pendências, riscos e observações sobre esta ação.</p></div>
 
     <div class="card">
       <div class="card-title">Pendências e riscos</div>
@@ -1970,7 +2003,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
@@ -1983,7 +2016,7 @@ function contentHTML(){
       </div>`;
     }).join('');
     return`
-      <div class="step-head"><h2>Observações e Envio</h2><p>Confirme os dados antes de enviar. Clique em qualquer aquisição para editar.</p></div>
+      <div class="step-head"><h2>Observações e Envio</h2><p>Confirme os dados antes de enviar. Clique em qualquer ação para editar.</p></div>
       ${''/* aviso de ações não preenchidas removido: a lista abaixo já mostra tudo */}
       <div class="card">
         <div class="card-title">Identificação do município</div>
@@ -1993,10 +2026,6 @@ function contentHTML(){
         <div class="card-title">${(()=>{const n=linhas.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
         <div class="acq-cards">${acqCards}</div>
         <div style="margin-top:12px"><button class="btn btn-add" style="width:100%;justify-content:center" onclick="goToPhase(1)">← Continuar preenchendo ações</button></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Observações gerais do monitoramento</div>
-        <div class="field"><label>Observações finais</label><textarea name="obs_gerais" data-store="mun" placeholder="Observações adicionais sobre o monitoramento bimestral, situação geral do município, outras informações relevantes..." onchange="municipio.obs_gerais=this.value" style="min-height:90px">${municipio.obs_gerais||''}</textarea></div>
       </div>`;
   }
   return'';
@@ -2300,7 +2329,7 @@ function gerarPDFBase64(){
       if(!v||String(v).trim()===''||v==='undefined')return;
       chk(9);
       doc.setFillColor(232,245,233);doc.rect(12,y-4.5,184,8,'F');
-      doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GD);doc.text('✎ '+l,14,y);
+      doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GD);doc.text(l,14,y);
       doc.setTextColor(...BK);
       const lines=doc.splitTextToSize(String(v),110);doc.text(lines,72,y);y+=Math.max(8,lines.length*5.2+2);
     }
@@ -2310,7 +2339,7 @@ function gerarPDFBase64(){
     doc.setFontSize(9);doc.setFont('helvetica','normal');
     doc.text(`${municipio.municipio||'—'} · ${municipio.bimestre||''} ${municipio.ano||''}  ·  Emitido em ${new Date().toLocaleDateString('pt-BR')}`,14,19);
     doc.setFontSize(8);doc.setTextColor(GL[0],GL[1],GL[2]);
-    doc.text(`${aquisicoes.filter(a=>a.acao_tipo).length===1?'1 aquisição':''+aquisicoes.filter(a=>a.acao_tipo).length+' aquisições'} · Responsável: ${municipio.responsavel||'—'}`,14,25);
+    doc.text(`${aquisicoes.filter(a=>a.acao_tipo).length===1?'1 ação':aquisicoes.filter(a=>a.acao_tipo).length+' ações'} preenchidas`,14,25);
     y=36;
     sec('IDENTIFICAÇÃO DO MUNICÍPIO');
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
@@ -2329,10 +2358,11 @@ function gerarPDFBase64(){
       row('Instrumento:',(a.acao_instrumento||'').replace(/_/g,' '));row('Tipo de Aplicação:',a.acao_tipo);
       row('Ação do Plano:',a.acao_descricao);row('Eixo:',a.acao_eixo);
       row('Tipo monitoramento:',ob?'Obra/Construção':servico?'Serviços':'Equipamentos');
+      if(ob)row('Endereço:',a.endereco_obra);
       sec('DADOS DA AQUISIÇÃO');
       row('Detalhamento:',a.descricao_item);if(!ob)row('Quantidade:',a.quantidade);
       row('Valor Executado:',a.valor_executado?'R$ '+a.valor_executado:'');
-      row('Recurso Próprio:',a.valor_proprio?'R$ '+a.valor_proprio:'');row('Valor Total:',a.valor_total_utilizado?'R$ '+a.valor_total_utilizado:'');
+      row('Recurso Próprio/Rendimentos:',a.valor_proprio?'R$ '+a.valor_proprio:'');row('Valor Total:',a.valor_total_utilizado?'R$ '+a.valor_total_utilizado:'');
       row('Fonte de Recurso:',a.fonte_recurso);
       // Lotes de equipamentos
       if(!ob&&a._lotes&&a._lotes.length){
@@ -2391,11 +2421,11 @@ function gerarPDFBase64(){
       row('Problemas/Riscos:',a.problemas);row('Medidas saneadoras:',a.medidas);row('Impactos gerados:',a.impactos);
       rowDestacado('Preenchido/editado por:',a._editadoPor||municipio.responsavel||'');
     });
-    y+=8;chk(28);
-    doc.setDrawColor(...GM);doc.setLineWidth(0.3);doc.line(14,y,98,y);doc.line(112,y,196,y);
+    y+=8;chk(20);
+    doc.setDrawColor(...GM);doc.setLineWidth(0.3);doc.line(14,y,196,y);
     doc.setFontSize(8);doc.setTextColor(...GR);
-    doc.text('Responsável pelo preenchimento',14,y+5);doc.text('Consórcio/Secretário(a)',112,y+5);doc.text('Municipal de Saúde',112,y+9);doc.text(municipio.responsavel||'',14,y+10);
-    if(municipio.obs_gerais){y+=6;chk(20);sec('OBSERVAÇÕES GERAIS DO MONITORAMENTO');row('Observações:',municipio.obs_gerais);}
+    doc.text('Secretário(a) Municipal de Saúde ou Presidente do Consórcio',14,y+5);
+    if(municipio.obs_gerais){y+=6;chk(20);sec('OBSERVAÇÕES GERAIS DO MONITORAMENTO');row('Observações:',municipio.obs_gerais);} // campo removido da UI; mantém compatibilidade com registros antigos
     const tot=doc.internal.getNumberOfPages();
     for(let p=1;p<=tot;p++){
       doc.setPage(p);doc.setFillColor(...GD);doc.rect(0,291,210,8,'F');
@@ -3128,6 +3158,7 @@ function registroParaAcq(reg){
   const _meta=buscarMetadadosPlano(municipio.municipio,reg.acao_instrumento,reg.acao_tipo);
   const a = {
     _editadoPor:           reg.editado_por      || '',
+    endereco_obra:         reg.endereco_obra    || '',
     acao_instrumento:      reg.acao_instrumento || '',
     acao_descricao:        (_meta&&_meta.acao)  || reg.acao_descricao || '',
     acao_tipo:             reg.acao_tipo        || '',
@@ -3869,12 +3900,23 @@ function _camposContrato(obj,isContratado,idxOrNull){
 // Helper: chips vinculados a um objeto específico (lote) em vez de acq() global
 function _chipsObj(obj,label,field,options,idxOrNull,setterName){
   var cur=obj[field]||'';
+  var groupId='chipgrp_'+field+'_'+(idxOrNull!==undefined&&idxOrNull!==null?idxOrNull:'x');
   var setterPrefix=setterName?(setterName+'('+idxOrNull+','):(idxOrNull!==undefined?'_setLoteField('+idxOrNull+',':'_setAcqField(');
   var pills=options.map(function(o){
     var active=o===cur;
-    return '<span onclick="'+setterPrefix+'\''+field+'\',&apos;'+o+'&apos;)" style="display:inline-block;padding:5px 12px;margin:0 6px 6px 0;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;'+(active?'background:var(--g700);color:#fff':'background:var(--g50);color:var(--ink3);border:1px solid var(--border)')+'">'+o+'</span>';
+    return '<span onclick="_toggleChipVisual(this,\''+groupId+'\');'+setterPrefix+'\''+field+'\',\''+o+'\')" style="display:inline-block;padding:5px 12px;margin:0 6px 6px 0;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;'+(active?'background:var(--g700);color:#fff':'background:var(--g50);color:var(--ink3);border:1px solid var(--border)')+'">'+o+'</span>';
   }).join('');
-  return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px">'+label+'</label><div>'+pills+'</div></div>';
+  return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px">'+label+'</label><div id="'+groupId+'">'+pills+'</div></div>';
+}
+function _toggleChipVisual(el,groupId){
+  const group=document.getElementById(groupId);
+  if(!group)return;
+  Array.prototype.forEach.call(group.children,function(c){
+    const isActive=c===el;
+    c.style.background=isActive?'var(--g700)':'var(--g50)';
+    c.style.color=isActive?'#fff':'var(--ink3)';
+    c.style.border=isActive?'none':'1px solid var(--border)';
+  });
 }
 
 function _setLoteField(idx,field,value){
@@ -4230,8 +4272,13 @@ function resetApp(){
   ['mainContent','navBar','phaseBarWrap'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});
   const al=document.querySelector('.app-layout');if(al)al.style.display='';
   document.getElementById('successWrap').style.display='none';
-  // Ir para fase 0 (identificação)
-  renderAll();
+  // Usuário logado (não-admin) tem o município do seu próprio login — re-aplicar
+  // a sessão em vez de jogar pra tela de seleção manual (essa é só pra admin).
+  if(_sessaoUsuario){
+    aplicarSessao(_sessaoUsuario);
+  }else{
+    renderAll();
+  }
   // Rolar para o topo
   window.scrollTo({top:0,behavior:'instant'});
 }
@@ -4394,7 +4441,7 @@ function _verificarEstouroOrcamento(a,valorBase,proprio,elResumo,cardId,corPadra
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
   const cor=estourou&&!coberto?'#C0392B':corPadrao;
   elResumo.style.color=cor;
-  elResumo.title=estourou&&!coberto?'⚠️ Valor utilizado ultrapassa o valor total da ação no plano':(coberto?'✓ Excedente coberto com recurso próprio':'');
+  elResumo.title=estourou&&!coberto?'⚠️ Valor utilizado ultrapassa o valor total da ação no plano':(coberto?'✓ Excedente coberto com recurso próprio/rendimentos':'');
   const cardEl=document.getElementById(cardId);
   const avisoId='aviso-estouro-'+cardId;
   document.getElementById(avisoId)?.remove();
@@ -4404,11 +4451,11 @@ function _verificarEstouroOrcamento(a,valorBase,proprio,elResumo,cardId,corPadra
     const titleEl=cardEl.querySelector('.card-title');
     if(coberto){
       aviso.style.cssText='background:#E8F5E9;border:1.5px solid var(--g500);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--g800);font-weight:600;line-height:1.5';
-      aviso.innerHTML='✓ O valor ultrapassou o plano ('+fmt(valorBase)+' > '+fmt(valorPlano)+'), mas o excedente de '+fmt(excedente)+' já está coberto pelo recurso próprio informado ('+fmt(proprio||0)+').';
+      aviso.innerHTML='✓ O valor ultrapassou o plano ('+fmt(valorBase)+' > '+fmt(valorPlano)+'), mas o excedente de '+fmt(excedente)+' já está coberto pelo recurso próprio/rendimentos informado ('+fmt(proprio||0)+').';
     }else{
       const falta=excedente-(proprio||0);
       aviso.style.cssText='background:#FDEDEC;border:1.5px solid #C0392B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:#C0392B;font-weight:600;line-height:1.5';
-      aviso.innerHTML='⚠️ O valor utilizado ('+fmt(valorBase)+') ultrapassa o valor total da ação no plano ('+fmt(valorPlano)+'). Faltam <u>'+fmt(falta)+'</u> pra cobrir o excedente com recurso próprio.';
+      aviso.innerHTML='⚠️ O valor utilizado ('+fmt(valorBase)+') ultrapassa o valor total da ação no plano ('+fmt(valorPlano)+'). Faltam <u>'+fmt(falta)+'</u> pra cobrir o excedente com recurso próprio/rendimentos.';
     }
     if(titleEl)titleEl.insertAdjacentElement('afterend',aviso);else cardEl.prepend(aviso);
   }
@@ -4483,21 +4530,30 @@ function calcExecutadoLotes(){
   const elTot=document.getElementById('val_total_auto_equip');
   const elGrand=document.getElementById('lotes_grand_total');
   const elFin=document.getElementById('val_financiamento_equip');
+  // Usa o contratado (preenchido na Contratação) quando existir; senão cai
+  // pra soma das listas importadas — assim o aviso de excedente já aparece
+  // logo depois de importar a lista, sem precisar ir até a próxima aba.
+  const baseComparacao=exec>0?exec:lista;
   if(elLi)elLi.textContent=fmt(lista);
   if(elHist)elHist.textContent=fmt(historico);
   if(elTot)elTot.textContent=fmt(total);
   if(elGrand)elGrand.textContent=fmt(lista);
-  _verificarEstouroOrcamento(a,exec,proprio,elTot,'card-financeiro-equip','var(--g700)');
+  _verificarEstouroOrcamento(a,baseComparacao,proprio,elTot,'card-financeiro-equip','var(--g700)');
+  if(elLi){
+    const valorPlano0=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
+    const excedeLista=valorPlano0>0&&lista>valorPlano0&&proprio<(lista-valorPlano0);
+    elLi.style.color=excedeLista?'#C0392B':'var(--ink)';
+  }
   if(elFin){
     const valorPlano=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
-    if(!exec){
-      elFin.innerHTML='<span style="color:var(--ink3)">Nenhum lote confirmado ainda.</span>';
-    }else if(valorPlano<=0||exec<=valorPlano){
-      elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(exec)+'</strong>';
+    if(!baseComparacao){
+      elFin.innerHTML='<span style="color:var(--ink3)">Nenhum item na lista ainda.</span>';
+    }else if(valorPlano<=0||baseComparacao<=valorPlano){
+      elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(baseComparacao)+'</strong>';
     }else{
-      const excedente=exec-valorPlano;
+      const excedente=baseComparacao-valorPlano;
       const coberto=proprio>=excedente;
-      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(proprio)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'');
+      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio/rendimentos: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(proprio)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'')+(exec<=0?'<div style="font-size:10.5px;color:var(--ink3);margin-top:4px">(baseado na soma da lista de itens — será refinado após preencher o valor contratado na Contratação)</div>':'');
     }
   }
   a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
@@ -5206,7 +5262,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-28 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-34 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
@@ -5467,9 +5523,15 @@ function _setAtivStatus(idx,status){
     if(a._atividades[idx].confirmado) salvarAtividadeCusteioServidor(a._atividades[idx]);
   }
   calcAtividades();
-  // Fase 1 usa o container local; Fase 2 (Contratação) precisa re-renderizar a tela toda
-  if(document.getElementById('atividades-container')) _renderAtividadesCardDOM();
-  else renderMain();
+  // Fase 1 usa o container local; Fase 2 (Contratação) precisa re-renderizar a tela
+  // toda, o que causava um "pulo" visual — preservamos a posição da rolagem.
+  if(document.getElementById('atividades-container')){
+    _renderAtividadesCardDOM();
+  }else{
+    const _scrollY=window.scrollY;
+    renderMain();
+    requestAnimationFrame(function(){window.scrollTo({top:_scrollY,behavior:'instant'});});
+  }
 }
 
 function editarAtividade(idx){
@@ -5535,7 +5597,7 @@ function calcAtividades(){
     }else{
       const excedente=vlrC-valorPlano;
       const coberto=prop>=excedente;
-      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(prop)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'');
+      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio/rendimentos: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(prop)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'');
     }
   }
   a.valor_executado=vlrC.toLocaleString('pt-BR',{minimumFractionDigits:2});
@@ -5669,7 +5731,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
     </div>
     <div style="font-size:12.5px;color:#3A5446;margin-bottom:14px">As seguintes ações disponíveis para este município/consórcio ainda não foram preenchidas:</div>
     <div id="modal-missing-list" style="background:#FFF8F0;border:1px solid #FFCC80;border-radius:8px;padding:10px 14px;margin-bottom:18px;max-height:200px;overflow-y:auto"></div>
-    <div style="font-size:12px;color:#7A9E8C;margin-bottom:20px">Você pode voltar e adicionar novas aquisições, ou enviar assim mesmo.</div>
+    <div style="font-size:12px;color:#7A9E8C;margin-bottom:20px">Você pode voltar e adicionar novas ações, ou enviar assim mesmo.</div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button onclick="closeMissingModal()" style="padding:8px 18px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid #C8E8D8;border-radius:7px;background:#fff;color:#3A5446;cursor:pointer">Voltar e completar</button>
       <button onclick="confirmSendAnyway()" style="padding:8px 18px;font-size:13px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:7px;background:#0A3323;color:#fff;cursor:pointer">Enviar assim mesmo</button>
