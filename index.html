@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-39</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-40</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -2372,8 +2372,8 @@ function gerarPDFBase64(){
       sec('DADOS DA AQUISIÇÃO');
       row('Detalhamento:',a.descricao_item);if(!ob)row('Quantidade:',a.quantidade);
       row('Valor da Ação:',a.acao_valor?'R$ '+Number(a.acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'');
-      row('Valor Utilizado da Ação:',a.valor_executado?'R$ '+a.valor_executado:'');
-      row('Valor Recurso Próprio/Rendimentos:',a.valor_proprio?'R$ '+a.valor_proprio:'');
+      row('Recurso Próprio/Rend.:',a.valor_proprio?'R$ '+a.valor_proprio:'');
+      row('Valor Executado:',a.valor_executado?'R$ '+a.valor_executado:'');
       row('Valor Total:',(function(){
         const exec=parseBRL(a.valor_executado);const prop=parseBRL(a.valor_proprio);
         const total=exec+prop;
@@ -5292,7 +5292,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-39 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-40 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
