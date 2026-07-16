@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.</span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-39</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -969,7 +969,16 @@ function getAcqOptions(ben,instrumento,excludeCurrentIdx,includeAll){
   const curAcq=excludeCurrentIdx!=null?aquisicoes[excludeCurrentIdx]:null;
   const curKey=curAcq&&curAcq.acao_tipo&&curAcq.acao_instrumento?curAcq.acao_instrumento+'||'+curAcq.acao_tipo:null;
   return all
-    .map((item,i)=>({...item,_usedByOther:usedKeys.has(item.instrumento+'||'+item.tipo)}))
+    .map((item,i)=>{
+      // Itens desmembrados (ex: "4 UBS tipo I") não aparecem em aquisicoes com
+      // esse texto agregado — precisa checar se TODAS as unidades individuais
+      // já foram preenchidas, senão o item sempre parece "faltando".
+      const unidades=unidadesDoItem(ben,item);
+      const usado=unidades
+        ? unidades.every(function(u){return usedKeys.has(item.instrumento+'||'+u.tipo);})
+        : usedKeys.has(item.instrumento+'||'+item.tipo);
+      return {...item,_usedByOther:usado};
+    })
     .filter(item=>includeAll||!item._usedByOther||(curKey&&(item.instrumento+'||'+item.tipo)===curKey));
 }
 
@@ -1161,10 +1170,10 @@ async function selectPlanAction(instrumento, tipo){
       if(regs && regs.length){
         aplicarHistoricoNaAcao(regs, _acqAtual).then(function(){
           renderAll();
-          setTimeout(carregarExecutadoHistorico, 500);
         });
       }
     });
+    setTimeout(carregarExecutadoHistorico, 500);
   } else {
     setTimeout(carregarExecutadoHistorico, 500);
   }
@@ -2004,7 +2013,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
@@ -2021,7 +2030,7 @@ function contentHTML(){
       ${''/* aviso de ações não preenchidas removido: a lista abaixo já mostra tudo */}
       <div class="card">
         <div class="card-title">Identificação do município</div>
-        <div class="resumo-grid">${muItems.map(([l,v])=>`<div class="resumo-item"><div class="r-lbl">${l}</div><div class="r-val ${!v?'none':''}">${v||'Não informado'}</div></div>`).join('')}</div>
+        <div class="resumo-grid">${muItems.map(([l,v])=>`<div class="resumo-item" style="${l==='Valor total do plano'?'grid-column:1/-1':''}"><div class="r-lbl">${l}</div><div class="r-val ${!v?'none':''}">${v||'Não informado'}</div></div>`).join('')}</div>
       </div>
       <div class="card">
         <div class="card-title">${(()=>{const n=linhas.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
@@ -2362,8 +2371,14 @@ function gerarPDFBase64(){
       if(ob)row('Endereço:',a.endereco_obra);
       sec('DADOS DA AQUISIÇÃO');
       row('Detalhamento:',a.descricao_item);if(!ob)row('Quantidade:',a.quantidade);
-      row('Valor Executado:',a.valor_executado?'R$ '+a.valor_executado:'');
-      row('Recurso Próprio/Rendimentos:',a.valor_proprio?'R$ '+a.valor_proprio:'');row('Valor Total:',a.valor_total_utilizado?'R$ '+a.valor_total_utilizado:'');
+      row('Valor da Ação:',a.acao_valor?'R$ '+Number(a.acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'');
+      row('Valor Utilizado da Ação:',a.valor_executado?'R$ '+a.valor_executado:'');
+      row('Valor Recurso Próprio/Rendimentos:',a.valor_proprio?'R$ '+a.valor_proprio:'');
+      row('Valor Total:',(function(){
+        const exec=parseBRL(a.valor_executado);const prop=parseBRL(a.valor_proprio);
+        const total=exec+prop;
+        return total?'R$ '+total.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
+      })());
       row('Fonte de Recurso:',a.fonte_recurso);
       // Lotes de equipamentos
       if(!ob&&a._lotes&&a._lotes.length){
@@ -4742,7 +4757,7 @@ async function _verificarSessaoExistente(){
     const div=document.createElement('div');
     div.id='sessao-banner-temp';
     div.style.cssText='background:var(--g50);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:var(--ink3)';
-    div.textContent='⏳ Carregando dados...';
+    div.textContent='⏳ Carregando dados da planilha...';
     const sh=mc.querySelector('.step-head');
     if(sh)mc.insertBefore(div,sh);else mc.prepend(div);
   }
@@ -4868,6 +4883,18 @@ function _tipoContemUnidade(tipo,unidade){
 // caso contrário retorna null (o item permanece como uma única ação, igual
 // antes). O resultado fica em cache por município+instrumento+tipo.
 const _unidadesCache={};
+// Dado o tipo de uma unidade já desmembrada (ex: "UBS tipo I — Unidade 1 de
+// 4"), acha o tipo do item AGREGADO original do plano (ex: "4 UBS tipo I") de
+// onde ela veio. Usado como busca alternativa de histórico: bimestres
+// preenchidos antes do desmembramento existir salvaram com o nome agregado.
+function _tipoAgregadoDoItem(benef,tipoSplit){
+  const itens=getAllPlanActions(benef);
+  for(const item of itens){
+    const unidades=unidadesDoItem(benef,item);
+    if(unidades&&unidades.some(function(u){return u.tipo===tipoSplit;}))return item.tipo;
+  }
+  return null;
+}
 function unidadesDoItem(benef,item){
   const cacheKey=benef+'||'+item.instrumento+'||'+item.tipo;
   if(_unidadesCache.hasOwnProperty(cacheKey))return _unidadesCache[cacheKey];
@@ -4961,14 +4988,26 @@ async function buscarExecutadoHistorico(instrumento,tipo){
 async function buscarExecutadoHistoricoDetalhado(instrumento,tipo){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return {valor:0,registros:0};
   if(!municipio.municipio||!instrumento||!tipo)return {valor:0,registros:0};
-  try{
-    const url=APPS_SCRIPT_URL+'?acao=buscarExecutado&municipio='+encodeURIComponent(municipio.municipio)+'&instrumento='+encodeURIComponent(instrumento)+'&tipo='+encodeURIComponent(tipo)+'&bimestreAtual='+encodeURIComponent(municipio.bimestre||'')+'&anoAtual='+encodeURIComponent(municipio.ano||'');
+  const _buscar=async function(tipoBusca){
+    const url=APPS_SCRIPT_URL+'?acao=buscarExecutado&municipio='+encodeURIComponent(municipio.municipio)+'&instrumento='+encodeURIComponent(instrumento)+'&tipo='+encodeURIComponent(tipoBusca)+'&bimestreAtual='+encodeURIComponent(municipio.bimestre||'')+'&anoAtual='+encodeURIComponent(municipio.ano||'');
     const resp=await fetch(url);
     const data=await resp.json();
     console.log('buscarExecutado response:',data);
     if(data.status==='ok'&&data.valor_executado!=null){
       return {valor:parseFloat(String(data.valor_executado).replace(/[R$\s.]/g,'').replace(',','.'))||0, registros:data.registros_encontrados||0};
     }
+    return {valor:0,registros:0};
+  };
+  try{
+    let r=await _buscar(tipo);
+    // Nada encontrado com o nome desmembrado (ex: "UBS tipo I — Unidade 1 de
+    // 4")? Tenta o nome agregado original (ex: "4 UBS tipo I") — cobre
+    // bimestres salvos antes do desmembramento existir.
+    if(!r.registros){
+      const tipoAgregado=_tipoAgregadoDoItem(municipio.municipio,tipo);
+      if(tipoAgregado&&tipoAgregado!==tipo)r=await _buscar(tipoAgregado);
+    }
+    return r;
   }catch(e){console.error('buscarExecutadoHistorico erro:',e);}
   return {valor:0,registros:0};
 }
@@ -5253,7 +5292,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-37 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-39 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
