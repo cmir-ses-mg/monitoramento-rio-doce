@@ -1200,6 +1200,13 @@ async function selectPlanAction(instrumento, tipo){
       if(mudou) renderAll();
     });
   }
+  // Lotes de equipamento: mesmo carry-over entre bimestres/máquinas, vindo do servidor.
+  if(_acqAtual && _acqAtual.modalidade_objeto==='equipamento'){
+    carregarLotesHistoricoEquipamento(_acqAtual).then(function(mudou){
+      calcExecutadoLotes();
+      if(mudou) renderAll();
+    });
+  }
 }
 
 // Busca no servidor as listas pendentes para esta ação e popula acqObj._listas
@@ -1281,6 +1288,12 @@ function switchAcq(i){
   if(a && a.modalidade_objeto==='servico'){
     carregarAtividadesHistoricoCusteio(a).then(function(){
       calcAtividades();
+      renderAll();
+    });
+  }
+  if(a && a.modalidade_objeto==='equipamento'){
+    carregarLotesHistoricoEquipamento(a).then(function(){
+      calcExecutadoLotes();
       renderAll();
     });
   }
@@ -1641,7 +1654,7 @@ function contentHTML(){
   const obra=isAcqObra();const servico=acq().modalidade_objeto==='servico';
   const isLocked=!!(acq()._locked);
   const lockedBanner=isLocked?`<div class="locked-banner">
-    <div class="locked-banner-text">🔒 <strong>Ação concluída.</strong> Os campos estão bloqueados para edição.</div>
+    <div class="locked-banner-text">🔒 <strong>${acq()._autoConcluida?'Ação concluída automaticamente — a soma dos boletins de medição atingiu 100% do valor da ação.':'Ação concluída.'}</strong> Os campos estão bloqueados para edição.</div>
     <button class="btn-reopen" onclick="unlockAcq(${acqIdx})">✏️ Reabrir para edição</button>
   </div>`:'';
   const modeBadge=acq().modalidade_objeto?`<span class="mode-badge mode-equip">${obra?'🏗️ Obra':servico?'🛠️ Serviço':'📦 Equipamento'}</span>`:'' ;
@@ -2662,7 +2675,7 @@ function saveSession(){
   try{
     const data={
       municipio,
-      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_medicoes:undefined,_docs:undefined,_empresas:a._empresas||[]})),
+      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_docs:undefined,_empresas:a._empresas||[]})),
       phase,acqIdx,
       savedAt:new Date().toISOString()
     };
@@ -2681,7 +2694,7 @@ let _syncTimer=null;
 let _ultimoSyncEnviado={}; // acaoKey -> touchedAt já confirmado no servidor
 
 function _acqParaPayload(a){
-  return JSON.stringify({...a,_nfs:undefined,_medicoes:undefined,_docs:undefined,_empresas:a._empresas||[]});
+  return JSON.stringify({...a,_nfs:undefined,_docs:undefined,_empresas:a._empresas||[]});
 }
 
 function agendarSyncSessaoServidor(){
@@ -3223,6 +3236,8 @@ function registroParaAcq(reg){
     obs_gerais:            reg.obs_gerais       || '',
     // Empresas
     _empresas: (reg._empresas||[]).map(function(e){ return Object.assign({},e); }),
+    // Boletins de medição (obras)
+    _medicoes: (reg._medicoes&&reg._medicoes.length)?reg._medicoes.map(function(m){ return Object.assign({},m); }):undefined,
     // Flags
     _sent:    true,
     _locked:  reg.tipo_registro==='Conclusao'||reg.tipo_registro==='Conclusão',
@@ -3648,6 +3663,7 @@ function confirmarLote(editIdx){
   _renderLotesCardDOM();
   calcExecutadoLotes();
   salvarListasPendentesSheet(a);
+  salvarLoteEquipamentoServidor(lote);
 }
 
 function editarLote(realIdx){
@@ -3836,7 +3852,7 @@ function _spField(storeObj,field,label,type,ph,idx){
   const val=(storeObj[field]||'').toString().replace(/"/g,'&quot;');
   var recalc=(field==='valor_contratado'||field==='valor_proprio')?';calcExecutadoLotes()':'';
   const onChange=idx!==undefined
-    ? 'onchange="(acq()._lotes||[])['+idx+'][\''+field+'\']=this.value'+recalc+'"'
+    ? 'onchange="(acq()._lotes||[])['+idx+'][\''+field+'\']=this.value'+recalc+';if((acq()._lotes||[])['+idx+']&&(acq()._lotes||[])['+idx+'].confirmado)salvarLoteEquipamentoServidor((acq()._lotes||[])['+idx+'])"'
     : 'onchange="acq()[\''+field+'\']=this.value'+recalc+'"';
   if(type==='textarea'){
     return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
@@ -4097,7 +4113,10 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
 
 function setLoteStatus(li,status){
   var a=acq();
-  if(a._lotes&&a._lotes[li])a._lotes[li]._status=status;
+  if(a._lotes&&a._lotes[li]){
+    a._lotes[li]._status=status;
+    if(a._lotes[li].confirmado) salvarLoteEquipamentoServidor(a._lotes[li]);
+  }
   renderMain();
   calcExecutadoLotes();
 }
@@ -5117,6 +5136,30 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   const valHist = parseFloat((reg.valor_total_utilizado||reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
   if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
 
+  // 6. Boletins de medição (obras) — ACUMULATIVOS entre bimestres: o bimestre
+  // novo herda os boletins já lançados no(s) anterior(es), e a pessoa só
+  // acrescenta o(s) novo(s) deste período.
+  const _medSemDados=!acqObj._medicoes||acqObj._medicoes.length===0||(acqObj._medicoes.length===1&&!acqObj._medicoes[0].num&&!acqObj._medicoes[0].valor);
+  if(reg._medicoes && reg._medicoes.length && _medSemDados){
+    acqObj._medicoes = reg._medicoes.map(function(m){ return Object.assign({},m); });
+  }
+
+  // 7. Conclusão automática — vale para OBRA, EQUIPAMENTO e SERVIÇO/CUSTEIO:
+  // quando o valor acumulado (histórico + o que a própria ação já registrou)
+  // atinge 100% do valor da ação no plano, ela já vem concluída no bimestre
+  // seguinte, sem precisar reconfirmar nada. Para obra, usa a soma real dos
+  // boletins de medição (mais precisa); para os demais tipos, usa o valor
+  // total utilizado já acumulado vindo da planilha.
+  if(!acqObj._locked){
+    const valorPlano=parseFloat((acqObj.acao_valor||'0').toString().replace(/[R$\s.]/g,'').replace(',','.'))||0;
+    const acumuladoPorBoletins=(acqObj.modalidade_objeto==='obra'&&typeof calcPctExecucaoAuto==='function')?calcPctExecucaoAuto(acqObj):0;
+    const atingiu100=(acumuladoPorBoletins>=100)||(valorPlano>0&&valHist>=valorPlano);
+    if(atingiu100){
+      acqObj._locked=true;
+      acqObj._autoConcluida=true;
+    }
+  }
+
   // 5. Tentar carregar lotes da sessão anterior salva no localStorage
   // Procurar sessões salvas com o mesmo município+ação de bimestres anteriores
   const bimAtual = parseInt((municipio.bimestre||'1').replace(/[^0-9]/g,''))||1;
@@ -5325,7 +5368,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-53 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-57 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
@@ -5720,6 +5763,90 @@ function excluirAtividadeCusteioServidor(at){
       descricao:at.descricao||''
     })}).catch(function(){});
   }catch(e){}
+}
+
+// ── LOTES DE EQUIPAMENTOS — persistência server-side (mesmo padrão das
+// atividades de custeio, ver acima) ──────────────────────────────────────────
+async function buscarLotesEquipamentoServidor(municipioNome, instrumento, tipo){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return [];
+  try{
+    const url=APPS_SCRIPT_URL+'?acao=buscarLotesEquipamento'
+      +'&municipio='+encodeURIComponent(municipioNome||'')
+      +'&instrumento='+encodeURIComponent(instrumento||'')
+      +'&tipo='+encodeURIComponent(tipo||'');
+    const resp=await fetch(url);
+    const j=await resp.json();
+    if(j&&j.status==='ok') return j.lotes||[];
+    return [];
+  }catch(e){ console.error('buscarLotesEquipamentoServidor erro:',e); return []; }
+}
+
+// Salva (upsert) UM lote no servidor — chamado ao confirmar um lote e ao
+// mudar seu status. A planilha é a fonte de verdade entre bimestres/máquinas.
+function salvarLoteEquipamentoServidor(lote){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return;
+  const a=acq();
+  if(!a.acao_instrumento||!a.acao_tipo) return;
+  if(!lote.modalidade&&!lote.num_processo) return; // nada que identifique o lote ainda
+  try{
+    fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({
+      acao:'salvarLoteEquipamento',
+      municipio:municipio.municipio||'',
+      acao_instrumento:a.acao_instrumento||'',
+      acao_tipo:a.acao_tipo||'',
+      bimestre:municipio.bimestre||'',
+      ano:municipio.ano||'',
+      lote:{
+        modalidade:lote.modalidade||'', num_processo:lote.num_processo||'',
+        _status:lote._status||'Planejamento', valor_contratado:lote.valor_contratado||'',
+        empresa_nome:lote.empresa_nome||'', empresa_cnpj:lote.empresa_cnpj||'',
+        data_homologacao:lote.data_homologacao||'', prazo_entrega:lote.prazo_entrega||'',
+        data_prev_entrega:lote.data_prev_entrega||'', itens:lote.itens||[]
+      }
+    })}).catch(function(){});
+  }catch(e){}
+}
+
+// Sincroniza acqObj._lotes com o que está no servidor: traz todos os lotes já
+// confirmados em qualquer bimestre/computador para esta ação e mescla com o
+// que já está em tela, priorizando o servidor em caso de divergência —
+// equivalente ao carry-over completo das atividades de custeio, mas para lotes.
+async function carregarLotesHistoricoEquipamento(acqObj){
+  if(!acqObj) return false;
+  const inst=acqObj.acao_instrumento||'';
+  const tipo=acqObj.acao_tipo||'';
+  if(!inst||!tipo) return false;
+  if(!acqObj._lotes) acqObj._lotes=[];
+
+  const remotos=await buscarLotesEquipamentoServidor(municipio.municipio, inst, tipo);
+  if(!remotos.length) return false;
+
+  const chaveDe=function(l){return (l.modalidade||'')+'|'+(l.num_processo||'');};
+  const localPorChave={};
+  acqObj._lotes.forEach(function(l){ if(l.confirmado) localPorChave[chaveDe(l)]=l; });
+
+  const novosConfirmados=[];
+  remotos.forEach(function(r){
+    const ch=(r.modalidade||'')+'|'+(r.num_processo||'');
+    novosConfirmados.push({
+      modalidade:r.modalidade||'', num_processo:r.num_processo||'',
+      _status:r.status||'Planejamento', valor_contratado:r.valor_contratado||'',
+      empresa_nome:r.empresa_nome||'', empresa_cnpj:r.empresa_cnpj||'',
+      data_homologacao:r.data_homologacao||'', prazo_entrega:r.prazo_entrega||'',
+      data_prev_entrega:r.data_prev_entrega||'',
+      itens:(r.itens||[]).map(function(it){return Object.assign({},it);}),
+      _total:(r.itens||[]).reduce(function(s,it){return s+(it.total||0);},0),
+      confirmado:true
+    });
+    delete localPorChave[ch];
+  });
+  // Mantém lotes confirmados que existiam só localmente e ainda não
+  // foram sincronizados com o servidor (ex: acabou de confirmar nesta sessão)
+  Object.values(localPorChave).forEach(function(l){ novosConfirmados.push(l); });
+
+  const emEdicao=acqObj._lotes.filter(function(l){return !l.confirmado;});
+  acqObj._lotes=novosConfirmados.concat(emEdicao);
+  return true;
 }
 
 // Sincroniza acqObj._atividades com o que está no servidor: traz tudo que
