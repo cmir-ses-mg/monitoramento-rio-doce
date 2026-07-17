@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-44</span></span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-45</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -5079,16 +5079,26 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!acqObj.modalidade && reg.modalidade) acqObj.modalidade = reg.modalidade;
   if(!acqObj.num_processo && reg.num_processo) acqObj.num_processo = reg.num_processo;
 
-  // 3. Status de contratação (não concluir automaticamente)
+  // 3. Status e processo (campos que evoluem entre bimestres)
+  if(!acqObj.status_aquisicao && reg.status_aquisicao) acqObj.status_aquisicao = reg.status_aquisicao;
+  if(!acqObj.fonte_recurso && reg.fonte_recurso) acqObj.fonte_recurso = reg.fonte_recurso;
+  if(!acqObj.link_publicacao && reg.link_publicacao) acqObj.link_publicacao = reg.link_publicacao;
+  if(!acqObj.data_inicio && reg.data_inicio) acqObj.data_inicio = reg.data_inicio;
+  if(!acqObj.data_conclusao && reg.data_conclusao) acqObj.data_conclusao = reg.data_conclusao;
+  if(!acqObj.descricao_item && reg.descricao_item) acqObj.descricao_item = reg.descricao_item;
+  if(!acqObj.quantidade && reg.quantidade) acqObj.quantidade = String(reg.quantidade);
+
+  // 4. Status de contratação — mantém fase anterior (exceto Concluído que precisa reavaliação)
   if(!acqObj._status_contrat && reg.fase_contratacao && reg.fase_contratacao !== 'Concluído'){
     acqObj._status_contrat = reg.fase_contratacao;
   }
 
-  // 4. Valor executado histórico
-  if(reg.tipo_registro === 'Conclusao' || reg.tipo_registro === 'Conclusão'){
-    const valExec = parseFloat((reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
-    if(valExec > 0 && !acqObj._executado_historico) acqObj._executado_historico = valExec;
-  }
+  // 5. Valor executado histórico — usa valor_total_utilizado que já é acumulativo
+  // (não exige que o registro anterior esteja marcado "Concluído": a maioria dos
+  // bimestres de uma obra em andamento é "Parcial", e antes isso fazia o valor
+  // histórico nunca carregar — causa raiz do "Já executado" aparecer sempre R$ 0,00)
+  const valHist = parseFloat((reg.valor_total_utilizado||reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+  if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
 
   // 5. Tentar carregar lotes da sessão anterior salva no localStorage
   // Procurar sessões salvas com o mesmo município+ação de bimestres anteriores
@@ -5298,7 +5308,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-44 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-45 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
