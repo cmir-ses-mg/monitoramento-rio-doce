@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.</span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-47</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -2017,7 +2017,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
@@ -4438,11 +4438,14 @@ function calcPctExecucaoAuto(a){
   if(!a)return 0;
   const meds=a._medicoes||[];
   const totalMedido=meds.reduce(function(s,m){return s+parseBRL(m.valor||'');},0);
+  // Base do percentual = valor da AÇÃO no plano (não o valor do contrato — um
+  // contrato pode cobrir só uma parte da ação, e usar o contrato como base
+  // fazia o percentual "estourar" pra 100% antes da obra estar de fato pronta).
   const emps=a._empresas||[];
   const totalEmpresas=emps.reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
-  const totalContrato=totalEmpresas||parseBRL(a.valor_contratado||'')||parseBRL(a.acao_valor||'')||0;
-  if(!totalContrato||!totalMedido)return 0;
-  return Math.max(0,Math.min(100,Math.round((totalMedido/totalContrato)*100)));
+  const totalBase=parseBRL(a.acao_valor||'')||totalEmpresas||parseBRL(a.valor_contratado||'')||0;
+  if(!totalBase||!totalMedido)return 0;
+  return Math.max(0,Math.min(100,Math.round((totalMedido/totalBase)*100)));
 }
 function refreshPctAutoDisplay(){
   const pct=calcPctExecucaoAuto(acq());
@@ -4769,7 +4772,7 @@ async function _verificarSessaoExistente(){
     const div=document.createElement('div');
     div.id='sessao-banner-temp';
     div.style.cssText='background:var(--g50);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:var(--ink3)';
-    div.textContent='⏳ Carregando dados...';
+    div.textContent='⏳ Carregando dados da planilha...';
     const sh=mc.querySelector('.step-head');
     if(sh)mc.insertBefore(div,sh);else mc.prepend(div);
   }
@@ -5314,7 +5317,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-46 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-47 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
