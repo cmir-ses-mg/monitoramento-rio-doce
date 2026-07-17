@@ -2019,7 +2019,7 @@ function contentHTML(){
         return s+parseBRL(aquisicoes[aIdx].valor_total_utilizado||'');
       }
       const chaveHist=(linha.instrumento||'').toLowerCase()+'||'+(linha.tipo||'').toLowerCase();
-      return s+parseBRL(_histMap[chaveHist]||'');
+      return s+parseValorSheet(_histMap[chaveHist]);
     },0);
     const _pctTotal=_valorGlobal>0?Math.max(0,Math.min(100,Math.round((_execTotalAcumulado/_valorGlobal)*100))):0;
     const planAll=getAllPlanActions(municipio.municipio||'');
@@ -3232,9 +3232,9 @@ function registroParaAcq(reg){
     modalidade_objeto:     tipo,
     descricao_item:        reg.descricao_item   || '',
     quantidade:            String(reg.quantidade || ''),
-    valor_executado:       String(reg.valor_executado || ''),
-    valor_proprio:         String(reg.valor_proprio || ''),
-    valor_total_utilizado: String(reg.valor_total_utilizado || ''),
+    valor_executado:       _fmtNumParaCampoBRL(reg.valor_executado),
+    valor_proprio:         _fmtNumParaCampoBRL(reg.valor_proprio),
+    valor_total_utilizado: _fmtNumParaCampoBRL(reg.valor_total_utilizado),
     fonte_recurso:         reg.fonte_recurso    || '',
     status_aquisicao:      reg.status_aquisicao || '',
     modalidade:            reg.modalidade       || '',
@@ -4342,7 +4342,7 @@ async function doSubmit(){
       const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
     const ob=_tipoAuto==='obra';
     const servico=_tipoAuto==='servico';
-      const _valorPlanoAcq=parseBRL(a.acao_valor||'')||0;
+      const _valorPlanoAcq=parseValorSheet(a.acao_valor)||0;
       const _pctAcq=_valorPlanoAcq>0?Math.max(0,Math.min(100,Math.round((parseBRL(a.valor_total_utilizado||'')/_valorPlanoAcq)*100))):0;
       return`<div class="sac-row"><span class="sac-n">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':servico?'🛠️ ':'📦 '}${a.acao_tipo}</span><span style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--g700);margin-left:8px">${_pctAcq}% executado</span></div>`;
     }).join('');
@@ -4508,6 +4508,26 @@ function parseBRL(v){
   const s=String(v).replace(/[R$\s.]/g,'').replace(',','.');
   return parseFloat(s)||0;
 }
+// Alguns valores vêm prontos do Google Sheets via JSON (número puro, ex:
+// 2300000.5, com ponto decimal de verdade) em vez do formato brasileiro
+// digitado nos formulários (ex: "2.300.000,50", com ponto de milhar). Usar
+// parseBRL direto nesses casos apaga o ponto decimal e infla o valor em ~10x.
+// Esta função detecta o formato e escolhe a leitura certa.
+function parseValorSheet(v){
+  if(typeof v==='number')return v;
+  if(!v)return 0;
+  const s=String(v).trim();
+  if(/^-?\d+(\.\d+)?$/.test(s))return parseFloat(s)||0; // número puro (ponto = decimal)
+  return parseBRL(s); // formato brasileiro (ponto = milhar, vírgula = decimal)
+}
+// Formata um valor vindo cru do servidor (número puro ou já em formato BR)
+// como string brasileira "1.234,56" — usado ao restaurar campos que o resto
+// do app trata como texto formatado (ex: valor_executado digitado no form).
+function _fmtNumParaCampoBRL(v){
+  const n=parseValorSheet(v);
+  if(!n)return '';
+  return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
 // Calcula o percentual de execução física automaticamente a partir dos
 // boletins de medição (soma dos valores medidos ÷ valor do contrato), em vez
 // de pedir esse número manualmente. Usado só na Revisão e Envio.
@@ -4520,7 +4540,7 @@ function calcPctExecucaoAuto(a){
   // fazia o percentual "estourar" pra 100% antes da obra estar de fato pronta).
   const emps=a._empresas||[];
   const totalEmpresas=emps.reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
-  const totalBase=parseBRL(a.acao_valor||'')||totalEmpresas||parseBRL(a.valor_contratado||'')||0;
+  const totalBase=parseValorSheet(a.acao_valor)||totalEmpresas||parseBRL(a.valor_contratado||'')||0;
   if(!totalBase||!totalMedido)return 0;
   return Math.max(0,Math.min(100,Math.round((totalMedido/totalBase)*100)));
 }
@@ -5217,7 +5237,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // (não exige que o registro anterior esteja marcado "Concluído": a maioria dos
   // bimestres de uma obra em andamento é "Parcial", e antes isso fazia o valor
   // histórico nunca carregar — causa raiz do "Já executado" aparecer sempre R$ 0,00)
-  const valHist = parseFloat((reg.valor_total_utilizado||reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+  const valHist = parseValorSheet(reg.valor_total_utilizado||reg.valor_executado||0);
   if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
 
   // 6. Boletins de medição (obras) — ACUMULATIVOS entre bimestres: o bimestre
@@ -5235,7 +5255,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // boletins de medição (mais precisa); para os demais tipos, usa o valor
   // total utilizado já acumulado vindo da planilha.
   if(!acqObj._locked){
-    const valorPlano=parseFloat((acqObj.acao_valor||'0').toString().replace(/[R$\s.]/g,'').replace(',','.'))||0;
+    const valorPlano=parseValorSheet(acqObj.acao_valor)||0;
     const acumuladoPorBoletins=(acqObj.modalidade_objeto==='obra'&&typeof calcPctExecucaoAuto==='function')?calcPctExecucaoAuto(acqObj):0;
     const atingiu100=(acumuladoPorBoletins>=100)||(valorPlano>0&&valHist>=valorPlano);
     if(atingiu100){
@@ -5931,7 +5951,7 @@ async function carregarLotesHistoricoEquipamento(acqObj){
     const ch=(r.modalidade||'')+'|'+(r.num_processo||'');
     novosConfirmados.push({
       modalidade:r.modalidade||'', num_processo:r.num_processo||'',
-      _status:r.status||'Planejamento', valor_contratado:r.valor_contratado||'',
+      _status:r.status||'Planejamento', valor_contratado:_fmtNumParaCampoBRL(r.valor_contratado),
       empresa_nome:r.empresa_nome||'', empresa_cnpj:r.empresa_cnpj||'',
       data_homologacao:r.data_homologacao||'', prazo_entrega:r.prazo_entrega||'',
       data_prev_entrega:r.data_prev_entrega||'',
