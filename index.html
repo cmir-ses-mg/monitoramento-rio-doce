@@ -1996,22 +1996,14 @@ function contentHTML(){
 
   if(phase===5){
     const _valorGlobal=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);
-    // Soma do executado NESTE bimestre, por tipo de ação (obra/serviço usa o
-    // campo direto; equipamento soma os lotes confirmados; custeio soma as
-    // atividades confirmadas) — para dar uma visão geral do % executado.
-    const _execBimestreTotal=aquisicoes.filter(function(a){return a.modalidade_objeto;}).reduce(function(s,a){
-      if(a.modalidade_objeto==='equipamento'){
-        return s+(a._lotes||[]).filter(function(l){return l.confirmado;}).reduce(function(ss,l){return ss+parseBRL(l.valor_contratado||'');},0);
-      }
-      if(a.modalidade_objeto==='servico'&&a._atividades&&a._atividades.length){
-        return s+(a._atividades||[]).filter(function(at){return at.confirmado;}).reduce(function(ss,at){return ss+(at.empresas||[]).reduce(function(sss,e){return sss+parseBRL(e.valor||'');},0);},0);
-      }
-      return s+parseBRL(a.valor_executado||'');
+    // Valor total executado ACUMULADO — soma o valor_total_utilizado de cada
+    // ação já tocada (esse campo já é cumulativo entre bimestres, calculado
+    // em calcTotalUtilizado/calcExecutadoLotes/calcAtividades), independente
+    // do bimestre atual. É a visão "quanto já foi executado no total".
+    const _execTotalAcumulado=aquisicoes.filter(function(a){return a.modalidade_objeto;}).reduce(function(s,a){
+      return s+parseBRL(a.valor_total_utilizado||'');
     },0);
-    const _pctBimestre=_valorGlobal>0?Math.round((_execBimestreTotal/_valorGlobal)*100):0;
-    const muItems=[['Município',municipio.municipio],['Bimestre',`${municipio.bimestre||''} / ${municipio.ano||''}`],
-      ['Valor total do plano',_valorGlobal?'R$ '+_valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):''],
-      ['Executado neste bimestre',_execBimestreTotal>0?'R$ '+_execBimestreTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})+' ('+_pctBimestre+'% do plano)':'R$ 0,00']];
+    const _pctTotal=_valorGlobal>0?Math.max(0,Math.min(100,Math.round((_execTotalAcumulado/_valorGlobal)*100))):0;
     const planAll=getAllPlanActions(municipio.municipio||'');
     const ILBL4={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
     // Desmembra itens com múltiplas unidades (ex: "4 UBS tipo I") em N linhas
@@ -2055,7 +2047,20 @@ function contentHTML(){
       ${''/* aviso de ações não preenchidas removido: a lista abaixo já mostra tudo */}
       <div class="card">
         <div class="card-title">Identificação do município</div>
-        <div class="resumo-grid">${muItems.map(([l,v])=>`<div class="resumo-item" style="${(l==='Valor total do plano'||l==='Executado neste bimestre')?'grid-column:1/-1':''}"><div class="r-lbl">${l}</div><div class="r-val ${!v?'none':''}" style="${l==='Executado neste bimestre'?'color:var(--g700);font-weight:700':''}">${v||'Não informado'}</div></div>`).join('')}</div>
+        <div class="resumo-grid">
+          <div class="resumo-item"><div class="r-lbl">Município</div><div class="r-val ${!municipio.municipio?'none':''}">${municipio.municipio||'Não informado'}</div></div>
+          <div class="resumo-item"><div class="r-lbl">Bimestre</div><div class="r-val">${municipio.bimestre||''} / ${municipio.ano||''}</div></div>
+        </div>
+        <div class="resumo-grid" style="margin-top:7px">
+          <div class="resumo-item"><div class="r-lbl">Valor total executado (todos os bimestres)</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ ${_execTotalAcumulado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
+          <div class="resumo-item"><div class="r-lbl">Valor total do plano</div><div class="r-val ${!_valorGlobal?'none':''}">${_valorGlobal?'R$ '+_valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'Não informado'}</div></div>
+        </div>
+        <div style="margin-top:14px">
+          <div style="height:22px;border-radius:11px;background:var(--g100);overflow:hidden;position:relative">
+            <div style="height:100%;width:${_pctTotal}%;background:linear-gradient(90deg,var(--g500),var(--g700));border-radius:11px;transition:width .3s"></div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:${_pctTotal>50?'#fff':'var(--g800)'}">${_pctTotal}% executado do plano total</div>
+          </div>
+        </div>
       </div>
       <div class="card">
         <div class="card-title">${(()=>{const n=linhas.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
@@ -2399,11 +2404,7 @@ function gerarPDFBase64(){
       row('Valor da Ação:',a.acao_valor?'R$ '+Number(a.acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'');
       row('Recurso Próprio/Rend.:',a.valor_proprio?'R$ '+a.valor_proprio:'');
       row('Valor Executado:',a.valor_executado?'R$ '+a.valor_executado:'');
-      row('Valor Total:',(function(){
-        const exec=parseBRL(a.valor_executado);const prop=parseBRL(a.valor_proprio);
-        const total=exec+prop;
-        return total?'R$ '+total.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
-      })());
+      row('Valor Total:',a.valor_total_utilizado?'R$ '+a.valor_total_utilizado:'');
       row('Fonte de Recurso/Rend.:',a.fonte_recurso);
       // Lotes de equipamentos
       if(!ob&&a._lotes&&a._lotes.length){
@@ -5089,6 +5090,7 @@ async function carregarHistoricoBimestreAnterior(instrumento, tipo){
       + '&excluirAno=' + encodeURIComponent(municipio.ano||'');
     const resp = await fetch(url);
     const data = await resp.json();
+    console.log('carregarHistoricoBimestreAnterior response:',data);
     if(data.status !== 'ok' || !data.registros?.length) return null;
     // Já vem ordenado do mais recente para o mais antigo — devolve tudo
     // (aplicarHistoricoNaAcao usa o último elemento do array, então invertemos
@@ -5368,7 +5370,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-57 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-58 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
