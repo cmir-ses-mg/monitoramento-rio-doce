@@ -1997,29 +1997,12 @@ function contentHTML(){
 
   if(phase===5){
     const _valorGlobal=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);
-    // Valor total executado ACUMULADO, de TODAS as ações do plano — mesmo as
-    // que ainda não foram abertas neste bimestre. Para as já tocadas nesta
-    // sessão, usa o valor_total_utilizado em memória (mais atualizado). Para
-    // as demais, usa o valor histórico buscado do servidor (qualquer
-    // bimestre), cacheado por município — sem isso, ações ainda não clicadas
-    // nesta sessão contavam como R$ 0, subestimando muito o total real.
-    _dispararBuscaValorExecutadoTotalSeNecessario(municipio.municipio||'');
-    const _histMap=(_valorExecTotalCache.municipio===(municipio.municipio||'')?_valorExecTotalCache.valores:null)||{};
-    const planAll0=getAllPlanActions(municipio.municipio||'');
-    const linhas0=[];
-    planAll0.forEach(function(item){
-      const unidades=unidadesDoItem(municipio.municipio||'',item);
-      if(unidades){unidades.forEach(function(u){linhas0.push({instrumento:item.instrumento,tipo:u.tipo});});}
-      else{linhas0.push({instrumento:item.instrumento,tipo:item.tipo});}
-    });
-    const _execTotalAcumulado=linhas0.reduce(function(s,linha){
-      const key=acqKey(linha.instrumento,linha.tipo);
-      const aIdx=aquisicoes.findIndex(function(a){return a._key===key;});
-      if(aIdx>=0&&aquisicoes[aIdx].modalidade_objeto){
-        return s+parseBRL(aquisicoes[aIdx].valor_total_utilizado||'');
-      }
-      const chaveHist=(linha.instrumento||'').toLowerCase()+'||'+(linha.tipo||'').toLowerCase();
-      return s+parseBRL(_histMap[chaveHist]||'');
+    // Valor total executado ACUMULADO — soma o valor_total_utilizado de cada
+    // ação já tocada (esse campo já é cumulativo entre bimestres, calculado
+    // em calcTotalUtilizado/calcExecutadoLotes/calcAtividades), independente
+    // do bimestre atual. É a visão "quanto já foi executado no total".
+    const _execTotalAcumulado=aquisicoes.filter(function(a){return a.modalidade_objeto;}).reduce(function(s,a){
+      return s+parseBRL(a.valor_total_utilizado||'');
     },0);
     const _pctTotal=_valorGlobal>0?Math.max(0,Math.min(100,Math.round((_execTotalAcumulado/_valorGlobal)*100))):0;
     const planAll=getAllPlanActions(municipio.municipio||'');
@@ -2070,7 +2053,7 @@ function contentHTML(){
           <div class="resumo-item"><div class="r-lbl">Bimestre</div><div class="r-val">${municipio.bimestre||''} / ${municipio.ano||''}</div></div>
         </div>
         <div class="resumo-grid" style="margin-top:7px">
-          <div class="resumo-item"><div class="r-lbl">Valor total executado (todos os bimestres)</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ ${_execTotalAcumulado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>${_valorExecTotalCache.municipio!==(municipio.municipio||'')?'<div style="font-size:10px;color:var(--ink3);margin-top:2px">Atualizando com o histórico completo...</div>':''}</div>
+          <div class="resumo-item"><div class="r-lbl">Valor total executado (todos os bimestres)</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ ${_execTotalAcumulado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
           <div class="resumo-item"><div class="r-lbl">Valor total do plano</div><div class="r-val ${!_valorGlobal?'none':''}">${_valorGlobal?'R$ '+_valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'Não informado'}</div></div>
         </div>
         <div style="margin-top:14px">
@@ -5079,32 +5062,6 @@ async function buscarExecutadoHistorico(instrumento,tipo){
 
 // Versão detalhada: retorna {valor, registros} para permitir auditoria do que
 // está sendo somado em "Já pago (bimestres anteriores)".
-// ── VALOR TOTAL EXECUTADO DO MUNICÍPIO (todos os bimestres, todas as ações) ──
-// Cache simples: busca uma vez por município e reaproveita até trocar de
-// município. Ao carregar, redesenha a tela (se ainda estiver na Revisão e
-// Envio) pra atualizar o total com o dado real vindo do servidor.
-let _valorExecTotalCache={municipio:null,valores:null,loading:false};
-async function buscarValorExecutadoTotalMunicipioServidor(municipioNome){
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return null;
-  try{
-    const url=APPS_SCRIPT_URL+'?acao=buscarValorExecutadoTotalMunicipio&municipio='+encodeURIComponent(municipioNome||'');
-    const resp=await fetch(url);
-    const j=await resp.json();
-    if(j&&j.status==='ok')return j.valores||{};
-    return null;
-  }catch(e){ console.error('buscarValorExecutadoTotalMunicipioServidor erro:',e); return null; }
-}
-function _dispararBuscaValorExecutadoTotalSeNecessario(municipioNome){
-  if(!municipioNome)return;
-  if(_valorExecTotalCache.municipio===municipioNome)return; // já tem (ou já está buscando) para este município
-  if(_valorExecTotalCache.loading)return;
-  _valorExecTotalCache.loading=true;
-  buscarValorExecutadoTotalMunicipioServidor(municipioNome).then(function(valores){
-    _valorExecTotalCache={municipio:municipioNome,valores:valores||{},loading:false};
-    if(phase===5)renderAll();
-  });
-}
-
 async function buscarExecutadoHistoricoDetalhado(instrumento,tipo){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return {valor:0,registros:0};
   if(!municipio.municipio||!instrumento||!tipo)return {valor:0,registros:0};
@@ -5447,7 +5404,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-61 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-60 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
