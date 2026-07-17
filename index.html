@@ -991,6 +991,7 @@ function getOrCreateAcq(instrumento, tipo, planItem){
   if(idx===-1){
     // Pré-preencher com dados do plano
     const sugerido=detectarTipoMonitoramento(instrumento,planItem.tipo);
+    console.log('[getOrCreateAcq] criando ação:',instrumento,tipo,'| valor do plano recebido:',planItem.valor);
     aquisicoes.push({
       _key:key,
       acao_instrumento:instrumento,
@@ -3407,6 +3408,7 @@ function _renderLotesCardDOM(){
         </div>
         <div style="font-size:13px;font-weight:700;color:var(--g700)">R$ ${totLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <button onclick="editarLote(${realIdx})" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">✏️ Editar</button>
+        <button onclick="removerLote(${realIdx})" title="Excluir lote" style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;background:#fff;color:#C94040;cursor:pointer;font-family:var(--font)">🗑️</button>
       </div>`;
     c.appendChild(div);
   });
@@ -3419,7 +3421,7 @@ function _renderLotesCardDOM(){
     if(!lote._listaId && a._listas.length===1){ lote._listaId=a._listas[0].id; }
 
     const listaAtual=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
-    const poolDisp=listaAtual?listaAtual.itens:[];
+    const poolDisp=_getPoolDoLote(editIdx);
 
     const div=document.createElement('div');
     div.id='lote-editor';
@@ -3551,9 +3553,16 @@ async function sincronizarListasManual(){
 function _getPoolDoLote(editIdx){
   const a=acq();
   const lote=a._lotes[editIdx];
-  if(!lote||!lote._listaId)return [];
-  const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
-  return lista?lista.itens:[];
+  if(!lote)return [];
+  const lista=lote._listaId?(a._listas||[]).find(function(ls){return ls.id===lote._listaId;}):null;
+  const poolItens=lista?lista.itens:[];
+  // Garante que os itens já presentes neste lote apareçam mesmo que a lista
+  // de importação original não esteja disponível nesta sessão/navegador —
+  // ex: lote confirmado por outra pessoa e sincronizado do servidor, sem o
+  // "pool" de itens importados que só existe localmente em quem importou.
+  const idsNoPool=new Set(poolItens.map(function(it){return it._pid;}));
+  const itensDoLoteFaltando=(lote.itens||[]).filter(function(it){return !idsNoPool.has(it._pid);});
+  return poolItens.concat(itensDoLoteFaltando);
 }
 
 function renderPoolHTML(editIdx){
@@ -3679,6 +3688,27 @@ function editarLote(realIdx){
   }
   lote.confirmado=false;
   _renderLotesCardDOM();
+}
+
+function removerLote(realIdx){
+  const a=acq();
+  const lote=a._lotes[realIdx];
+  if(!lote)return;
+  showConfirmModal('Excluir lote?','Esta ação não pode ser desfeita. O lote e seus itens serão removidos.','Excluir','🗑️','#C94040').then(function(ok){
+    if(!ok)return;
+    // Devolver itens à lista de origem, se ela existir nesta sessão
+    const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
+    if(lista){
+      lote.itens.forEach(function(it){
+        if(!lista.itens.find(function(p){return p._pid==it._pid;}))lista.itens.push(it);
+      });
+    }
+    excluirLoteEquipamentoServidor(lote);
+    a._lotes.splice(realIdx,1);
+    if(!a._lotes.length)a._lotes.push({modalidade:'',num_processo:'',valor_executado:'',itens:[],confirmado:false,_listaId:null});
+    _renderLotesCardDOM();
+    calcExecutadoLotes();
+  });
 }
 
 function addLote(){
@@ -4295,7 +4325,9 @@ async function doSubmit(){
       const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
     const ob=_tipoAuto==='obra';
     const servico=_tipoAuto==='servico';
-      return`<div class="sac-row"><span class="sac-n">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':servico?'🛠️ ':'📦 '}${a.acao_tipo}</span><span style="flex-shrink:0;font-size:11px;color:var(--ink3);margin-left:8px">${a.status_aquisicao||'—'}</span></div>`;
+      const _valorPlanoAcq=parseBRL(a.acao_valor||'')||0;
+      const _pctAcq=_valorPlanoAcq>0?Math.max(0,Math.min(100,Math.round((parseBRL(a.valor_total_utilizado||'')/_valorPlanoAcq)*100))):0;
+      return`<div class="sac-row"><span class="sac-n">#${i+1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ob?'🏗️ ':servico?'🛠️ ':'📦 '}${a.acao_tipo}</span><span style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--g700);margin-left:8px">${_pctAcq}% executado</span></div>`;
     }).join('');
   document.getElementById('successWrap').style.display='block';
 }
@@ -5370,7 +5402,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-58 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-59 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
@@ -5805,6 +5837,23 @@ function salvarLoteEquipamentoServidor(lote){
         data_homologacao:lote.data_homologacao||'', prazo_entrega:lote.prazo_entrega||'',
         data_prev_entrega:lote.data_prev_entrega||'', itens:lote.itens||[]
       }
+    })}).catch(function(){});
+  }catch(e){}
+}
+
+function excluirLoteEquipamentoServidor(lote){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return;
+  const a=acq();
+  if(!a.acao_instrumento||!a.acao_tipo) return;
+  if(!lote.modalidade&&!lote.num_processo) return;
+  try{
+    fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({
+      acao:'excluirLoteEquipamento',
+      municipio:municipio.municipio||'',
+      acao_instrumento:a.acao_instrumento||'',
+      acao_tipo:a.acao_tipo||'',
+      modalidade:lote.modalidade||'',
+      num_processo:lote.num_processo||''
     })}).catch(function(){});
   }catch(e){}
 }
