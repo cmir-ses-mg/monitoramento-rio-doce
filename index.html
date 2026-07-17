@@ -1295,7 +1295,7 @@ function renderBadge(){
     const periodo=(municipio.bimestre||'')+(municipio.ano?' · '+municipio.ano:'');
     const nome=_sessaoUsuario?(_sessaoUsuario.nome||_sessaoUsuario.email||'').split(' ')[0]:'';
     el.innerHTML=(mun?(mun+(periodo?' · '+periodo:'')):(nome||''))
-      +'<button onclick="doLogout()" style="margin-left:10px;padding:3px 10px;font-size:11px;font-weight:600;font-family:var(--font);border:1.5px solid rgba(255,255,255,.35);border-radius:5px;background:transparent;color:#fff;cursor:pointer;vertical-align:middle">Sair</button>';
+      +'<button onclick="doLogout()" style="margin-left:10px;padding:3px 10px;font-size:11px;font-weight:600;font-family:var(--font);border:1.5px solid #bbb;border-radius:5px;background:#fff;color:#222;cursor:pointer;vertical-align:middle">Sair</button>';
     el.classList.add('visible');
   }else{el.innerHTML='';el.classList.remove('visible');}
 }
@@ -2090,7 +2090,7 @@ function renderNav(){
   }
   if(phase===5){
     info.innerHTML=`<strong>${filled}/${planTotal||'?'}</strong> ações preenchidas`;
-    btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}<button class="btn btn-send" onclick="submitForm()">${iS} Enviar tudo</button>`;
+    btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}<button class="btn btn-send" onclick="submitForm()">${iS} Baixar PDF</button>`;
   }
 }
 
@@ -4240,7 +4240,7 @@ async function doSubmit(){
   // Enviar PDF ao Drive
   try{ await enviarPDFDrive(); }catch(e){ console.warn('Drive PDF:', e); }
   // Reset button state
-  if(btn){btn.disabled=false;btn.innerHTML=iS+' Enviar tudo';}
+  if(btn){btn.disabled=false;btn.innerHTML=iS+' Baixar PDF';}
   // Hide main UI
   ['mainContent','navBar','phaseBarWrap'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
   const appLayout=document.querySelector('.app-layout');if(appLayout)appLayout.style.display='none';
@@ -5058,7 +5058,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!registros || !registros.length) return;
   const reg = registros[registros.length-1];
 
-  // 1. Empresa e contrato
+  // 1. Empresa e contrato (agora preenchidos pelo servidor via aba Empresas)
   if(!acqObj.empresa_nome && reg.empresa_nome) acqObj.empresa_nome = reg.empresa_nome;
   if(!acqObj.empresa_cnpj && reg.empresa_cnpj) acqObj.empresa_cnpj = reg.empresa_cnpj;
   if(!acqObj.num_contrato && reg.num_contrato) acqObj.num_contrato = reg.num_contrato;
@@ -5072,16 +5072,23 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!acqObj.modalidade && reg.modalidade) acqObj.modalidade = reg.modalidade;
   if(!acqObj.num_processo && reg.num_processo) acqObj.num_processo = reg.num_processo;
 
-  // 3. Status de contratação (não concluir automaticamente)
+  // 3. Status e processo (campos que evoluem entre bimestres)
+  if(!acqObj.status_aquisicao && reg.status_aquisicao) acqObj.status_aquisicao = reg.status_aquisicao;
+  if(!acqObj.fonte_recurso && reg.fonte_recurso) acqObj.fonte_recurso = reg.fonte_recurso;
+  if(!acqObj.link_publicacao && reg.link_publicacao) acqObj.link_publicacao = reg.link_publicacao;
+  if(!acqObj.data_inicio && reg.data_inicio) acqObj.data_inicio = reg.data_inicio;
+  if(!acqObj.data_conclusao && reg.data_conclusao) acqObj.data_conclusao = reg.data_conclusao;
+  if(!acqObj.descricao_item && reg.descricao_item) acqObj.descricao_item = reg.descricao_item;
+  if(!acqObj.quantidade && reg.quantidade) acqObj.quantidade = String(reg.quantidade);
+
+  // 4. Status de contratação — mantém fase anterior (exceto Concluído que precisa reavaliação)
   if(!acqObj._status_contrat && reg.fase_contratacao && reg.fase_contratacao !== 'Concluído'){
     acqObj._status_contrat = reg.fase_contratacao;
   }
 
-  // 4. Valor executado histórico
-  if(reg.tipo_registro === 'Conclusao' || reg.tipo_registro === 'Conclusão'){
-    const valExec = parseFloat((reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
-    if(valExec > 0 && !acqObj._executado_historico) acqObj._executado_historico = valExec;
-  }
+  // 5. Valor executado histórico — usa valor_total_utilizado que já é acumulativo
+  const valHist = parseFloat((reg.valor_total_utilizado||reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+  if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
 
   // 5. Tentar carregar lotes da sessão anterior salva no localStorage
   // Procurar sessões salvas com o mesmo município+ação de bimestres anteriores
