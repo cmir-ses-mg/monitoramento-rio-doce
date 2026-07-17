@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. </span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.</span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1949,16 +1949,8 @@ function contentHTML(){
           +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;color:'+statusBadgeColor+'">'+status+'</span>'
         +'</div>'
         +(status==='Planejamento'||status==='Processo aberto'
-          ? '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:10px 0 0">Este lote ainda n\u00e3o foi contratado. Atualize o status na etapa de Contrata\u00e7\u00e3o.</div>'
-          : '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 0">Contrato '+(lote.num_contrato||'\u2014')+' \u00b7 Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'\u2014')+'. Para atualizar a situa\u00e7\u00e3o da entrega, use a etapa de Contrata\u00e7\u00e3o.</div>'
-            +'<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border2)">'
-              +'<div style="font-size:11.5px;font-weight:600;color:var(--ink2);margin-bottom:6px">\uD83D\uDCF7 Registro fotogr\u00e1fico deste lote</div>'
-              +'<input type="file" style="display:none" id="file_fotos_lote_'+li+'" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles(\'fotos_lote_'+li+'\',this.files)"/>'
-              +'<div class="upload-zone" onclick="triggerUpload(\'fotos_lote_'+li+'\')" style="padding:10px">'
-                +'<div class="upload-zone-text" style="font-size:12px"><strong>Clique para anexar fotos</strong> deste lote (JPG, PNG, HEIC)</div>'
-              +'</div>'
-              +'<div class="file-list" id="files_fotos_lote_'+li+'">'+renderFilePills('fotos_lote_'+li)+'</div>'
-            +'</div>')
+          ? '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:10px 0 0">Este lote ainda não foi contratado. Atualize o status na etapa de Contratação.</div>'
+          : '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 0">Contrato '+(lote.num_contrato||'—')+' · Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'—')+'. Para atualizar a situação da entrega, use a etapa de Contratação.</div>')
       +'</div>';
     }).join('')
     +'<div class="card">'
@@ -1991,7 +1983,22 @@ function contentHTML(){
 
   if(phase===5){
     const _valorGlobal=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);
-    const muItems=[['Município',municipio.municipio],['Bimestre',`${municipio.bimestre||''} / ${municipio.ano||''}`],['Valor total do plano',_valorGlobal?'R$ '+_valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'']];
+    // Soma do executado NESTE bimestre, por tipo de ação (obra/serviço usa o
+    // campo direto; equipamento soma os lotes confirmados; custeio soma as
+    // atividades confirmadas) — para dar uma visão geral do % executado.
+    const _execBimestreTotal=aquisicoes.filter(function(a){return a.modalidade_objeto;}).reduce(function(s,a){
+      if(a.modalidade_objeto==='equipamento'){
+        return s+(a._lotes||[]).filter(function(l){return l.confirmado;}).reduce(function(ss,l){return ss+parseBRL(l.valor_contratado||'');},0);
+      }
+      if(a.modalidade_objeto==='servico'&&a._atividades&&a._atividades.length){
+        return s+(a._atividades||[]).filter(function(at){return at.confirmado;}).reduce(function(ss,at){return ss+(at.empresas||[]).reduce(function(sss,e){return sss+parseBRL(e.valor||'');},0);},0);
+      }
+      return s+parseBRL(a.valor_executado||'');
+    },0);
+    const _pctBimestre=_valorGlobal>0?Math.round((_execBimestreTotal/_valorGlobal)*100):0;
+    const muItems=[['Município',municipio.municipio],['Bimestre',`${municipio.bimestre||''} / ${municipio.ano||''}`],
+      ['Valor total do plano',_valorGlobal?'R$ '+_valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):''],
+      ['Executado neste bimestre',_execBimestreTotal>0?'R$ '+_execBimestreTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})+' ('+_pctBimestre+'% do plano)':'R$ 0,00']];
     const planAll=getAllPlanActions(municipio.municipio||'');
     const ILBL4={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
     // Desmembra itens com múltiplas unidades (ex: "4 UBS tipo I") em N linhas
@@ -2035,7 +2042,7 @@ function contentHTML(){
       ${''/* aviso de ações não preenchidas removido: a lista abaixo já mostra tudo */}
       <div class="card">
         <div class="card-title">Identificação do município</div>
-        <div class="resumo-grid">${muItems.map(([l,v])=>`<div class="resumo-item" style="${l==='Valor total do plano'?'grid-column:1/-1':''}"><div class="r-lbl">${l}</div><div class="r-val ${!v?'none':''}">${v||'Não informado'}</div></div>`).join('')}</div>
+        <div class="resumo-grid">${muItems.map(([l,v])=>`<div class="resumo-item" style="${(l==='Valor total do plano'||l==='Executado neste bimestre')?'grid-column:1/-1':''}"><div class="r-lbl">${l}</div><div class="r-val ${!v?'none':''}" style="${l==='Executado neste bimestre'?'color:var(--g700);font-weight:700':''}">${v||'Não informado'}</div></div>`).join('')}</div>
       </div>
       <div class="card">
         <div class="card-title">${(()=>{const n=linhas.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
@@ -5318,7 +5325,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-49 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-53 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
@@ -5408,7 +5415,7 @@ function _renderAtividadesCardDOM(){
     div.innerHTML='<div style="background:var(--g50);padding:10px 14px;display:flex;align-items:center;gap:10px">'
       +'<div style="width:26px;height:26px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u2713</div>'
       +'<div style="flex:1;min-width:0">'
-        +'<div style="font-size:12px;color:var(--ink3);margin-bottom:2px">'+('Item '+(at.item_num||'?'))+'</div>'
+        +(at.item_num?'<div style="font-size:12px;color:var(--ink3);margin-bottom:2px">'+('Item '+at.item_num)+'</div>':'')
         +'<div style="font-size:13px;font-weight:700;color:var(--g800)">'+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
         +'<div style="font-size:11px;color:var(--ink3);margin-top:2px">'+(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){return e.nome;}).join(', ')+'&nbsp;&middot;&nbsp;<span style="color:'+cor+';font-weight:600">'+at._status+'</span></div>'
       +'</div>'
@@ -5617,8 +5624,6 @@ function confirmarAtividade(idx){
   if(STATUS_EXIGE_EMP.includes(at._status)&&!(at.empresas||[]).some(function(e){return e.nome;})){showAlertModal('Adicione ao menos uma empresa.','⚠️');return;}
   at.confirmado=true;
   salvarAtividadeCusteioServidor(at);
-  // Abre automaticamente a próxima atividade (com opção de cancelar via botão separado)
-  a._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
   _renderAtividadesCardDOM();calcAtividades();
 }
 
