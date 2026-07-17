@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. </span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. <span style="opacity:.45;font-size:10px">v2026.07.14-44</span></span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1294,8 +1294,12 @@ function renderBadge(){
     const mun=municipio.municipio||'';
     const periodo=(municipio.bimestre||'')+(municipio.ano?' · '+municipio.ano:'');
     const nome=_sessaoUsuario?(_sessaoUsuario.nome||_sessaoUsuario.email||'').split(' ')[0]:'';
-    el.innerHTML=(mun?(mun+(periodo?' · '+periodo:'')):(nome||''))
-      +'<button onclick="doLogout()" style="margin-left:10px;padding:3px 10px;font-size:11px;font-weight:600;font-family:var(--font);border:1.5px solid #bbb;border-radius:5px;background:#fff;color:#222;cursor:pointer;vertical-align:middle">Sair</button>';
+    el.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px">'
+      +'<span>'+(mun?(mun+(periodo?' · '+periodo:'')):(nome||''))+'</span>'
+      +'<span style="width:1px;height:12px;background:var(--border2);display:inline-block"></span>'
+      +'<button onclick="doLogout()" onmouseover="this.style.background=\'var(--g200)\';this.style.color=\'var(--g900)\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--g700)\'" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;font-size:10px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:transparent;color:var(--g700);cursor:pointer;transition:background .15s,color .15s">'
+      +'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
+      +'Sair</button></span>';
     el.classList.add('visible');
   }else{el.innerHTML='';el.classList.remove('visible');}
 }
@@ -2013,7 +2017,7 @@ function contentHTML(){
           <div class="acq-num">${i+1}</div>
           <div style="min-width:0;flex:1">
             <div class="acq-ov-title">${icon} ${item.tipo.replace(/\n.*/,'')}</div>
-            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
+            <div class="acq-ov-sub">${ILBL4[item.instrumento]||item.instrumento} · R$ ${a&&a.valor_executado?a.valor_executado:'—'}${_tipoDetect==='obra'&&a?' · '+calcPctExecucaoAuto(a)+'% executado (automático)':''}${a&&a.endereco_obra?' · 📍 '+a.endereco_obra:''}</div>
           </div>
           ${(()=>{
             const st=calcAcqStatus(a);
@@ -2090,7 +2094,7 @@ function renderNav(){
   }
   if(phase===5){
     info.innerHTML=`<strong>${filled}/${planTotal||'?'}</strong> ações preenchidas`;
-    btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}<button class="btn btn-send" onclick="submitForm()">${iS} Baixar PDF</button>`;
+    btns.innerHTML=`${phase>1?'<button class="btn" onclick="prevPhase()">'+ iL +' Anterior</button>':''}<button class="btn btn-send btn-send-nav" onclick="submitForm()">${iS} Enviar tudo</button>`;
   }
 }
 
@@ -4183,6 +4187,9 @@ function restoreInputs(){
     if(phase===1||phase===2){
       setTimeout(function(){calcTotalUtilizado();},50);
     }
+    if((phase===1||phase===3)&&a.acao_tipo&&a.modalidade_objeto&&a.modalidade_objeto!=='equipamento'&&a._executado_historico===undefined){
+      setTimeout(carregarExecutadoHistorico,300);
+    }
     // Aplicar condicionais com base nos valores salvos
     applyConditionals();
     // Restaurar lista de empresas se visível
@@ -4223,7 +4230,7 @@ async function submitForm(){
 
 async function doSubmit(){
   const iS=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
-  const btn=document.querySelector('.btn-send');
+  const btn=document.querySelector('.btn-send-nav');
   if(btn){btn.disabled=true;btn.innerHTML='Enviando...';}
   try{
     if(APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('COLE_AQUI')){
@@ -4240,7 +4247,7 @@ async function doSubmit(){
   // Enviar PDF ao Drive
   try{ await enviarPDFDrive(); }catch(e){ console.warn('Drive PDF:', e); }
   // Reset button state
-  if(btn){btn.disabled=false;btn.innerHTML=iS+' Baixar PDF';}
+  if(btn){btn.disabled=false;btn.innerHTML=iS+' Enviar tudo';}
   // Hide main UI
   ['mainContent','navBar','phaseBarWrap'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
   const appLayout=document.querySelector('.app-layout');if(appLayout)appLayout.style.display='none';
@@ -4756,7 +4763,7 @@ async function _verificarSessaoExistente(){
     const div=document.createElement('div');
     div.id='sessao-banner-temp';
     div.style.cssText='background:var(--g50);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:var(--ink3)';
-    div.textContent='⏳ Carregando dados...';
+    div.textContent='⏳ Carregando dados da planilha...';
     const sh=mc.querySelector('.step-head');
     if(sh)mc.insertBefore(div,sh);else mc.prepend(div);
   }
@@ -5058,7 +5065,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!registros || !registros.length) return;
   const reg = registros[registros.length-1];
 
-  // 1. Empresa e contrato (agora preenchidos pelo servidor via aba Empresas)
+  // 1. Empresa e contrato
   if(!acqObj.empresa_nome && reg.empresa_nome) acqObj.empresa_nome = reg.empresa_nome;
   if(!acqObj.empresa_cnpj && reg.empresa_cnpj) acqObj.empresa_cnpj = reg.empresa_cnpj;
   if(!acqObj.num_contrato && reg.num_contrato) acqObj.num_contrato = reg.num_contrato;
@@ -5072,23 +5079,16 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!acqObj.modalidade && reg.modalidade) acqObj.modalidade = reg.modalidade;
   if(!acqObj.num_processo && reg.num_processo) acqObj.num_processo = reg.num_processo;
 
-  // 3. Status e processo (campos que evoluem entre bimestres)
-  if(!acqObj.status_aquisicao && reg.status_aquisicao) acqObj.status_aquisicao = reg.status_aquisicao;
-  if(!acqObj.fonte_recurso && reg.fonte_recurso) acqObj.fonte_recurso = reg.fonte_recurso;
-  if(!acqObj.link_publicacao && reg.link_publicacao) acqObj.link_publicacao = reg.link_publicacao;
-  if(!acqObj.data_inicio && reg.data_inicio) acqObj.data_inicio = reg.data_inicio;
-  if(!acqObj.data_conclusao && reg.data_conclusao) acqObj.data_conclusao = reg.data_conclusao;
-  if(!acqObj.descricao_item && reg.descricao_item) acqObj.descricao_item = reg.descricao_item;
-  if(!acqObj.quantidade && reg.quantidade) acqObj.quantidade = String(reg.quantidade);
-
-  // 4. Status de contratação — mantém fase anterior (exceto Concluído que precisa reavaliação)
+  // 3. Status de contratação (não concluir automaticamente)
   if(!acqObj._status_contrat && reg.fase_contratacao && reg.fase_contratacao !== 'Concluído'){
     acqObj._status_contrat = reg.fase_contratacao;
   }
 
-  // 5. Valor executado histórico — usa valor_total_utilizado que já é acumulativo
-  const valHist = parseFloat((reg.valor_total_utilizado||reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
-  if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
+  // 4. Valor executado histórico
+  if(reg.tipo_registro === 'Conclusao' || reg.tipo_registro === 'Conclusão'){
+    const valExec = parseFloat((reg.valor_executado||'0').toString().replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+    if(valExec > 0 && !acqObj._executado_historico) acqObj._executado_historico = valExec;
+  }
 
   // 5. Tentar carregar lotes da sessão anterior salva no localStorage
   // Procurar sessões salvas com o mesmo município+ação de bimestres anteriores
@@ -5298,7 +5298,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-41 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-44 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
