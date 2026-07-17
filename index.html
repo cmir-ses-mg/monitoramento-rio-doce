@@ -4622,10 +4622,12 @@ function calcExecutadoLotes(){
   const elTot=document.getElementById('val_total_auto_equip');
   const elGrand=document.getElementById('lotes_grand_total');
   const elFin=document.getElementById('val_financiamento_equip');
-  // Usa o contratado (preenchido na Contratação) quando existir; senão cai
-  // pra soma das listas importadas — assim o aviso de excedente já aparece
-  // logo depois de importar a lista, sem precisar ir até a próxima aba.
-  const baseComparacao=exec>0?exec:lista;
+  // Usa o contratado NESTE bimestre (preenchido na Contratação) quando existir;
+  // senão cai pra soma das listas importadas — assim o aviso de excedente já
+  // aparece logo depois de importar a lista, sem precisar ir até a próxima aba.
+  // Importante: NÃO usar o histórico acumulado aqui (isso já é tratado à parte
+  // em "Valor total utilizado") — misturá-lo mascarava o financiamento real.
+  const baseComparacao=execAtualTela>0?execAtualTela:lista;
   if(elLi)elLi.textContent=fmt(lista);
   if(elHist)elHist.textContent=fmt(historico);
   if(elTot)elTot.textContent=fmt(total);
@@ -5402,7 +5404,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-59 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-60 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
