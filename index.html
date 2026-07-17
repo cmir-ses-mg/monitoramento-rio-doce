@@ -723,7 +723,7 @@ window.onerror = function(msg, src, line, col, err) {
   <div class="nav-info" id="navInfo"></div>
   <div class="nav-footer-brand">
     <img id="nav-footer-logo-img" src="" class="nav-footer-logo" alt="Reparação Rio Doce" onerror="this.style.display='none'"/>
-    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas.</span>
+    <span class="nav-footer-text">Iniciativa realizada com recursos do Acordo de Reparação do Rio Doce, firmado em decorrência do rompimento da Barragem de Fundão, da Samarco S.A. O rompimento, ocorrido em 5 de novembro de 2015, tirou a vida de 19 pessoas. </span>
   </div>
   <div class="nav-btns" id="navBtns"></div>
 </nav>
@@ -1773,6 +1773,7 @@ function contentHTML(){
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Dados financeiros</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 12px">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
       <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px;margin-top:10px">
         <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
           <span>Já executado (bimestres anteriores)</span>
@@ -1784,7 +1785,7 @@ function contentHTML(){
         ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
         ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
-      <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(executado neste bimestre + histórico + recurso próprio)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
+      <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(executado neste bimestre, já incluindo recurso próprio + histórico acumulado)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -2383,7 +2384,7 @@ function gerarPDFBase64(){
         const total=exec+prop;
         return total?'R$ '+total.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
       })());
-      row('Fonte de Recurso:',a.fonte_recurso);
+      row('Fonte de Recurso/Rend.:',a.fonte_recurso);
       // Lotes de equipamentos
       if(!ob&&a._lotes&&a._lotes.length){
         a._lotes.forEach(function(lote,li){
@@ -2603,7 +2604,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
     // bimestre + histórico acumulado dos bimestres anteriores + recurso próprio.
     const valorTotalUtilizadoFinal=temLotes
       ?(valorPagoLotes+(a._executado_historico||0)+parseBRL(a.valor_proprio||''))
-      :(parseBRL(a.valor_executado||'')+parseBRL(a._executado_historico||0)+parseBRL(a.valor_proprio||''));
+      :(parseBRL(a.valor_executado||'')+parseBRL(a._executado_historico||0));
     const payload=Object.assign({},municipio,a,{
       _nfs:undefined,_docs:undefined,_medicoes:undefined,_empresas:undefined,_lotes:undefined,_pool:undefined,
       _key:undefined,_locked:undefined,_sent:undefined,_sentAt:undefined,_corrections:undefined,
@@ -4504,7 +4505,7 @@ function calcTotalUtilizado(){
   } else {
     executado=parseBRL(acq().valor_executado||''); // executado NESTE bimestre
     const historico=parseBRL(acq()._executado_historico||0); // acumulado dos bimestres anteriores
-    const totalUtilizado=executado+historico+proprio; // soma de tudo — cada bimestre acrescenta ao total
+    const totalUtilizado=executado+historico; // recurso próprio já está DENTRO do executado (é um detalhamento, não um valor extra)
     const elAuto=document.getElementById('val_total_auto');
     const formattedObra=totalUtilizado>0?totalUtilizado.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
     if(elAuto)elAuto.value=formattedObra;
@@ -5317,7 +5318,7 @@ function selecionarListaParaLote(editIdx, listaId){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-47 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.07.14-49 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
