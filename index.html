@@ -4903,18 +4903,9 @@ function _popularMunicipiosCad(){
 async function _verificarSessaoExistente(){
   if(!municipio.municipio||!municipio.bimestre||!municipio.ano)return;
   const mc=document.getElementById('mainContent');if(!mc)return;
-  document.getElementById('sessao-banner-temp')?.remove();
   const mun0=municipio.municipio,bim0=municipio.bimestre,ano0=municipio.ano;
 
-  function _mostrarCarregando(){
-    const div=document.createElement('div');
-    div.id='sessao-banner-temp';
-    div.style.cssText='background:var(--g50);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:var(--ink3)';
-    div.textContent='⏳ Carregando dados...';
-    const sh=mc.querySelector('.step-head');
-    if(sh)mc.insertBefore(div,sh);else mc.prepend(div);
-  }
-  _mostrarCarregando();
+  showLoading('Carregando dados...');
 
   // Sempre busca da planilha (fonte de verdade) — nunca confia só no que está
   // salvo no navegador. Isso evita duas máquinas/navegadores divergirem.
@@ -4934,8 +4925,8 @@ async function _verificarSessaoExistente(){
     }catch(e){}
   }
   // Checagem de corrida: usuário pode ter mudado o período durante a busca.
-  if(municipio.municipio!==mun0||municipio.bimestre!==bim0||municipio.ano!==ano0)return;
-  document.getElementById('sessao-banner-temp')?.remove();
+  if(municipio.municipio!==mun0||municipio.bimestre!==bim0||municipio.ano!==ano0){hideLoading();return;}
+  hideLoading();
 
   aquisicoes.length=0;
   if(registros&&registros.length){
@@ -5838,12 +5829,19 @@ function calcAtividades(){
   if(elH)elH.textContent=fmt(hist+pago);if(elG)elG.textContent=fmt(vlrC);
   if(elFin){
     const valorPlano=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
-    if(!vlrC){
+    // "Farol" de orçamento: usa o MAIOR entre o valor contratado das atividades
+    // (já cumulativo entre bimestres) e o histórico separado vindo da planilha —
+    // nunca soma os dois (dobraria a conta na maioria dos casos), mas também
+    // nunca ignora o histórico (evita deixar passar um estouro real quando as
+    // atividades detalhadas não capturam tudo, ex: dados de antes desse
+    // sistema de atividades existir).
+    const vlrParaChecagem=Math.max(vlrC,hist);
+    if(!vlrC&&!hist){
       elFin.innerHTML='<span style="color:var(--ink3)">Nenhuma atividade contratada ainda.</span>';
-    }else if(valorPlano<=0||vlrC<=valorPlano){
-      elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(vlrC)+'</strong>';
+    }else if(valorPlano<=0||vlrParaChecagem<=valorPlano){
+      elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(vlrParaChecagem)+'</strong>';
     }else{
-      const excedente=vlrC-valorPlano;
+      const excedente=vlrParaChecagem-valorPlano;
       const coberto=prop>=excedente;
       elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio/rendimentos: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(prop)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'');
     }
