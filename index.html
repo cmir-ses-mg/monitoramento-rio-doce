@@ -1553,6 +1553,23 @@ function removeFile(key,i){
   const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePills(key);
 }
 
+function handleFilesMun(key,files){
+  if(!arquivos['mun_'+key])arquivos['mun_'+key]=[];
+  Array.from(files).forEach(f=>arquivos['mun_'+key].push(f));
+  const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePillsMun(key);
+}
+function renderFilePillsMun(key){
+  return(arquivos['mun_'+key]||[]).map((f,i)=>`
+    <div class="file-pill">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      ${f.name}<span class="rem" onclick="removeFileMun('${key}',${i})">×</span>
+    </div>`).join('');
+}
+function removeFileMun(key,i){
+  if(arquivos['mun_'+key])arquivos['mun_'+key].splice(i,1);
+  const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePillsMun(key);
+}
+
 function toggleDoc(key,el){
   const item=el.closest('.doc-item');const isOn=item.classList.toggle('on');
   if(!acq()._docs)acq()._docs={};acq()._docs[key]=isOn;
@@ -1720,6 +1737,29 @@ function contentHTML(){
     +'<div class="row2">'+fld('Cargo / Função','cargo','text','Ex: Secretário de Saúde')+fld('Telefone','telefone','tel','(xx) xxxxx-xxxx')+'</div>'
     +fld('E-mail institucional','email','email','exemplo@municipio.mg.gov.br')
     +'</div>'
+    +(municipio.municipio?(function(){
+      const _capaTotal=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);
+      const _capaRecebido=parseBRL(municipio.valor_total_recebido||'');
+      const _capaSaldo=_capaTotal-_capaRecebido;
+      return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
+        +'<div class="card-title">Capa do município — recursos financeiros</div>'
+        +'<div class="resumo-grid" style="margin-bottom:14px">'
+          +'<div class="resumo-item"><div class="r-lbl">Valor total a receber (Plano)</div>'
+          +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_capaTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
+          +'<div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
+          +'<div class="r-lbl">Saldo a receber</div>'
+          +'<div class="r-val" style="color:var(--g600)">R$ '+_capaSaldo.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
+        +'</div>'
+        +fld('Valor total já recebido pelo município (R$)','valor_total_recebido','money')
+        +fld('Rendimentos no período (R$)','rendimentos_periodo','money')
+        +'<p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os rendimentos acima.</p>'
+        +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
+        +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')">'
+          +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>'
+        +'</div>'
+        +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>'
+      +'</div>';
+    })():'')
   );
 
   if(phase===1){
@@ -1810,19 +1850,8 @@ function contentHTML(){
         </div>
       </div>
       <div class="row2">
-        ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
-        ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
-      </div>
-      <div class="row2">
-        ${fld('Rendimentos no período (R$)','rendimentos_periodo','money')}
         ${fld('Saldo em conta (R$)','saldo_conta','money')}
       </div>
-      <p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os campos acima.</p>
-      <input type="file" style="display:none" id="file_extratos_custeio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('extratos_custeio',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('extratos_custeio')">
-        <div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>
-      </div>
-      <div class="file-list" id="files_extratos_custeio">${renderFilePills('extratos_custeio')}</div>
     </div>`:''}
     ${obra&&acq().acao_tipo?`
     <div class="card">
@@ -1841,19 +1870,8 @@ function contentHTML(){
         <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
       </div>
       <div class="row2">
-        ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
-        ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
-      </div>
-      <div class="row2">
-        ${fld('Rendimentos no período (R$)','rendimentos_periodo','money')}
         ${fld('Saldo em conta (R$)','saldo_conta','money')}
       </div>
-      <p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os campos acima.</p>
-      <input type="file" style="display:none" id="file_extratos_obra" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('extratos_obra',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('extratos_obra')">
-        <div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>
-      </div>
-      <div class="file-list" id="files_extratos_obra">${renderFilePills('extratos_obra')}</div>
       <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(executado neste bimestre, já incluindo recurso próprio + histórico acumulado)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
@@ -1881,19 +1899,8 @@ function contentHTML(){
         </div>
       </div>
       <div class="row2">
-        ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
-        ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
-      </div>
-      <div class="row2">
-        ${fld('Rendimentos no período (R$)','rendimentos_periodo','money')}
         ${fld('Saldo em conta (R$)','saldo_conta','money')}
       </div>
-      <p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os campos acima.</p>
-      <input type="file" style="display:none" id="file_extratos_equip" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('extratos_equip',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('extratos_equip')">
-        <div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>
-      </div>
-      <div class="file-list" id="files_extratos_equip">${renderFilePills('extratos_equip')}</div>
     </div>`:''}`;  
   }
 
@@ -2437,6 +2444,34 @@ async function enviarAnexosDrive(a){
   }catch(e){ console.warn('Drive anexos:', e); }
 }
 
+// Envia os extratos bancários do município (capa) ao Drive
+async function enviarAnexosMunicipioDrive(){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
+  const arquivosMun = arquivos['mun_extratos_municipio'] || [];
+  if(!arquivosMun.length)return;
+  const uploads = await Promise.all(arquivosMun.map(async function(f){
+    try{
+      const b64 = await fileToBase64(f);
+      return { nome: f.name, tipo: f.type, b64: b64, subpasta: 'extratos_municipio' };
+    }catch(e){ return null; }
+  }));
+  const payload = {
+    acao: 'uploadAnexos',
+    municipio: municipio.municipio || '',
+    bimestre: municipio.bimestre || '',
+    ano: municipio.ano || '',
+    acao_tipo: 'Capa_Municipio',
+    arquivos: uploads.filter(Boolean)
+  };
+  try{
+    await fetch(APPS_SCRIPT_URL, {
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+  }catch(e){ console.warn('Drive extratos município:', e); }
+}
+
 // Gera o PDF como base64 e envia ao Drive (substitui se existir)
 async function enviarPDFDrive(){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
@@ -2506,6 +2541,8 @@ function gerarPDFBase64(){
     sec('IDENTIFICAÇÃO DO MUNICÍPIO');
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
     row('Valor Total do Plano:',(function(){const t=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
+    row('Valor Total Já Recebido:',municipio.valor_total_recebido?'R$ '+municipio.valor_total_recebido:'');
+    row('Rendimentos no Período (Município):',municipio.rendimentos_periodo?'R$ '+municipio.rendimentos_periodo:'');
     const _acqsValidas=aquisicoes.filter(function(a){return a.acao_tipo;});
     _acqsValidas.forEach(function(a,i){
       const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
@@ -2524,11 +2561,8 @@ function gerarPDFBase64(){
       sec('DADOS DA AQUISIÇÃO');
       row('Detalhamento:',a.descricao_item);if(!ob)row('Quantidade:',a.quantidade);
       row('Valor da Ação:',a.acao_valor?'R$ '+Number(a.acao_valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'');
-      row('Recurso Próprio/Rend.:',a.valor_proprio?'R$ '+a.valor_proprio:'');
       row('Valor Executado:',a.valor_executado?'R$ '+a.valor_executado:'');
       row('Valor Total:',a.valor_total_utilizado?'R$ '+a.valor_total_utilizado:'');
-      row('Fonte de Recurso/Rend.:',a.fonte_recurso);
-      row('Rendimentos no período:',a.rendimentos_periodo?'R$ '+a.rendimentos_periodo:'');
       row('Saldo em conta:',a.saldo_conta?'R$ '+a.saldo_conta:'');
       // Lotes de equipamentos
       if(!ob&&a._lotes&&a._lotes.length){
@@ -2701,6 +2735,7 @@ async function concludeAction(){
   enviarAcaoSheet(a, tipoRegistro);
   salvarListasPendentesSheet(a);
   enviarAnexosDrive(a); // envia anexos desta ação ao Drive
+  enviarAnexosMunicipioDrive(); // envia extratos bancários do município (capa), se houver
 
   const ben=municipio.municipio||'';
   const planActions=getAllPlanActions(ben);
@@ -3353,7 +3388,6 @@ function registroParaAcq(reg){
     valor_proprio:         _fmtNumParaCampoBRL(reg.valor_proprio),
     valor_total_utilizado: _fmtNumParaCampoBRL(reg.valor_total_utilizado),
     fonte_recurso:         reg.fonte_recurso    || '',
-    rendimentos_periodo:   reg.rendimentos_periodo || '',
     saldo_conta:           reg.saldo_conta      || '',
     pessoal_previsto:      reg.pessoal_previsto || '',
     pessoal_realizado:     reg.pessoal_realizado || '',
