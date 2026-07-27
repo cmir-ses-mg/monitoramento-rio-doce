@@ -837,8 +837,8 @@ function isObra(tipo){
   return OBRA_KEYWORDS.some(k=>t.includes(k));
 }
 
-const PHASES_EQUIP=[{label:'Instrumento'},{label:'Contratação'},{label:'Entrega/Serv.'},{label:'Observações'},{label:'Revisão e Envio'}];
-const PHASES_OBRA=[{label:'Instrumento'},{label:'Contratação'},{label:'Execução Física'},{label:'Observações'},{label:'Revisão e Envio'}];
+const PHASES_EQUIP=[{label:'Instrumento'},{label:'Contratação'},{label:'Entrega/Serv.'},{label:'Execução finalística'},{label:'Revisão e Envio'}];
+const PHASES_OBRA=[{label:'Instrumento'},{label:'Contratação'},{label:'Execução Física'},{label:'Execução finalística'},{label:'Revisão e Envio'}];
 
 let phase=0,municipio={},aquisicoes=[],acqIdx=0;
 const arquivos={};
@@ -1115,7 +1115,7 @@ function renderAcqBar(){
     if(s===2)return !!(a.acao_tipo&&a.modalidade_objeto);
     if(s===3)return !!(a.status_aquisicao);
     if(s===4)return isAcqObra(a)?!!(a.andamento_cronograma):!!(a.situacao_entrega);
-    if(s===5)return !!(a.problemas||a.medidas||a.impactos);
+    if(s===5)return !!(a.problemas||a.medidas||a.meta_prevista||a.status_meta||(a.resultados_alcancados&&a.resultados_alcancados.length)||a.atendimentos_realizados);
     return false;
   }
 
@@ -1621,6 +1621,20 @@ function chipsHTML(label,key,opts){
   return`<div class="field"><label>${label}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur===o?' on':''}" onclick="pickChip('${key}','${o}',this)"><input type="radio" name="${key}" value="${o}">${o}</label>`).join('')}</div></div>`;
 }
 
+// Chips de múltipla escolha (armazena array em acq()[key])
+function multiChipsHTML(label,key,opts){
+  const cur=acq()[key]||[];
+  return`<div class="field"><label>${label}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur.indexOf(o)>=0?' on':''}" onclick="toggleMultiChip('${key}','${o}',this)"><input type="checkbox" name="${key}" value="${o}">${o}</label>`).join('')}</div></div>`;
+}
+function toggleMultiChip(key,val,el){
+  if(!acq()[key])acq()[key]=[];
+  const arr=acq()[key];
+  const i=arr.indexOf(val);
+  if(i>=0)arr.splice(i,1);else arr.push(val);
+  el.classList.toggle('on');
+  if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
+}
+
 const DOCS_EQUIP=[
   {key:'contrato',label:'Contrato'},
   {key:'edital',label:'Edital'},
@@ -2005,7 +2019,7 @@ function contentHTML(){
     +'</div>'
 
   if(phase===4) return`
-    ${lockedBanner}<div class="step-head"><h2>Observações <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Pendências, riscos e observações sobre esta ação.</p></div>
+    ${lockedBanner}<div class="step-head"><h2>Execução finalística <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Metas, resultados, pendências e comprovações sobre esta ação.</p></div>
 
     <div class="card">
       <div class="card-title">Pendências e riscos</div>
@@ -2013,8 +2027,47 @@ function contentHTML(){
       ${fld('Medidas saneadoras já adotadas','medidas','textarea','Descreva as ações já tomadas para resolver os problemas identificados...')}
     </div>
     <div class="card">
-      <div class="card-title">Impactos e resultados</div>
-      ${fld('Impactos já gerados a partir da contratação / entrega','impactos','textarea','Ex: 150 atendimentos realizados com os equipamentos adquiridos; Ex: Obra 40% concluída, beneficiando 5.000 habitantes...')}
+      <div class="card-title">Meta e status</div>
+      ${fld('Meta prevista','meta_prevista','text','Ex: 100% dos equipamentos instalados e operacionais')}
+      ${chipsHTML('Status da meta','status_meta',['Não iniciado','Em andamento','Em execução','Concluída'])}
+    </div>
+    <div class="card">
+      <div class="card-title">Resultados alcançados</div>
+      ${multiChipsHTML('Resultados alcançados a partir da entrega','resultados_alcancados',[
+        'Ampliação da cobertura de Atenção Primária à Saúde',
+        'Ampliação da capacidade instalada da atenção especializada',
+        'Fortalecimento da capacidade de atendimento hospitalar',
+        'Ampliação e qualificação do transporte sanitário',
+        'Fortalecimento da vigilância por meio do controle de riscos ambientais à saúde',
+        'Fortalecimento da capacidade operacional dos Consórcios Intermunicipais de Saúde',
+        'Melhoria dos registros nos sistemas de informação do SUS',
+        'Ampliação do suporte especializado para a execução qualificada dos serviços de saúde'
+      ])}
+      ${fld('Atendimentos realizados pela unidade do SUS contemplada','atendimentos_realizados','numonly','Nº de atendimentos (se aplicável)')}
+      <p class="hint" style="margin:10px 0 6px">Para cada resultado marcado acima, anexe uma evidência que comprove o que foi alcançado.</p>
+      <input type="file" style="display:none" id="file_evidencia_resultados" multiple accept=".pdf,.jpg,.jpeg,.png,.docx" onchange="handleFiles('evidencia_resultados',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('evidencia_resultados')">
+        <div class="upload-zone-text"><strong>Clique para anexar evidências</strong> (PDF, imagem, Word)</div>
+      </div>
+      <div class="file-list" id="files_evidencia_resultados">${renderFilePills('evidencia_resultados')}</div>
+    </div>
+    <div class="card" id="card-fotos-execucao" style="border-left:3px solid var(--orange)">
+      <div class="card-title obra">Registro fotográfico</div>
+      <p class="hint" style="margin-bottom:12px">Fotos que ilustrem a execução física desta ação.</p>
+      <input type="file" style="display:none" id="file_fotos_execucao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_execucao',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('fotos_execucao')">
+        <div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>
+      </div>
+      <div class="file-list" id="files_fotos_execucao">${renderFilePills('fotos_execucao')}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Anexos</div>
+      <p class="hint" style="margin-bottom:12px">Relatórios, documentos produzidos ou outros arquivos relevantes para o monitoramento.</p>
+      <input type="file" style="display:none" id="file_anexos_execucao" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" onchange="handleFiles('anexos_execucao',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('anexos_execucao')">
+        <div class="upload-zone-text"><strong>Clique para anexar</strong></div>
+      </div>
+      <div class="file-list" id="files_anexos_execucao">${renderFilePills('anexos_execucao')}</div>
     </div>`;
 
   if(phase===5){
@@ -2499,8 +2552,11 @@ function gerarPDFBase64(){
       const allDocs=[{key:'contrato',label:'Contrato'},{key:'edital',label:'Edital'},{key:'art',label:'ART/RRT'},{key:'ordem_servico',label:'Ordem de serviço'},{key:'cronograma',label:'Cronograma'},{key:'termo_recebimento',label:'Termo de recebimento'},{key:'registro_patrimonial',label:'Registro patrimonial'},{key:'outros',label:'Outros'}];
       const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){const d=allDocs.find(function(x){return x.key===e[0];});return d?d.label:e[0];}).join(', ');
       row('Documentos anexados:',docsOk);
-      sec('OBSERVAÇÕES');
-      row('Problemas/Riscos:',a.problemas);row('Medidas saneadoras:',a.medidas);row('Impactos gerados:',a.impactos);
+      sec('EXECUÇÃO FINALÍSTICA — METAS E RESULTADOS');
+      row('Problemas/Riscos:',a.problemas);row('Medidas saneadoras:',a.medidas);
+      row('Meta prevista:',a.meta_prevista);row('Status da meta:',a.status_meta);
+      row('Resultados alcançados:',(a.resultados_alcancados||[]).join('; '));
+      row('Atendimentos realizados:',a.atendimentos_realizados);
       rowDestacado('Preenchido/editado por:',a._editadoPor||municipio.responsavel||'');
     });
     y+=8;chk(20);
@@ -3281,6 +3337,10 @@ function registroParaAcq(reg){
     problemas:             reg.problemas        || '',
     medidas:               reg.medidas          || '',
     impactos:              reg.impactos         || '',
+    meta_prevista:         reg.meta_prevista    || '',
+    status_meta:           reg.status_meta      || '',
+    resultados_alcancados: reg.resultados_alcancados || [],
+    atendimentos_realizados: reg.atendimentos_realizados || '',
     obs_gerais:            reg.obs_gerais       || '',
     // Empresas
     _empresas: (reg._empresas||[]).map(function(e){ return Object.assign({},e); }),
