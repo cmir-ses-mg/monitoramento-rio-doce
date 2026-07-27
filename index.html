@@ -1813,8 +1813,17 @@ function contentHTML(){
         ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
         ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
+      <div class="row2">
+        ${fld('Rendimentos no período (R$)','rendimentos_periodo','money')}
+        ${fld('Saldo em conta (R$)','saldo_conta','money')}
+      </div>
+      <p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os campos acima.</p>
+      <input type="file" style="display:none" id="file_extratos_custeio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('extratos_custeio',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('extratos_custeio')">
+        <div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>
+      </div>
+      <div class="file-list" id="files_extratos_custeio">${renderFilePills('extratos_custeio')}</div>
     </div>`:''}
-    ${!obra&&!servico&&acq().acao_tipo?renderLotesCard():''}
     ${obra&&acq().acao_tipo?`
     <div class="card">
       <div class="card-title">Localização da obra</div>
@@ -1835,6 +1844,16 @@ function contentHTML(){
         ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
         ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
+      <div class="row2">
+        ${fld('Rendimentos no período (R$)','rendimentos_periodo','money')}
+        ${fld('Saldo em conta (R$)','saldo_conta','money')}
+      </div>
+      <p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os campos acima.</p>
+      <input type="file" style="display:none" id="file_extratos_obra" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('extratos_obra',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('extratos_obra')">
+        <div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>
+      </div>
+      <div class="file-list" id="files_extratos_obra">${renderFilePills('extratos_obra')}</div>
       <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(executado neste bimestre, já incluindo recurso próprio + histórico acumulado)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
@@ -1865,6 +1884,16 @@ function contentHTML(){
         ${fld('Recurso próprio/rendimentos (R$)','valor_proprio','money')}
         ${fld('Fonte do recurso próprio/rendimentos','fonte_recurso','text','Ex: Tesouro Municipal')}
       </div>
+      <div class="row2">
+        ${fld('Rendimentos no período (R$)','rendimentos_periodo','money')}
+        ${fld('Saldo em conta (R$)','saldo_conta','money')}
+      </div>
+      <p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os campos acima.</p>
+      <input type="file" style="display:none" id="file_extratos_equip" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('extratos_equip',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('extratos_equip')">
+        <div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>
+      </div>
+      <div class="file-list" id="files_extratos_equip">${renderFilePills('extratos_equip')}</div>
     </div>`:''}`;  
   }
 
@@ -2499,6 +2528,8 @@ function gerarPDFBase64(){
       row('Valor Executado:',a.valor_executado?'R$ '+a.valor_executado:'');
       row('Valor Total:',a.valor_total_utilizado?'R$ '+a.valor_total_utilizado:'');
       row('Fonte de Recurso/Rend.:',a.fonte_recurso);
+      row('Rendimentos no período:',a.rendimentos_periodo?'R$ '+a.rendimentos_periodo:'');
+      row('Saldo em conta:',a.saldo_conta?'R$ '+a.saldo_conta:'');
       // Lotes de equipamentos
       if(!ob&&a._lotes&&a._lotes.length){
         a._lotes.forEach(function(lote,li){
@@ -2527,6 +2558,7 @@ function gerarPDFBase64(){
       }
       sec('CONTRATAÇÃO');
       row('Status:',a.status_aquisicao);row('Modalidade:',a.modalidade);row('Nº Processo:',a.num_processo);
+      if(servico){row('Contratações de pessoal previstas:',a.pessoal_previsto);row('Contratações realizadas:',a.pessoal_realizado);}
       if(ob){row('Nº OS:',a.num_os);row('Data OS:',a.data_os);}
       row('Fase:',a.fase_contratacao);row('Data Início:',a.data_inicio);row('Conclusão Prevista:',a.data_conclusao);
       const emps=a._empresas&&a._empresas.length?a._empresas:[{nome:a.empresa_nome,cnpj:a.empresa_cnpj,valor:a.valor_contratado,homologacao:a.data_homologacao,prazo:a.prazo_entrega,prev_entrega:a.data_prev_entrega}];
@@ -3321,6 +3353,10 @@ function registroParaAcq(reg){
     valor_proprio:         _fmtNumParaCampoBRL(reg.valor_proprio),
     valor_total_utilizado: _fmtNumParaCampoBRL(reg.valor_total_utilizado),
     fonte_recurso:         reg.fonte_recurso    || '',
+    rendimentos_periodo:   reg.rendimentos_periodo || '',
+    saldo_conta:           reg.saldo_conta      || '',
+    pessoal_previsto:      reg.pessoal_previsto || '',
+    pessoal_realizado:     reg.pessoal_realizado || '',
     status_aquisicao:      reg.status_aquisicao || '',
     modalidade:            reg.modalidade       || '',
     num_processo:          reg.num_processo     || '',
@@ -4176,6 +4212,10 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
   return (lockedBanner||'')
     +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+(modeBadge||'')+'</h2>'
     +'<p>Um card por atividade selecionada na etapa anterior. A empresa já cadastrada aparece automaticamente.</p></div>'
+    +'<div class="card"><div class="card-title">Contratação de pessoal</div>'
+    +fld('Nº de contratações de pessoal previstas','pessoal_previsto','numonly','Ex: 5')
+    +fld('Nº de contratações de pessoal realizadas até o momento','pessoal_realizado','numonly','Ex: 3')
+    +'</div>'
     +cards;
 }
 
