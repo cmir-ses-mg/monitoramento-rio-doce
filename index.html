@@ -1764,6 +1764,7 @@ function renderCapaMunicipio(){
   const _bimestreVal=parseBRL(municipio.valor_recebido_bimestre||'');
   const _capaRecebido=_base+_bimestreVal;
   const _capaSaldo=_r.valorGlobal-_capaRecebido;
+  const _pctRecebido=_r.valorGlobal>0?Math.max(0,Math.min(100,Math.round((_capaRecebido/_r.valorGlobal)*100))):0;
   const _aindaCarregando=_valorRecebidoCache.municipio!==municipio.municipio;
   return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
     +'<div class="card-title">Identificação do município</div>'
@@ -1771,21 +1772,17 @@ function renderCapaMunicipio(){
       +'<div class="resumo-item"><div class="r-lbl">Município</div><div class="r-val">'+(municipio.municipio||'Não informado')+'</div></div>'
       +'<div class="resumo-item"><div class="r-lbl">Bimestre</div><div class="r-val">'+(municipio.bimestre||'')+' / '+(municipio.ano||'')+'</div></div>'
     +'</div>'
-    +'<div class="resumo-grid" style="margin-top:7px">'
-      +'<div class="resumo-item"><div class="r-lbl">Valor total executado (todos os bimestres)</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_r.execTotalAcumulado.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
-      +'<div class="resumo-item"><div class="r-lbl">Valor total do plano</div><div class="r-val">'+(_r.valorGlobal?'R$ '+_r.valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'Não informado')+'</div></div>'
-    +'</div>'
-    +'<div style="margin-top:14px">'
-      +'<div style="height:22px;border-radius:11px;background:var(--g100);overflow:hidden;position:relative">'
-        +'<div style="height:100%;width:'+_r.pctTotal+'%;background:linear-gradient(90deg,var(--g500),var(--g700));border-radius:11px;transition:width .3s"></div>'
-        +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:'+(_r.pctTotal>50?'#fff':'var(--g800)')+'">'+_r.pctTotal+'% executado do plano total</div>'
-      +'</div>'
-    +'</div>'
     +'<div class="resumo-grid" style="margin-top:14px">'
       +'<div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px"><div class="r-lbl">Valor total já recebido'+(_aindaCarregando?' <span style="font-weight:400">(carregando histórico...)</span>':'')+'</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_capaRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
       +'<div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px"><div class="r-lbl">Saldo a receber</div><div class="r-val" style="color:var(--g600)">R$ '+_capaSaldo.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
     +'</div>'
-    +'<div class="row2" style="margin-top:10px">'
+    +'<div style="margin-top:14px">'
+      +'<div style="height:22px;border-radius:11px;background:var(--g100);overflow:hidden;position:relative">'
+        +'<div style="height:100%;width:'+_pctRecebido+'%;background:linear-gradient(90deg,var(--g500),var(--g700));border-radius:11px;transition:width .3s"></div>'
+        +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:'+(_pctRecebido>50?'#fff':'var(--g800)')+'">'+_pctRecebido+'% recebido do plano total</div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="row2" style="margin-top:14px">'
       +fldMun('Valor recebido neste bimestre (R$)','valor_recebido_bimestre','money')
       +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money')
     +'</div>'
