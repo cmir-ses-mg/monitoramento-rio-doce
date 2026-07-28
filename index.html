@@ -1761,13 +1761,15 @@ function calcResumoExecucaoMunicipio(){
 }
 
 // ── CONTENT ──────────────────────────────────────────────────
-function renderCapaMunicipio(){
+function renderCapaMunicipio(modoResumo){
   if(!municipio.municipio)return'';
   _dispararBuscaValorRecebidoSeNecessario(municipio.municipio);
   if(municipio._recebidoBaseMunicipio!==municipio.municipio){
     const _vrCache=(_valorRecebidoCache.municipio===municipio.municipio)?parseBRL(_valorRecebidoCache.valor||''):0;
     const _vrPlano=(PLANO_DATA&&PLANO_DATA.valor_recebido&&PLANO_DATA.valor_recebido[municipio.municipio])||0;
+    const _rendCache=(_valorRecebidoCache.municipio===municipio.municipio)?parseBRL(_valorRecebidoCache.rendimentos||''):0;
     municipio._recebidoBase=_vrCache>0?_vrCache:_vrPlano;
+    municipio._rendimentosBase=_rendCache;
     municipio._recebidoBaseMunicipio=municipio.municipio;
   }
   const _r=calcResumoExecucaoMunicipio();
@@ -1777,6 +1779,8 @@ function renderCapaMunicipio(){
   const _capaSaldo=_r.valorGlobal-_capaRecebido;
   const _pctRecebido=_r.valorGlobal>0?Math.max(0,Math.min(100,Math.round((_capaRecebido/_r.valorGlobal)*100))):0;
   const _aindaCarregando=_valorRecebidoCache.municipio!==municipio.municipio;
+  const _rendimentosBase=municipio._rendimentosBase||0;
+  const _rendimentosAcumulados=_rendimentosBase+parseBRL(municipio.rendimentos_periodo||'');
   const _temExtrato=(arquivos['mun_extratos_municipio']||[]).length>0;
   return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
     +'<div class="card-title">Identificação do município</div>'
@@ -1798,16 +1802,22 @@ function renderCapaMunicipio(){
       +'<div class="r-lbl">Valor recebido neste bimestre <span style="font-weight:400">(somado automaticamente do que já foi preenchido em cada ação)</span></div>'
       +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_bimestreVal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
     +'</div>'
-    +'<div style="margin-top:14px">'
-      +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
-    +'</div>'
-    +'<p class="hint" style="margin:6px 0 6px">O valor recebido acima é somado ao total já recebido em bimestres anteriores (R$ '+_base.toLocaleString('pt-BR',{minimumFractionDigits:2})+') para compor o "Valor total já recebido". <strong>Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</strong></p>'
-    +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
-    +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
-      +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem) <span class="req">*</span></div>'
-    +'</div>'
-    +(_temExtrato?'':'<div style="font-size:11px;color:#C0392B;margin-top:4px">Anexe pelo menos um extrato bancário.</div>')
-    +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>'
+    +(modoResumo
+      ?('<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
+        +'<div class="r-lbl">Rendimentos acumulados (todos os bimestres)</div>'
+        +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_rendimentosAcumulados.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
+      +'</div>')
+      :('<div style="margin-top:14px">'
+        +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
+      +'</div>'
+      +'<p class="hint" style="margin:6px 0 6px">O valor recebido acima é somado ao total já recebido em bimestres anteriores (R$ '+_base.toLocaleString('pt-BR',{minimumFractionDigits:2})+') para compor o "Valor total já recebido". <strong>Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</strong></p>'
+      +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
+      +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
+        +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem) <span class="req">*</span></div>'
+      +'</div>'
+      +(_temExtrato?'':'<div style="font-size:11px;color:#C0392B;margin-top:4px">Anexe pelo menos um extrato bancário.</div>')
+      +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>')
+    )
   +'</div>';
 }
 function contentHTML(){
@@ -2275,7 +2285,7 @@ function contentHTML(){
     return`
       <div class="step-head"><h2>Observações e Envio</h2><p>Confirme os dados antes de enviar. Clique em qualquer ação para editar.</p></div>
       ${''/* aviso de ações não preenchidas removido: a lista abaixo já mostra tudo */}
-      ${renderCapaMunicipio()}
+      ${renderCapaMunicipio(true)}
       <div class="card">
         <div class="card-title">${(()=>{const n=linhas.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
         <div class="acq-cards">${acqCards}</div>
@@ -2893,6 +2903,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
       editado_por:a._editadoPor||municipio.responsavel||'',
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
       valor_total_recebido:((municipio._recebidoBase||0)+calcValorRecebidoBimestre()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      rendimentos_acumulados:((municipio._rendimentosBase||0)+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
@@ -5367,16 +5378,17 @@ async function buscarExecutadoHistorico(instrumento,tipo){
 // Cache simples: busca uma vez por município e reaproveita até trocar de
 // município. Ao carregar, redesenha a tela (se ainda estiver na Revisão e
 // Envio) pra atualizar o total com o dado real vindo do servidor.
-// Cache simples do valor total recebido (soma acumulada de bimestres
-// anteriores) — busca uma vez por município e reaproveita até trocar.
-let _valorRecebidoCache={municipio:null,valor:null,loading:false};
+// Cache simples do valor total recebido e dos rendimentos acumulados (soma
+// de bimestres anteriores) — busca uma vez por município e reaproveita até
+// trocar.
+let _valorRecebidoCache={municipio:null,valor:null,rendimentos:null,loading:false};
 async function buscarValorRecebidoMunicipioServidor(municipioNome){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return null;
   try{
     const url=APPS_SCRIPT_URL+'?acao=buscarValorRecebidoMunicipio&municipio='+encodeURIComponent(municipioNome||'');
     const resp=await fetch(url);
     const j=await resp.json();
-    if(j&&j.status==='ok')return j.valor;
+    if(j&&j.status==='ok')return {valor:j.valor,rendimentos:j.rendimentos};
     return null;
   }catch(e){ console.error('buscarValorRecebidoMunicipioServidor erro:',e); return null; }
 }
@@ -5385,8 +5397,8 @@ function _dispararBuscaValorRecebidoSeNecessario(municipioNome){
   if(_valorRecebidoCache.municipio===municipioNome)return; // já tem (ou já está buscando) para este município
   if(_valorRecebidoCache.loading)return;
   _valorRecebidoCache.loading=true;
-  buscarValorRecebidoMunicipioServidor(municipioNome).then(function(valor){
-    _valorRecebidoCache={municipio:municipioNome,valor:valor,loading:false};
+  buscarValorRecebidoMunicipioServidor(municipioNome).then(function(resultado){
+    _valorRecebidoCache={municipio:municipioNome,valor:resultado&&resultado.valor,rendimentos:resultado&&resultado.rendimentos,loading:false};
     renderAll();
   });
 }
