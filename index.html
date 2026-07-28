@@ -876,6 +876,8 @@ function onMoneyBlur(el){
     } else {
       calcTotalUtilizado();
     }
+  } else if(el.name==='valor_recebido_bimestre'){
+    renderAll();
   }
 }
 function onNumInput(el){el.value=el.value.replace(/[^0-9]/g,'');sv(el);}
@@ -1750,14 +1752,19 @@ function calcResumoExecucaoMunicipio(){
 // ── CONTENT ──────────────────────────────────────────────────
 function renderCapaMunicipio(){
   if(!municipio.municipio)return'';
-  if(municipio._recebidoPreenchidoPara!==municipio.municipio){
-    const _vr=(PLANO_DATA&&PLANO_DATA.valor_recebido&&PLANO_DATA.valor_recebido[municipio.municipio])||0;
-    if(_vr)municipio.valor_total_recebido=_vr.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-    municipio._recebidoPreenchidoPara=municipio.municipio;
+  _dispararBuscaValorRecebidoSeNecessario(municipio.municipio);
+  if(municipio._recebidoBaseMunicipio!==municipio.municipio){
+    const _vrCache=(_valorRecebidoCache.municipio===municipio.municipio)?parseBRL(_valorRecebidoCache.valor||''):0;
+    const _vrPlano=(PLANO_DATA&&PLANO_DATA.valor_recebido&&PLANO_DATA.valor_recebido[municipio.municipio])||0;
+    municipio._recebidoBase=_vrCache>0?_vrCache:_vrPlano;
+    municipio._recebidoBaseMunicipio=municipio.municipio;
   }
   const _r=calcResumoExecucaoMunicipio();
-  const _capaRecebido=parseBRL(municipio.valor_total_recebido||'');
+  const _base=municipio._recebidoBase||0;
+  const _bimestreVal=parseBRL(municipio.valor_recebido_bimestre||'');
+  const _capaRecebido=_base+_bimestreVal;
   const _capaSaldo=_r.valorGlobal-_capaRecebido;
+  const _aindaCarregando=_valorRecebidoCache.municipio!==municipio.municipio;
   return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
     +'<div class="card-title">Identificação do município</div>'
     +'<div class="resumo-grid">'
@@ -1775,14 +1782,14 @@ function renderCapaMunicipio(){
       +'</div>'
     +'</div>'
     +'<div class="resumo-grid" style="margin-top:14px">'
-      +'<div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px"><div class="r-lbl">Valor total já recebido</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_capaRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
+      +'<div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px"><div class="r-lbl">Valor total já recebido'+(_aindaCarregando?' <span style="font-weight:400">(carregando histórico...)</span>':'')+'</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_capaRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
       +'<div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px"><div class="r-lbl">Saldo a receber</div><div class="r-val" style="color:var(--g600)">R$ '+_capaSaldo.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
     +'</div>'
     +'<div class="row2" style="margin-top:10px">'
-      +fldMun('Valor total já recebido pelo município (R$)','valor_total_recebido','money')
+      +fldMun('Valor recebido neste bimestre (R$)','valor_recebido_bimestre','money')
       +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money')
     +'</div>'
-    +'<p class="hint" style="margin:6px 0 6px">Se preferir, anexe os extratos bancários do período em vez de preencher os rendimentos acima.</p>'
+    +'<p class="hint" style="margin:6px 0 6px">O valor acima é somado ao total já recebido em bimestres anteriores (R$ '+_base.toLocaleString('pt-BR',{minimumFractionDigits:2})+') para compor o "Valor total já recebido". Se preferir, anexe os extratos bancários do período em vez de preencher os rendimentos.</p>'
     +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
     +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')">'
       +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>'
@@ -2623,7 +2630,7 @@ function gerarPDFBase64(){
     sec('IDENTIFICAÇÃO DO MUNICÍPIO');
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
     row('Valor Total do Plano:',(function(){const t=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
-    row('Valor Total Já Recebido:',municipio.valor_total_recebido?'R$ '+municipio.valor_total_recebido:'');
+    row('Valor Total Já Recebido:',(function(){const t=((municipio._recebidoBase||0)+parseBRL(municipio.valor_recebido_bimestre||''));return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
     row('Rendimentos no Período (Município):',municipio.rendimentos_periodo?'R$ '+municipio.rendimentos_periodo:'');
     const _acqsValidas=aquisicoes.filter(function(a){return a.acao_tipo;});
     _acqsValidas.forEach(function(a,i){
@@ -2886,6 +2893,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
       pct_execucao:obra?calcPctExecucaoAuto(a):(a.pct_execucao||''),
       editado_por:a._editadoPor||municipio.responsavel||'',
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
+      valor_total_recebido:((municipio._recebidoBase||0)+parseBRL(municipio.valor_recebido_bimestre||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
@@ -5360,6 +5368,30 @@ async function buscarExecutadoHistorico(instrumento,tipo){
 // Cache simples: busca uma vez por município e reaproveita até trocar de
 // município. Ao carregar, redesenha a tela (se ainda estiver na Revisão e
 // Envio) pra atualizar o total com o dado real vindo do servidor.
+// Cache simples do valor total recebido (soma acumulada de bimestres
+// anteriores) — busca uma vez por município e reaproveita até trocar.
+let _valorRecebidoCache={municipio:null,valor:null,loading:false};
+async function buscarValorRecebidoMunicipioServidor(municipioNome){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return null;
+  try{
+    const url=APPS_SCRIPT_URL+'?acao=buscarValorRecebidoMunicipio&municipio='+encodeURIComponent(municipioNome||'');
+    const resp=await fetch(url);
+    const j=await resp.json();
+    if(j&&j.status==='ok')return j.valor;
+    return null;
+  }catch(e){ console.error('buscarValorRecebidoMunicipioServidor erro:',e); return null; }
+}
+function _dispararBuscaValorRecebidoSeNecessario(municipioNome){
+  if(!municipioNome)return;
+  if(_valorRecebidoCache.municipio===municipioNome)return; // já tem (ou já está buscando) para este município
+  if(_valorRecebidoCache.loading)return;
+  _valorRecebidoCache.loading=true;
+  buscarValorRecebidoMunicipioServidor(municipioNome).then(function(valor){
+    _valorRecebidoCache={municipio:municipioNome,valor:valor,loading:false};
+    renderAll();
+  });
+}
+
 let _valorExecTotalCache={municipio:null,valores:null,loading:false};
 async function buscarValorExecutadoTotalMunicipioServidor(municipioNome){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return null;
