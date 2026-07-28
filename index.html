@@ -2275,23 +2275,7 @@ function contentHTML(){
     return`
       <div class="step-head"><h2>Observações e Envio</h2><p>Confirme os dados antes de enviar. Clique em qualquer ação para editar.</p></div>
       ${''/* aviso de ações não preenchidas removido: a lista abaixo já mostra tudo */}
-      <div class="card">
-        <div class="card-title">Identificação do município</div>
-        <div class="resumo-grid">
-          <div class="resumo-item"><div class="r-lbl">Município</div><div class="r-val ${!municipio.municipio?'none':''}">${municipio.municipio||'Não informado'}</div></div>
-          <div class="resumo-item"><div class="r-lbl">Bimestre</div><div class="r-val">${municipio.bimestre||''} / ${municipio.ano||''}</div></div>
-        </div>
-        <div class="resumo-grid" style="margin-top:7px">
-          <div class="resumo-item"><div class="r-lbl">Valor total executado (todos os bimestres)</div><div class="r-val" style="color:var(--g700);font-weight:700">R$ ${_execTotalAcumulado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>${_valorExecTotalCache.municipio!==(municipio.municipio||'')?'<div style="font-size:10px;color:var(--ink3);margin-top:2px">Atualizando com o histórico completo...</div>':''}</div>
-          <div class="resumo-item"><div class="r-lbl">Valor total do plano</div><div class="r-val ${!_valorGlobal?'none':''}">${_valorGlobal?'R$ '+_valorGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'Não informado'}</div></div>
-        </div>
-        <div style="margin-top:14px">
-          <div style="height:22px;border-radius:11px;background:var(--g100);overflow:hidden;position:relative">
-            <div style="height:100%;width:${_pctTotal}%;background:linear-gradient(90deg,var(--g500),var(--g700));border-radius:11px;transition:width .3s"></div>
-            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:${_pctTotal>50?'#fff':'var(--g800)'}">${_pctTotal}% executado do plano total</div>
-          </div>
-        </div>
-      </div>
+      ${renderCapaMunicipio()}
       <div class="card">
         <div class="card-title">${(()=>{const n=linhas.length,f=aquisicoes.filter(a=>a.modalidade_objeto).length;return n+' '+(n!==1?'ações':'ação')+' no plano · '+f+' preenchida'+(f!==1?'s':'');})()}</div>
         <div class="acq-cards">${acqCards}</div>
