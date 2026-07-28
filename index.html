@@ -1850,8 +1850,6 @@ function contentHTML(){
         <div style="font-size:12px;color:var(--g600);margin-top:2px">${municipio.bimestre||''} ${municipio.ano||''} · ${(function(){const _n=getAllPlanActions(municipio.municipio||'').length;return _n===1?'1 ação no plano':_n+' ações no plano';}())} · Responsável: ${municipio.responsavel||'—'}</div>
       </div>
     </div>
-    ${renderCapaMunicipio()}
-    ${renderSessionHistoryCard()}
     ${(!municipio.bimestre||!municipio.ano)?(
       '<div style="background:#FFF8E1;border:1.5px solid #F9A825;border-radius:var(--r);padding:14px 16px;margin-bottom:12px">'
       +'<div style="font-size:12px;font-weight:700;color:#7C4A0A;margin-bottom:10px">📅 Selecione o período do monitoramento</div>'
@@ -1868,10 +1866,12 @@ function contentHTML(){
         +'</select></div>'
       +'</div></div>'
     ):''}
+    ${renderCapaMunicipio()}
+    ${renderSessionHistoryCard()}
     <div class="step-head"><h2>Instrumento e Ação</h2><p>Selecione a ação no menu lateral para iniciar o preenchimento.</p></div>
+    ${a.acao_tipo?`
     <div class="instrumento-card">
       <div class="card-title">Ação selecionada</div>
-      ${a.acao_tipo?`
         <div class="acao-detail-box" style="display:block">
           <div class="acao-detail-label">${ILBL[a.acao_instrumento]||a.acao_instrumento||''} · ${a.acao_eixo||(_dadosPlanoParaAcq(a)||{}).eixo||''}</div>
           <div class="acao-detail-name">${a.acao_tipo||''}</div>
@@ -1893,9 +1893,8 @@ function contentHTML(){
               </div>
             </div>`;
           })()}
-        </div>`
-      :`<div id="inline-action-list" style="margin-top:4px">${renderInlineActionList()}</div>`}
-    </div>
+        </div>
+    </div>`:''}
     ${servico&&acq().acao_tipo?renderAtividadesCard():''}
     ${servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-custeio">
