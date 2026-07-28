@@ -876,8 +876,6 @@ function onMoneyBlur(el){
     } else {
       calcTotalUtilizado();
     }
-  } else if(el.name==='valor_recebido_bimestre'){
-    renderAll();
   }
 }
 function onNumInput(el){el.value=el.value.replace(/[^0-9]/g,'');sv(el);}
@@ -1559,6 +1557,22 @@ function removeFile(key,i){
   const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePills(key);
 }
 
+// Valor recebido no bimestre — lista somável (cada valor lançado no
+// decorrer do preenchimento entra na soma automaticamente)
+function getRecebidosBimestre(){return municipio._recebidosBimestre||(municipio._recebidosBimestre=[{valor:''}]);}
+function getRecebidoBimestreTotal(){return getRecebidosBimestre().reduce(function(s,r){return s+parseBRL(r.valor||'');},0);}
+function renderRecebidosList(){
+  const items=getRecebidosBimestre();
+  const c=document.getElementById('recebidos-list-container');if(!c)return;
+  c.innerHTML=items.map((r,i)=>`
+    <div class="nf-item" style="margin-bottom:8px">
+      ${items.length>1?`<span class="nf-remove" onclick="removeRecebido(${i})">×</span>`:''}
+      <div class="field" style="margin:0"><label>Valor recebido (R$)</label><input type="text" value="${r.valor||''}" placeholder="0,00" oninput="onMoneyInput(this)" onblur="getRecebidosBimestre()[${i}].valor=fmtBRL(this.value);this.value=getRecebidosBimestre()[${i}].valor;renderAll()"/></div>
+    </div>`).join('');
+}
+function addRecebido(){getRecebidosBimestre().push({valor:''});renderRecebidosList();renderAll();}
+function removeRecebido(i){if(getRecebidosBimestre().length>1){getRecebidosBimestre().splice(i,1);renderRecebidosList();renderAll();}}
+
 function handleFilesMun(key,files){
   if(!arquivos['mun_'+key])arquivos['mun_'+key]=[];
   Array.from(files).forEach(f=>arquivos['mun_'+key].push(f));
@@ -1761,11 +1775,12 @@ function renderCapaMunicipio(){
   }
   const _r=calcResumoExecucaoMunicipio();
   const _base=municipio._recebidoBase||0;
-  const _bimestreVal=parseBRL(municipio.valor_recebido_bimestre||'');
+  const _bimestreVal=getRecebidoBimestreTotal();
   const _capaRecebido=_base+_bimestreVal;
   const _capaSaldo=_r.valorGlobal-_capaRecebido;
   const _pctRecebido=_r.valorGlobal>0?Math.max(0,Math.min(100,Math.round((_capaRecebido/_r.valorGlobal)*100))):0;
   const _aindaCarregando=_valorRecebidoCache.municipio!==municipio.municipio;
+  const _temExtrato=(arquivos['mun_extratos_municipio']||[]).length>0;
   return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
     +'<div class="card-title">Identificação do município</div>'
     +'<div class="resumo-grid">'
@@ -1782,15 +1797,20 @@ function renderCapaMunicipio(){
         +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:'+(_pctRecebido>50?'#fff':'var(--g800)')+'">'+_pctRecebido+'% recebido do plano total</div>'
       +'</div>'
     +'</div>'
-    +'<div class="row2" style="margin-top:14px">'
-      +fldMun('Valor recebido neste bimestre (R$)','valor_recebido_bimestre','money')
-      +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money')
+    +'<div style="margin-top:14px">'
+      +'<label style="font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px">Valores recebidos neste bimestre (R$)</label>'
+      +'<div id="recebidos-list-container"></div>'
+      +'<button type="button" class="btn-add-nf" onclick="addRecebido()">+ Adicionar outro valor recebido</button>'
     +'</div>'
-    +'<p class="hint" style="margin:6px 0 6px">O valor acima é somado ao total já recebido em bimestres anteriores (R$ '+_base.toLocaleString('pt-BR',{minimumFractionDigits:2})+') para compor o "Valor total já recebido". Se preferir, anexe os extratos bancários do período em vez de preencher os rendimentos.</p>'
+    +'<div style="margin-top:14px">'
+      +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
+    +'</div>'
+    +'<p class="hint" style="margin:6px 0 6px">O valor recebido acima é somado ao total já recebido em bimestres anteriores (R$ '+_base.toLocaleString('pt-BR',{minimumFractionDigits:2})+') para compor o "Valor total já recebido". <strong>Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</strong></p>'
     +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
-    +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')">'
-      +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem)</div>'
+    +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
+      +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem) <span class="req">*</span></div>'
     +'</div>'
+    +(_temExtrato?'':'<div style="font-size:11px;color:#C0392B;margin-top:4px">Anexe pelo menos um extrato bancário.</div>')
     +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>'
   +'</div>';
 }
@@ -2366,6 +2386,9 @@ function nextPhase(){
   if(phase===1&&(!municipio.bimestre||!municipio.ano)){
     showAlertModal('Selecione o bimestre e o ano antes de continuar.','⚠️');return;
   }
+  if(phase===1&&(arquivos['mun_extratos_municipio']||[]).length===0){
+    showAlertModal('Anexe o extrato bancário do período na "Identificação do município" antes de continuar.','⚠️');return;
+  }
   if(phase===1&&!acq().acao_tipo){
     showAlertModal('Selecione uma ação no menu lateral para continuar.','⚠️');return;
   }
@@ -2626,7 +2649,7 @@ function gerarPDFBase64(){
     sec('IDENTIFICAÇÃO DO MUNICÍPIO');
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
     row('Valor Total do Plano:',(function(){const t=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
-    row('Valor Total Já Recebido:',(function(){const t=((municipio._recebidoBase||0)+parseBRL(municipio.valor_recebido_bimestre||''));return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
+    row('Valor Total Já Recebido:',(function(){const t=((municipio._recebidoBase||0)+getRecebidoBimestreTotal());return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
     row('Rendimentos no Período (Município):',municipio.rendimentos_periodo?'R$ '+municipio.rendimentos_periodo:'');
     const _acqsValidas=aquisicoes.filter(function(a){return a.acao_tipo;});
     _acqsValidas.forEach(function(a,i){
@@ -2889,7 +2912,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
       pct_execucao:obra?calcPctExecucaoAuto(a):(a.pct_execucao||''),
       editado_por:a._editadoPor||municipio.responsavel||'',
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
-      valor_total_recebido:((municipio._recebidoBase||0)+parseBRL(municipio.valor_recebido_bimestre||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      valor_total_recebido:((municipio._recebidoBase||0)+getRecebidoBimestreTotal()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
       prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
       data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
@@ -4486,6 +4509,7 @@ function renderMain(){
   if(aquisicoes[acqIdx]&&aquisicoes[acqIdx]._locked)mc.classList.add('locked-form');
   else mc.classList.remove('locked-form');
   restoreInputs();
+  renderRecebidosList();
   if(phase===3){
     if(isAcqObra())renderMedList();
     else{renderNFList();applyConditionals();}
