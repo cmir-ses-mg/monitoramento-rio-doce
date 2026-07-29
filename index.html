@@ -866,12 +866,7 @@ function onMoneyInput(el){
 function onMoneyBlur(el){
   el.value=fmtBRL(el.value);sv(el);validateField(el);
   if(el.name==='valor_executado'||el.name==='valor_proprio'){
-    if(acq().modalidade_objeto==='equipamento'){
-      // Equipamentos: recalcular incluindo "já pago (bimestres anteriores)".
-      // NÃO chamar calcTotalUtilizado aqui — ela usa lógica antiga e
-      // sobrescreveria o valor correto calculado por calcExecutadoLotes.
-      calcExecutadoLotes();
-    } else if(acq().modalidade_objeto==='servico'){
+    if(acq().modalidade_objeto==='servico'){
       calcAtividades();
     } else {
       calcTotalUtilizado();
@@ -1052,11 +1047,12 @@ function navToPhase(i){saveAllInputs();phase=i;renderAll();}
 function calcAcqStatus(a){
   if(!a||!a._key)return'empty';
   if(a._locked)return'locked';
+  const temValor=!!(parseBRL(a.valor_executado||'')||(a._ativs||[]).some(function(at){return at.empresas&&at.empresas[0]&&parseBRL(at.empresas[0].valor||'');}));
   const steps=[
     !!(a.modalidade_objeto),                                          // tipo monitoramento
-    !!(a.status_aquisicao),                                           // contratação
-    !!(isAcqObra(a)?a.andamento_cronograma:a.situacao_entrega), // entrega/execução
-    !!(a.val_empenhado||a.val_pago||a.val_liquidado),                  // financeiro
+    !!(a._status_contrat&&a._status_contrat!=='Planejamento'),        // contratação
+    !!(isAcqObra(a)?(a.pct_medido_periodo||a.data_inicio_obra):a.situacao_entrega), // entrega/execução
+    temValor,                                                         // financeiro
   ];
   const done=steps.filter(Boolean).length;
   if(done===0)return'empty';
@@ -1113,8 +1109,8 @@ function renderAcqBar(){
   function stepDone(a,s){
     if(!a)return false;
     if(s===2)return !!(a.acao_tipo&&a.modalidade_objeto);
-    if(s===3)return !!(a.status_aquisicao);
-    if(s===4)return isAcqObra(a)?!!(a.andamento_cronograma):!!(a.situacao_entrega);
+    if(s===3)return !!(a._status_contrat&&a._status_contrat!=='Planejamento');
+    if(s===4)return isAcqObra(a)?!!(a.pct_medido_periodo||a.data_inicio_obra):!!(a.situacao_entrega);
     if(s===5)return !!(a.problemas||a.medidas||a.meta_prevista||a.status_meta||(a.resultados_alcancados&&a.resultados_alcancados.length)||a.atendimentos_realizados);
     return false;
   }
@@ -1207,11 +1203,11 @@ async function selectPlanAction(instrumento, tipo){
       if(achou) renderAll();
     }));
   }
-  // Valor executado acumulado: soma TODOS os lotes confirmados de TODOS os
-  // bimestres já salvos para esta ação, para que "Executado" nunca volte a zero.
+  // Valor executado acumulado: soma o histórico de bimestres já salvos para
+  // esta ação, para que "Executado" nunca volte a zero.
   if(_acqAtual){
     _acqAtual._executado_acumulado_historico = calcularExecutadoAcumuladoHistorico(_acqAtual);
-    calcExecutadoLotes();
+    calcTotalUtilizado();
   }
   // Atividades de custeio: buscar do SERVIDOR (não localStorage) o estado mais
   // atual de todas as atividades desta ação — necessário porque equipes
@@ -1219,13 +1215,6 @@ async function selectPlanAction(instrumento, tipo){
   if(_acqAtual && _acqAtual.modalidade_objeto==='servico'){
     _promessasCarga.push(carregarAtividadesHistoricoCusteio(_acqAtual).then(function(mudou){
       calcAtividades();
-      if(mudou) renderAll();
-    }));
-  }
-  // Lotes de equipamento: mesmo carry-over entre bimestres/máquinas, vindo do servidor.
-  if(_acqAtual && _acqAtual.modalidade_objeto==='equipamento'){
-    _promessasCarga.push(carregarLotesHistoricoEquipamento(_acqAtual).then(function(mudou){
-      calcExecutadoLotes();
       if(mudou) renderAll();
     }));
   }
@@ -1306,17 +1295,11 @@ function switchAcq(i){
   }
   if(a && a.acao_instrumento && a.acao_tipo){
     a._executado_acumulado_historico = calcularExecutadoAcumuladoHistorico(a);
-    calcExecutadoLotes();
+    calcTotalUtilizado();
   }
   if(a && a.modalidade_objeto==='servico'){
     carregarAtividadesHistoricoCusteio(a).then(function(){
       calcAtividades();
-      renderAll();
-    });
-  }
-  if(a && a.modalidade_objeto==='equipamento'){
-    carregarLotesHistoricoEquipamento(a).then(function(){
-      calcExecutadoLotes();
       renderAll();
     });
   }
@@ -1447,96 +1430,18 @@ function pickChip(key,val,el){
   el.classList.add('on');
   handleConditional(key,val);
 }
-// Níveis de status que habilitam cada card
-const STATUS_NIVEL={
-  'Não iniciada':0,'Em planejamento':1,
-  'Em processo licitatório':2,'Adjudicada':3,'Homologada':3,
-  'Contratada':4,'Ordem de início/entrega emitida':4,
-  'Serviço em execução / obra em andamento':4,'Item entregue':4,
-  'Pagamento realizado':4,'Prestação de contas enviada':4,'Concluída':4
-};
-// nivel 2+ → Modalidade/Processo
-// nivel 3+ → Fase da Contratação
-// nivel 4+ → Empresa(s)
-function getStatusNivel(val){return STATUS_NIVEL[val]||0;}
 
 function handleConditional(key,val){
-  if(key==='status_aquisicao'){
-    const n=getStatusNivel(val);
-    setV('card-modalidade',n>=2);
-    setV('card-fase',n>=3);
-    setV('card-empresa',n>=4);
-    if(n>=4)setTimeout(renderEmpresaList,50);
-  }
-  if(key==='situacao_entrega'){const nao=val==='Não iniciada';setV('card-data-entrega',!nao);setV('card-comprovacao',!nao);setV('card-patrimonio',!nao);}
-  if(key==='notas_fiscais')setV('card-nf-detalhes',val==='Sim');
-  if(key==='incorporado_patrimonio')setV('card-patrimonio-detalhes',val==='Sim');
+  if(key==='situacao_entrega'){const nao=val==='Não iniciada';setV('card-data-entrega',!nao);}
 }
 function setV(id,show){const el=document.getElementById(id);if(el)el.style.display=show?'':'none';}
 function applyConditionals(){
   const a=acq();
-  const n=getStatusNivel(a.status_aquisicao||'');
-  setV('card-modalidade',n>=2);
-  setV('card-fase',n>=3);
-  setV('card-empresa',n>=4);
-  if(n>=4)setTimeout(renderEmpresaList,50);
   if(!isAcqObra()){
     const entregaNao=!a.situacao_entrega||a.situacao_entrega==='Não iniciada';
-    setV('card-data-entrega',!entregaNao);setV('card-comprovacao',!entregaNao);setV('card-patrimonio',!entregaNao);
-    setV('card-nf-detalhes',a.notas_fiscais==='Sim');
-    setV('card-patrimonio-detalhes',a.incorporado_patrimonio==='Sim');
+    setV('card-data-entrega',!entregaNao);
   }
 }
-
-// NF
-function getNFs(){return acq()._nfs||(acq()._nfs=[{num:'',serie:'',data:'',valor:'',cnes:''}]);}
-function renderNFList(){
-  const nfs=getNFs();const c=document.getElementById('nf-list-container');if(!c)return;
-  c.innerHTML=nfs.map((nf,i)=>`
-    <div class="nf-item">
-      ${nfs.length>1?`<span class="nf-remove" onclick="removeNF(${i})">×</span>`:''}
-      <div class="row3" style="margin-bottom:10px">
-        <div class="field" style="margin:0"><label>Número da NF</label><input type="text" value="${nf.num||''}" placeholder="NF-001" oninput="getNFs()[${i}].num=this.value"/></div>
-        <div class="field" style="margin:0"><label>Série NF</label><input type="text" value="${nf.serie||''}" placeholder="1" oninput="getNFs()[${i}].serie=this.value"/></div>
-        <div class="field" style="margin:0"><label>Data</label><input type="date" value="${nf.data||''}" oninput="getNFs()[${i}].data=this.value"/></div>
-      </div>
-      <div class="row2" style="margin-bottom:10px">
-        <div class="field" style="margin:0"><label>Valor (R$)</label><input type="text" value="${nf.valor||''}" placeholder="0,00" oninput="onMoneyInput(this)" onblur="getNFs()[${i}].valor=fmtBRL(this.value);this.value=getNFs()[${i}].valor"/></div>
-        <div class="field" style="margin:0"><label>CNES Beneficiado</label><input type="text" value="${nf.cnes||''}" placeholder="1234567" oninput="getNFs()[${i}].cnes=this.value"/></div>
-      </div>
-      <input type="file" style="display:none" id="file_nf_${i}" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('nf_${i}',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('nf_${i}')">
-        <div class="upload-zone-text"><strong>Clique para anexar</strong> o arquivo da NF</div>
-      </div>
-      <div class="file-list" id="files_nf_${i}">${renderFilePills('nf_'+i)}</div>
-    </div>`).join('');
-}
-function addNF(){getNFs().push({num:'',serie:'',data:'',valor:'',cnes:''});renderNFList();}
-function removeNF(i){if(getNFs().length>1){getNFs().splice(i,1);renderNFList();}}
-
-// Medições (obras)
-function getMeds(){return acq()._medicoes||(acq()._medicoes=[{num:'',data:'',valor:'',pct:''}]);}
-function renderMedList(){
-  const meds=getMeds();const c=document.getElementById('med-list-container');if(!c)return;
-  c.innerHTML=meds.map((m,i)=>`
-    <div class="medicao-item">
-      ${meds.length>1?`<span class="medicao-remove" onclick="removeMed(${i})">×</span>`:''}
-      <div class="row2" style="margin-bottom:10px">
-        <div class="field" style="margin:0"><label>Nº Boletim de Medição</label><input type="text" value="${m.num||''}" placeholder="BM-001" oninput="getMeds()[${i}].num=this.value"/></div>
-        <div class="field" style="margin:0"><label>Data</label><input type="date" value="${m.data||''}" oninput="getMeds()[${i}].data=this.value"/></div>
-      </div>
-      <div class="field" style="margin-bottom:10px"><label>Valor medido (R$)</label>
-        <input type="text" value="${m.valor||''}" placeholder="0,00" oninput="onMoneyInput(this)" onblur="getMeds()[${i}].valor=fmtBRL(this.value);this.value=getMeds()[${i}].valor;refreshPctAutoDisplay()"/>
-      </div>
-      <input type="file" style="display:none" id="file_med_${i}" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFiles('med_${i}',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('med_${i}')">
-        <div class="upload-zone-text"><strong>Clique para anexar</strong> o boletim</div>
-      </div>
-      <div class="file-list" id="files_med_${i}">${renderFilePills('med_'+i)}</div>
-    </div>`).join('');
-}
-function addMed(){getMeds().push({num:'',data:'',valor:'',pct:''});renderMedList();}
-function removeMed(i){if(getMeds().length>1){getMeds().splice(i,1);renderMedList();refreshPctAutoDisplay();}}
 
 // Upload
 function triggerUpload(key){document.getElementById('file_'+key)?.click();}
@@ -1782,6 +1687,24 @@ function renderCapaMunicipio(modoResumo){
   const _rendimentosBase=municipio._rendimentosBase||0;
   const _rendimentosAcumulados=_rendimentosBase+parseBRL(municipio.rendimentos_periodo||'');
   const _temExtrato=(arquivos['mun_extratos_municipio']||[]).length>0;
+  // Fora da Revisão final (modoResumo), não exibimos mais a identificação do
+  // município nem os valores recebidos/saldo/progresso — apenas o campo de
+  // rendimentos do período (que continua obrigatório) e o upload do extrato.
+  // O resumo completo (identificação + valores + progresso) só aparece na
+  // Revisão final (modoResumo=true).
+  if(!modoResumo){
+    return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
+      +'<div class="card-title">Rendimentos no período</div>'
+      +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
+      +'<p class="hint" style="margin:6px 0 6px">Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</p>'
+      +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
+      +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
+        +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem) <span class="req">*</span></div>'
+      +'</div>'
+      +(_temExtrato?'':'<div style="font-size:11px;color:#C0392B;margin-top:4px">Anexe pelo menos um extrato bancário.</div>')
+      +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>'
+    +'</div>';
+  }
   return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
     +'<div class="card-title">Identificação do município</div>'
     +'<div class="resumo-grid">'
@@ -1802,22 +1725,10 @@ function renderCapaMunicipio(modoResumo){
       +'<div class="r-lbl">Valor recebido neste bimestre <span style="font-weight:400">(somado automaticamente do que já foi preenchido em cada ação)</span></div>'
       +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_bimestreVal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
     +'</div>'
-    +(modoResumo
-      ?('<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
-        +'<div class="r-lbl">Rendimentos acumulados (todos os bimestres)</div>'
-        +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_rendimentosAcumulados.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
-      +'</div>')
-      :('<div style="margin-top:14px">'
-        +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
-      +'</div>'
-      +'<p class="hint" style="margin:6px 0 6px">O valor recebido acima é somado ao total já recebido em bimestres anteriores (R$ '+_base.toLocaleString('pt-BR',{minimumFractionDigits:2})+') para compor o "Valor total já recebido". <strong>Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</strong></p>'
-      +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
-      +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
-        +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem) <span class="req">*</span></div>'
-      +'</div>'
-      +(_temExtrato?'':'<div style="font-size:11px;color:#C0392B;margin-top:4px">Anexe pelo menos um extrato bancário.</div>')
-      +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>')
-    )
+    +'<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
+      +'<div class="r-lbl">Rendimentos acumulados (todos os bimestres)</div>'
+      +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_rendimentosAcumulados.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
+    +'</div>'
   +'</div>';
 }
 function contentHTML(){
@@ -1827,7 +1738,7 @@ function contentHTML(){
     <div class="locked-banner-text">🔒 <strong>${acq()._autoConcluida?'Ação concluída automaticamente'+(acq()._autoConcluidaBimestre?' no '+acq()._autoConcluidaBimestre:'')+' — o valor acumulado atingiu 100% do valor total da ação.':'Ação concluída.'}</strong> Os campos estão bloqueados para edição.</div>
     <button class="btn-reopen" onclick="unlockAcq(${acqIdx})">✏️ Reabrir para edição</button>
   </div>`:'';
-  const modeBadge=acq().modalidade_objeto?`<span class="mode-badge mode-equip">${obra?'🏗️ Obra':servico?'🛠️ Serviço':'📦 Equipamento'}</span>`:'' ;
+  const modeBadge=acq().modalidade_objeto?`<span class="mode-badge mode-equip">${obra?'🏗️ Obra':servico?'🛠️ Serviço':'📦 Aquisição'}</span>`:'' ;
 
   if(phase===0) return (
     '<div class="step-head"><h2>Selecione o município</h2><p>Escolha o município/consórcio e o período para iniciar.</p></div>'
@@ -1906,7 +1817,7 @@ function contentHTML(){
           ${(()=>{
             const _tipo=a.modalidade_objeto||'equipamento';
             const _icons={'equipamento':'📦','obra':'🏗️','servico':'🛠️'};
-            const _labels={'equipamento':'Equipamentos','obra':'Obra / Construção','servico':'Serviços'};
+            const _labels={'equipamento':'Aquisição','obra':'Obra / Construção','servico':'Serviços'};
             const _cores={'equipamento':'var(--g300)','obra':'#FFCC80','servico':'var(--g300)'};
             return`<div style="background:var(--g50);border:1.5px solid ${_cores[_tipo]};border-radius:var(--r);padding:14px 16px;display:flex;align-items:center;gap:12px">
               <span style="font-size:22px">${_icons[_tipo]}</span>
@@ -1919,143 +1830,65 @@ function contentHTML(){
         </div>
     </div>`:''}
     ${servico&&acq().acao_tipo?renderAtividadesCard():''}
-    ${servico&&acq().acao_tipo?`
-    <div class="card" id="card-financeiro-custeio">
-      <div class="card-title">Resumo financeiro</div>
-      <div class="resumo-grid" style="margin-bottom:14px">
-        <div class="resumo-item">
-          <div class="r-lbl">Valor total da ação (plano)</div>
-          <div class="r-val" style="color:var(--g700);font-weight:700">${(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor)?'R$ '+Number(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</div>
-        </div>
-        <div class="resumo-item">
-          <div class="r-lbl">Valor contratado (atividades)</div>
-          <div class="r-val" id="val_custeio_contratado" style="color:var(--g700);font-weight:700">R$ 0,00</div>
-        </div>
-        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
-          <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
-            <span>Valor total utilizado (bimestres anteriores)</span>
-            <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
-          </div>
-          <div class="r-val" id="val_custeio_total" style="color:var(--g700);font-weight:700;font-size:15px">R$ 0,00</div>
-        </div>
-        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
-          <div class="r-lbl">Financiamento do contrato</div>
-          <div id="val_financiamento_custeio" style="font-size:12px;line-height:1.7;margin-top:4px;color:var(--ink2)">—</div>
-        </div>
-      </div>
-      <div class="row2">
-        ${fld('Saldo em conta (R$)','saldo_conta','money')}
-      </div>
-    </div>`:''}
     ${obra&&acq().acao_tipo?`
     <div class="card">
       <div class="card-title">Localização da obra</div>
       ${fld('Endereço','endereco_obra','text','Ex: Rua das Flores, 123, Bairro Centro')}
     </div>
     <div class="card" id="card-financeiro-obra">
-      <div class="card-title">Dados financeiros</div>
+      <div class="card-title">Valor executado</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 12px">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
-      <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px;margin-top:10px">
-        <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
-          <span>Já executado (bimestres anteriores)</span>
-          <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
-        </div>
-        <div class="r-val" id="val_executado_historico" style="color:var(--g600)">—</div>
-      </div>
-      <div class="row2">
-        ${fld('Saldo em conta (R$)','saldo_conta','money')}
-      </div>
-      <div class="field" style="margin-top:4px"><label>Valor total utilizado até o momento (R$) <span style="font-size:10px;color:var(--g600);font-weight:400">(executado neste bimestre, já incluindo recurso próprio + histórico acumulado)</span></label><input type="text" id="val_total_auto" name="valor_total_utilizado" data-store="acq" readonly style="background:var(--g50);color:var(--g700);font-weight:600;cursor:default" placeholder="Calculado automaticamente" onblur="sv(this)"/></div>
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
-      <div class="card-title">Resumo financeiro</div>
-      <div class="resumo-grid" style="margin-bottom:14px">
-        <div class="resumo-item">
-          <div class="r-lbl">Valor total da ação (plano)</div>
-          <div class="r-val" style="color:var(--g700);font-weight:700">${(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor)?'R$ '+Number(acq().acao_valor||(_dadosPlanoParaAcq(acq())||{}).valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</div>
-        </div>
-        <div class="resumo-item">
-          <div class="r-lbl">Valor total da lista de itens</div>
-          <div class="r-val" id="val_lista_total" style="color:var(--ink);font-weight:600">R$ 0,00</div>
-        </div>
-        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
-          <div class="r-lbl" style="display:flex;align-items:center;justify-content:space-between">
-            <span>Valor total utilizado (bimestres anteriores)</span>
-            <span onclick="carregarExecutadoHistorico()" title="Buscar da planilha" style="cursor:pointer;font-size:16px;line-height:1">🔄</span>
-          </div>
-          <div class="r-val" id="val_total_auto_equip" style="color:var(--g700);font-weight:700;font-size:15px">R$ 0,00</div>
-        </div>
-        <div class="resumo-item" style="border:1.5px solid var(--border2);border-radius:8px;padding:12px">
-          <div class="r-lbl">Financiamento do contratado</div>
-          <div id="val_financiamento_equip" style="font-size:12px;line-height:1.7;margin-top:4px;color:var(--ink2)">—</div>
-        </div>
+      <div class="card-title">Lista de equipamentos adquiridos</div>
+      <p class="hint" style="margin-bottom:12px">Anexe a lista/planilha dos equipamentos adquiridos nesta ação.</p>
+      <input type="file" style="display:none" id="file_lista_equipamentos" multiple accept=".pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png" onchange="handleFiles('lista_equipamentos',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('lista_equipamentos')">
+        <div class="upload-zone-text"><strong>Clique para anexar a lista de equipamentos</strong> (Excel, PDF, imagem)</div>
       </div>
-      <div class="row2">
-        ${fld('Saldo em conta (R$)','saldo_conta','money')}
-      </div>
+      <div class="file-list" id="files_lista_equipamentos">${renderFilePills('lista_equipamentos')}</div>
+      ${fld('Valor da lista (R$)','valor_lista_equipamentos','money')}
     </div>`:''}`;  
   }
 
   if(phase===2){
   const a=acq();
-  const lotes=(a.modalidade_objeto==='equipamento')?(a._lotes||[]).filter(function(l){return l.confirmado;}):null;
   const ativs=(a.modalidade_objeto==='servico')?(a._atividades||[]).filter(function(at){return at.confirmado;}):null;
-  const temLotes=lotes&&lotes.length>0;
   const temAtivs=ativs&&ativs.length>0;
   const ob=isAcqObra(a);
   if(temAtivs) return renderContratacaoAtividades(ativs,lockedBanner,modeBadge);
-  return temLotes ? renderContratacaoLotes(lotes,lockedBanner,modeBadge) : renderContratacaoUnico(a,ob,lockedBanner,modeBadge);
+  return renderContratacaoUnico(a,ob,lockedBanner,modeBadge);
 }
 
   // Phase 3 — OBRA
   if(phase===3&&obra) return`
     ${lockedBanner}<div class="step-head"><h2>Execução Física <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Acompanhamento do andamento físico da obra.</p></div>
-    <div class="card card-obra" id="pct-auto-card">
-      <div class="card-title obra">Percentual de execução física <span style="font-weight:400;font-size:11px;color:var(--ink3);text-transform:none;letter-spacing:0">(automático — calculado a partir dos boletins de medição)</span></div>
-      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="pct-auto-bar" style="width:${calcPctExecucaoAuto(acq())}%"></div></div>
-      <div class="progress-label" id="pct-auto-lbl">${calcPctExecucaoAuto(acq())}% executado</div>
-    </div>
     <div class="card" style="border-left:3px solid var(--g500)">
-      <div class="card-title">Dados para o Sistema Oficial de Monitoramento</div>
+      <div class="card-title">Informações do Projeto</div>
+      <div class="row2">
+        ${fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
+        ${fld('Endereço','endereco_obra','text','Exemplo de endereço')}
+      </div>
       <div class="row2">
         ${fld('Data de Início','data_inicio_obra','date')}
-        ${fld('Fiscal Responsável','fiscal_responsavel','text','Nome e registro (Ex: João Silva - CREA 12345)')}
+        ${fld('Fiscal Responsável','fiscal_responsavel','text','Exemplo de nome e registro')}
       </div>
       <div class="row2">
         ${fld('% Medido no Período','pct_medido_periodo','text','Ex: 15')}
         ${fld('% Acumulado até o Período','pct_acumulado_periodo','text','Ex: 45')}
       </div>
-      ${fld('Observações','observacoes_oficial','textarea','Observações gerais sobre a execução...')}
+      ${fld('Observações','observacoes_oficial','textarea','Exemplo de observações adicionais')}
     </div>
-    <div class="card card-obra">
-      <div class="card-title obra">Cronograma</div>
-      ${chipsHTML('Andamento em relação ao cronograma','andamento_cronograma',['Dentro do prazo','Atrasado','Adiantado','Paralisado'])}
-      ${fld('Observações sobre cronograma','obs_cronograma','textarea','Descreva a situação atual do cronograma...')}
-      <div class="row2">
-        ${fld('Data prevista de conclusão (contrato)','data_conclusao_contrato','date')}
-        ${fld('Nova previsão de conclusão (se alterada)','data_conclusao_nova','date')}
+    <div class="card" id="card-arquivos-obra">
+      <div class="card-title">Arquivos Inseridos</div>
+      <p class="hint" style="margin-bottom:12px">Anexe os documentos e registros fotográficos referentes à execução desta obra.</p>
+      <input type="file" style="display:none" id="file_arquivos_obra" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx" onchange="handleFiles('arquivos_obra',this.files)"/>
+      <div class="upload-zone" onclick="triggerUpload('arquivos_obra')">
+        <div class="upload-zone-text"><strong>Clique para anexar arquivos</strong> (PDF, imagem, Word, Excel)</div>
       </div>
-    </div>
-    <div class="card card-obra">
-      <div class="card-title obra">Boletins de medição</div>
-      <div id="med-list-container"></div>
-      <button class="btn-add-med" onclick="addMed()">+ Adicionar boletim de medição</button>
-    </div>
-    <div class="card">
-      <div class="card-title">Documentos comprobatórios</div>
-      <p class="hint" style="margin-bottom:12px">Clique em cada documento para marcá-lo e anexar o arquivo.</p>
-      <div class="doc-list">${docsListHTML()}</div>
-    </div>
-    <div class="card" id="card-fotos" style="border-left:3px solid var(--orange)">
-      <div class="card-title obra">Registro fotográfico</div>
-      <p class="hint" style="margin-bottom:12px">Recomendamos fortemente o envio de fotos dos equipamentos instalados, do estado da obra ou da prestação de serviços.</p>
-      <input type="file" style="display:none" id="file_fotos_acao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_acao',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('fotos_acao')">
-        <div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>
-      </div>
-      <div class="file-list" id="files_fotos_acao">${renderFilePills('fotos_acao')}</div>
+      <div class="file-list" id="files_arquivos_obra">${renderFilePills('arquivos_obra')}</div>
     </div>`;
 
   // Phase 3 — CUSTEIO (com atividades)
@@ -2114,19 +1947,6 @@ function contentHTML(){
       ${fld('Data da entrega ou período','data_entrega','text','Ex: 15/03/2025')}
       ${chipsHTML('Houve atraso?','houve_atraso',['Sim','Não'])}
       ${fld('Se houve atraso, justificar','justificativa_atraso','textarea','Descreva o motivo do atraso...')}
-    </div>
-    <div id="card-comprovacao" style="display:none">
-      <div class="card">
-        <div class="card-title">Comprovação fiscal</div>
-        ${chipsHTML('Notas fiscais / recibos apresentados?','notas_fiscais',['Sim','Não'])}
-        ${chipsHTML('Avaliação da qualidade','qualidade_entrega',['Conforme','Não conforme','Parcialmente conforme'])}
-        ${fld('Observações sobre a qualidade','obs_qualidade_entrega','textarea','')}
-      </div>
-      <div class="card" id="card-nf-detalhes" style="display:none">
-        <div class="card-title">Notas fiscais e comprovantes</div>
-        <div id="nf-list-container"></div>
-        <button class="btn-add-nf" onclick="addNF()">+ Adicionar outra nota fiscal</button>
-      </div>
     </div>`
   : lockedBanner
     +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Patrimônio')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
@@ -2175,20 +1995,38 @@ function contentHTML(){
     </div>
     <div class="card">
       <div class="card-title">Meta e status</div>
-      ${fld('Meta prevista','meta_prevista','text','Ex: 100% dos equipamentos instalados e operacionais')}
+      ${(()=>{
+        const a=acq();
+        const _dp=(_dadosPlanoParaAcq(a)||{});
+        const _oficial=getMetaOficial(a.acao_instrumento,_dp.acao||'',a.acao_tipo||'',municipio.municipio||'');
+        const _metaTexto=_oficial||a.meta_prevista||_dp.tipo||_dp.acao||'';
+        const _ehOficial=!!_oficial;
+        a.meta_prevista=_metaTexto;
+        a._meta_oficial=_ehOficial;
+        return '<div class="field"><label>Meta prevista'+(_ehOficial?' <span style="font-weight:400;color:var(--g600);font-size:11px;text-transform:none">(oficial — Metas e resoluções)</span>':(_metaTexto?' <span style="font-weight:400;color:var(--ink3);font-size:11px;text-transform:none">(referência do plano — sem meta oficial cadastrada para esta ação)</span>':''))+'</label>'
+          +'<div style="padding:10px 12px;background:var(--g50);border:1px solid var(--border2);border-radius:7px;font-size:13px;color:var(--ink2);line-height:1.5">'+(_metaTexto||'Meta não cadastrada para esta ação.')+'</div>'
+        +'</div>';
+      })()}
       ${chipsHTML('Status da meta','status_meta',['Não iniciado','Em andamento','Em execução','Concluída'])}
     </div>
     <div class="card">
       <div class="card-title">Resultados alcançados</div>
-      ${multiChipsHTML('Resultados alcançados a partir da entrega','resultados_alcancados',[
-        'Ampliação da cobertura de Atenção Primária à Saúde',
-        'Ampliação da capacidade instalada da atenção especializada',
-        'Fortalecimento da capacidade de atendimento hospitalar',
+      ${multiChipsHTML('Objetivos do Plano alcançados a partir da entrega','resultados_alcancados',[
+        'Ampliar cobertura de Atenção Primária à Saúde e qualificar estruturas físicas existentes',
+        'Garantir a manutenção adequada da infraestrutura das UBS, assegurando continuidade e qualidade da assistência',
+        'Fortalecimento da estrutura da Atenção Primária à Saúde',
+        'Ampliação do acesso aos serviços de saúde bucal a populações que enfrentam barreiras geográficas ou estruturais',
         'Ampliação e qualificação do transporte sanitário',
-        'Fortalecimento da vigilância por meio do controle de riscos ambientais à saúde',
-        'Fortalecimento da capacidade operacional dos Consórcios Intermunicipais de Saúde',
-        'Melhoria dos registros nos sistemas de informação do SUS',
-        'Ampliação do suporte especializado para a execução qualificada dos serviços de saúde'
+        'Ampliação da capacidade instalada da atenção especializada',
+        'Ampliação do suporte especializado para a execução qualificada dos serviços de saúde',
+        'Ampliação e fortalecimento da capacidade de atendimento hospitalar para média e alta complexidade no contexto do SUS',
+        'Garantir a manutenção adequada da infraestrutura hospitalar, contribuindo para a continuidade e qualificação da assistência à saúde',
+        'Ampliação e qualificação da rede de atenção psicossocial para garantir o acesso ao cuidado em saúde mental',
+        'Fortalecimento da vigilância e monitoramento da qualidade da água para consumo humano',
+        'Ampliação da vigilância em saúde ambiental para detecção precoce e controle de riscos ambientais à saúde',
+        'Aprimoramento da estrutura física dos serviços de saúde do trabalhador',
+        'Fortalecimento da capacidade operacional dos Consórcios Intermunicipais de Saúde para a oferta qualificada e integrada dos serviços',
+        'Fortalecer a capacidade operacional e de gestão dos Consórcios responsáveis pela execução do SAMU'
       ])}
       ${fld('Atendimentos realizados pela unidade do SUS contemplada','atendimentos_realizados','numonly','Nº de atendimentos (se aplicável)')}
       <p class="hint" style="margin:10px 0 6px">Para cada resultado marcado acima, anexe uma evidência que comprove o que foi alcançado.</p>
@@ -2206,15 +2044,6 @@ function contentHTML(){
         <div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>
       </div>
       <div class="file-list" id="files_fotos_execucao">${renderFilePills('fotos_execucao')}</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Anexos</div>
-      <p class="hint" style="margin-bottom:12px">Relatórios, documentos produzidos ou outros arquivos relevantes para o monitoramento.</p>
-      <input type="file" style="display:none" id="file_anexos_execucao" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" onchange="handleFiles('anexos_execucao',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('anexos_execucao')">
-        <div class="upload-zone-text"><strong>Clique para anexar</strong></div>
-      </div>
-      <div class="file-list" id="files_anexos_execucao">${renderFilePills('anexos_execucao')}</div>
     </div>`;
 
   if(phase===5){
@@ -2364,6 +2193,56 @@ function _dadosPlanoParaAcq(a){
     if(u)return{acao:item.acao,eixo:item.eixo,valor:u.valor};
   }
   return null;
+}
+
+// Metas oficiais — extraídas da aba "Metas - resoluções" da planilha do Plano
+// (Investimento e Custeio). Cada ação do plano tem uma redação de meta fixa;
+// algumas ações (5, 7 e 9/10) têm mais de uma meta possível, desambiguadas
+// pelo texto do "tipo" (descrição da ação) ou pelo município/consórcio.
+function getMetaOficial(instrumento,acaoTexto,tipoTexto,municipioTexto){
+  const ac=(acaoTexto||'').trim();
+  const tp=(tipoTexto||'').toLowerCase();
+  const mu=(municipioTexto||'').trim();
+  if(instrumento==='RES_Investimento'){
+    if(ac==='Construir Unidades Básicas de Saúde (UBS)')
+      return 'Realização de 100% da obra até o final do período - UBS';
+    if(ac==='Construção de Unidade Básica de Saúde Apoio (UBS Apoio)')
+      return 'Realização de 100% da obra até o final do período - UBS de Apoio';
+    if(ac==='Fornecer equipamentos às Unidades da Atenção Primária à Saúde (APS)')
+      return 'Uso de 100% do recurso para aquisição de equipamentos de Atenção Primária.';
+    if(ac==='Implantar serviço de atendimento odontológico móvel')
+      return 'Aquisição de Unidade Odontológica Móvel.';
+    if(ac==='Aprimorar a capacidade de atendimento à população'){
+      if(tp.includes('multissensorial'))
+        return 'Uso de 100% do recurso para aquisição de equipamentos para parques e salas multissensoriais.';
+      return 'Uso de 100% do recurso para aquisição de equipamentos de Atenção Especializada.';
+    }
+    if(ac==='Construir Centros de Atenção Psicossocial (CAPS) territorializados')
+      return 'Realização de 100% da obra até o final do período - CAPS';
+    if(ac==='Investir na expansão e modernização da infraestrutura hospitalar'){
+      if(tp.includes('plano de trabalho'))
+        return 'Uso de 100% do recurso para aquisição dos equipamentos de Atenção Hospitalar descritos no Plano de Trabalho.';
+      if(tp.includes('módulo')||tp.includes('modulo'))
+        return 'Uso de 100% do recurso para aquisição de equipamentos gerais de Atenção Hospitalar.';
+      return 'Aquisição dos equipamentos específicos de Atenção Hospitalar.';
+    }
+    if(ac==='Investir na aquisição de equipamentos e mobiliários')
+      return 'Uso de 100% do recurso para aquisição de equipamentos para o CEREST.';
+    if(ac==='Fortalecer os Consórcios com recurso financeiro'){
+      if(mu==='CONSURGE')
+        return 'Uso de 100% do recurso para aquisição de equipamentos para o CONSURGE.';
+      return 'Uso de 100% do recurso para aquisição de equipamentos para os Consórcios Generalistas.';
+    }
+  }
+  if(instrumento==='RES_Custeio'){
+    if(ac==='Fortalecer as atividades de vigilância e o monitoramento da qualidade da água para consumo humano')
+      return 'Uso de 100% do recurso para execução de ações de vigilância - Vigiagua.';
+    if(ac==='Ampliar e fortalecer os pontos de vigilância em saúde ambiental')
+      return 'Uso de 100% do recurso para execução de ações de vigilância - Vigiar e Vigidesastres.';
+    if(ac==='Custear a manutenção, conservação e reparos da infraestrutura hospitalar')
+      return 'Uso de 100% do recurso para manutenção hospitalar.';
+  }
+  return '';
 }
 function nextPhase(){
   saveAllInputs();
@@ -2654,7 +2533,7 @@ function gerarPDFBase64(){
       sec('AÇÃO DO PLANO RIO DOCE');
       row('Instrumento:',(a.acao_instrumento||'').replace(/_/g,' '));row('Tipo de Aplicação:',a.acao_tipo);
       row('Ação do Plano:',a.acao_descricao);row('Eixo:',a.acao_eixo);
-      row('Tipo monitoramento:',ob?'Obra/Construção':servico?'Serviços':'Equipamentos');
+      row('Tipo monitoramento:',ob?'Obra/Construção':servico?'Serviços':'Aquisição');
       if(ob)row('Endereço:',a.endereco_obra);
       sec('DADOS DA AQUISIÇÃO');
       row('Detalhamento:',a.descricao_item);if(!ob)row('Quantidade:',a.quantidade);
@@ -2689,33 +2568,20 @@ function gerarPDFBase64(){
         });
       }
       sec('CONTRATAÇÃO');
-      row('Status:',a.status_aquisicao);row('Modalidade:',a.modalidade);row('Nº Processo:',a.num_processo);
+      row('Status da contratação:',a._status_contrat);
       if(servico){row('Contratações de pessoal previstas:',a.pessoal_previsto);row('Contratações realizadas:',a.pessoal_realizado);}
-      if(ob){row('Nº OS:',a.num_os);row('Data OS:',a.data_os);}
-      row('Fase:',a.fase_contratacao);row('Data Início:',a.data_inicio);row('Conclusão Prevista:',a.data_conclusao);
-      const emps=a._empresas&&a._empresas.length?a._empresas:[{nome:a.empresa_nome,cnpj:a.empresa_cnpj,valor:a.valor_contratado,homologacao:a.data_homologacao,prazo:a.prazo_entrega,prev_entrega:a.data_prev_entrega}];
-      emps.forEach(function(em,ei){
-        if(emps.length>1){chk(6);doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...GR);doc.text('Empresa '+(ei+1)+':',14,y);y+=5;}
-        row('Empresa:',em.nome);row('CNPJ:',em.cnpj);row('Valor Contratado:',em.valor?'R$ '+em.valor:'');
-        row('Homologação:',em.homologacao);row('Prazo:',em.prazo?em.prazo+' dias':'');row('Entrega Prevista:',em.prev_entrega);
-      });
+      row('Data Início:',a.data_inicio);row('Conclusão Prevista:',a.data_conclusao);
       if(ob){
         sec('EXECUÇÃO FÍSICA',true);
-        row('% Executado (auto):',calcPctExecucaoAuto(a)?calcPctExecucaoAuto(a)+'%':'');
+        row('Empresa Executora:',a.empresa_executora);row('Endereço:',a.endereco_obra);
         row('Data de Início:',a.data_inicio_obra);row('Fiscal Responsável:',a.fiscal_responsavel);
         row('% Medido no Período:',a.pct_medido_periodo);row('% Acumulado até o Período:',a.pct_acumulado_periodo);
         row('Observações:',a.observacoes_oficial);
-        row('Andamento:',a.andamento_cronograma);row('Obs. Cronograma:',a.obs_cronograma);
-        row('Conclusão Contrato:',a.data_conclusao_contrato);row('Nova Previsão:',a.data_conclusao_nova);
-        (a._medicoes||[]).forEach(function(m,mi){row('BM '+(mi+1)+' — Nº:',m.num);row('BM '+(mi+1)+' — Data:',m.data);row('BM '+(mi+1)+' — Valor:',m.valor?'R$ '+m.valor:'');});
       } else {
-        sec('ENTREGA E PATRIMÔNIO');
-        row('Situação Entrega:',a.situacao_entrega);row('Data(s) Entrega/Serviço:',a.data_entrega);row('Houve atraso?',a.houve_atraso);row('Justificativa atraso:',a.justificativa_atraso);row('Qualidade da entrega:',a.qualidade_entrega);row('Obs. qualidade:',a.obs_qualidade_entrega);row('Notas Fiscais:',a.notas_fiscais);
+        sec('ENTREGA');
+        row('Situação Entrega:',a.situacao_entrega);row('Data(s) Entrega/Serviço:',a.data_entrega);row('Houve atraso?',a.houve_atraso);row('Justificativa atraso:',a.justificativa_atraso);
         if(servico){row('Unidade de Medida:',a.unidade_medida);row('CNES:',a.cnes);}
         (a._nfs||[]).forEach(function(nf,ni){row('NF '+(ni+1)+' — Nº:',nf.num);row('NF '+(ni+1)+' — Série:',nf.serie);row('NF '+(ni+1)+' — Data:',nf.data);row('NF '+(ni+1)+' — Valor:',nf.valor?'R$ '+nf.valor:'');row('NF '+(ni+1)+' — CNES:',nf.cnes);});
-        row('Incorporado Patrimônio:',a.incorporado_patrimonio);row('Nº Patrimonial:',a.num_patrimonio);
-        row('Data Incorporação:',a.data_incorporacao);row('Item em Uso:',a.item_em_uso);
-        row('Instalação/Treinamento:',a.instalacao_treinamento);row('Obs. Uso:',a.obs_uso);
       }
       const allDocs=[{key:'contrato',label:'Contrato'},{key:'edital',label:'Edital'},{key:'art',label:'ART/RRT'},{key:'ordem_servico',label:'Ordem de serviço'},{key:'cronograma',label:'Cronograma'},{key:'termo_recebimento',label:'Termo de recebimento'},{key:'registro_patrimonial',label:'Registro patrimonial'},{key:'outros',label:'Outros'}];
       const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){const d=allDocs.find(function(x){return x.key===e[0];});return d?d.label:e[0];}).join(', ');
@@ -2867,53 +2733,18 @@ async function concludeAction(){
 async function enviarAcaoSheet(a, tipoRegistro){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
   try{
-    const obra=a.modalidade_objeto==='obra';
-    const emps=(a._empresas||[]).map(function(em,ei){return 'Empresa '+(ei+1)+': '+(em.nome||'?')+' CNPJ:'+(em.cnpj||'?')+' Valor:'+(em.valor||'?');}).join(' | ');
-    const nfRes=obra?'':(a._nfs||[]).map(function(n){return 'NF '+(n.num||'?')+' / '+(n.data||'?')+' / R$'+(n.valor||'0');}).join(' | ');
-    const medRes=obra?(a._medicoes||[]).map(function(m){return 'BM '+(m.num||'?')+' / '+(m.data||'?')+' / R$'+(m.valor||'0');}).join(' | '):'';
     const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){return e[0];}).join(', ');
-    const firstEmp=(a._empresas&&a._empresas[0])||{};
-    // Para equipamentos com lotes: valor executado é o ACUMULADO histórico de
-    // todos os bimestres (nunca diminui), igual ao exibido em calcExecutadoLotes.
-    const lotesConf=(a._lotes||[]).filter(function(l){return l.confirmado;});
-    const STATUS_PAGO_ENVIO=['Em entrega','Concluído'];
-    const lotesPagosConf=lotesConf.filter(function(l){return STATUS_PAGO_ENVIO.includes(l._status||'Planejamento');});
-    const execAcumuladoEnvio=calcularExecutadoAcumuladoHistorico(a);
-    const execAtualTelaEnvio=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
-    const valorContratadoLotes=Math.max(execAcumuladoEnvio, execAtualTelaEnvio);
-    const valorPagoLotes=lotesPagosConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
-    const valorListaLotes=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
-    const temLotes=lotesConf.length>0;
-    const valorContratadoFinal=temLotes?valorContratadoLotes:(firstEmp.valor||a.valor_contratado||'');
-    const valorExecutadoFinal=temLotes?valorContratadoLotes:(a.valor_executado||'');
     // Valor Total Utilizado = SOMA de todos os bimestres: valor executado NESTE
-    // bimestre + histórico acumulado dos bimestres anteriores + recurso próprio.
-    const valorTotalUtilizadoFinal=temLotes
-      ?(valorPagoLotes+(a._executado_historico||0)+parseBRL(a.valor_proprio||''))
-      :(parseBRL(a.valor_executado||'')+parseBRL(a._executado_historico||0));
+    // bimestre + histórico acumulado dos bimestres anteriores.
+    const valorTotalUtilizadoFinal=parseBRL(a.valor_executado||'')+parseBRL(a._executado_historico||0);
     const payload=Object.assign({},municipio,a,{
-      _nfs:undefined,_docs:undefined,_medicoes:undefined,_empresas:undefined,_lotes:undefined,_pool:undefined,
-      _key:undefined,_locked:undefined,_sent:undefined,_sentAt:undefined,_corrections:undefined,
-      empresa_nome:firstEmp.nome||a.empresa_nome||(lotesConf[0]&&lotesConf[0].empresa_nome)||'',
-      empresa_cnpj:firstEmp.cnpj||a.empresa_cnpj||(lotesConf[0]&&lotesConf[0].empresa_cnpj)||'',
-      valor_contratado:valorContratadoFinal,
-      valor_executado:valorExecutadoFinal,
+      _docs:undefined,_key:undefined,_locked:undefined,_sent:undefined,_sentAt:undefined,_corrections:undefined,
       valor_total_utilizado:valorTotalUtilizadoFinal,
-      pct_execucao:obra?calcPctExecucaoAuto(a):(a.pct_execucao||''),
       editado_por:a._editadoPor||municipio.responsavel||'',
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
       valor_total_recebido:((municipio._recebidoBase||0)+calcValorRecebidoBimestre()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       rendimentos_acumulados:((municipio._rendimentosBase||0)+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-      data_homologacao:firstEmp.homologacao||a.data_homologacao||'',
-      prazo_entrega:firstEmp.prazo||a.prazo_entrega||'',
-      data_prev_entrega:firstEmp.prev_entrega||a.data_prev_entrega||'',
-      // Resumo dos lotes para a planilha (lista textual)
-      lotes_resumo:lotesConf.map(function(l){return (l.modalidade||'Lote')+': '+(l.empresa_nome||'?')+' / R$'+(l._total||0).toFixed(2)+' / status:'+(l._status||'Planejamento');}).join(' | '),
-      // Arrays estruturados para as abas auxiliares
-      _empresas_array:(a._empresas||[]).map(function(em){return{nome:em.nome||'',cnpj:em.cnpj||'',valor:em.valor||'',homologacao:em.homologacao||'',prazo:em.prazo||'',prev_entrega:em.prev_entrega||''};}).filter(function(em){return em.nome;}),
-      _nfs_array:obra?[]:(a._nfs||[]).map(function(n){return{num:n.num||'',serie:n.serie||'',data:n.data||'',valor:n.valor||'',cnes:n.cnes||''};}).filter(function(n){return n.num;}),
-      _medicoes_array:obra?(a._medicoes||[]).map(function(m){return{num:m.num||'',data:m.data||'',valor:m.valor||''};}).filter(function(m){return m.num;}):[],
-      empresas_resumido:emps,nf_resumido:nfRes,medicoes_resumido:medRes,docs_marcados:docsOk,
+      docs_marcados:docsOk,
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
       acao_concluida:(tipoRegistro==='Conclusao'||tipoRegistro==='Correcao')?'Sim':'Nao',
@@ -2924,8 +2755,6 @@ async function enviarAcaoSheet(a, tipoRegistro){
     await fetch(APPS_SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   }catch(e){console.warn('Sheets enviarAcaoSheet:',e);}
 }
-
-
 
 
 // ── PERSISTÊNCIA localStorage ────────────────────────────────────────────────
@@ -3480,6 +3309,7 @@ function registroParaAcq(reg){
   const a = {
     _editadoPor:           reg.editado_por      || '',
     endereco_obra:         reg.endereco_obra    || '',
+    valor_lista_equipamentos: reg.valor_lista_equipamentos || '',
     acao_instrumento:      reg.acao_instrumento || '',
     acao_descricao:        (_meta&&_meta.acao)  || reg.acao_descricao || '',
     acao_tipo:             reg.acao_tipo        || '',
@@ -3495,11 +3325,7 @@ function registroParaAcq(reg){
     saldo_conta:           reg.saldo_conta      || '',
     pessoal_previsto:      reg.pessoal_previsto || '',
     pessoal_realizado:     reg.pessoal_realizado || '',
-    status_aquisicao:      reg.status_aquisicao || '',
-    modalidade:            reg.modalidade       || '',
-    num_processo:          reg.num_processo     || '',
-    link_publicacao:       reg.link_publicacao  || '',
-    fase_contratacao:      reg.fase_contratacao || '',
+    _status_contrat:       reg._status_contrat  || '',
     data_inicio:           reg.data_inicio      || '',
     data_conclusao:        reg.data_conclusao   || '',
     // Tipo específico
@@ -3538,674 +3364,20 @@ function registroParaAcq(reg){
 }
 
 
-// ── LOTES DE AQUISIÇÃO (lista de equipamentos por modalidade) ────────────────
-
-const MODALIDADES_LOTE = [
-  'Pregão Eletrônico','Pregão Presencial','Dispensa de Licitação',
-  'Inexigibilidade','Ata de Registro de Preços','COTEP',
-  'Concorrência','Tomada de Preços','Outro'
-];
-
-function getLotes(){
-  if(!acq()._lotes||!acq()._lotes.length){
-    acq()._lotes=[{modalidade:'',num_processo:'',itens:[]}];
-  }
-  return acq()._lotes;
-}
-
-function addLote(){
-  getLotes().push({modalidade:'',num_processo:'',itens:[],_listaId:null,confirmado:false});
-  if(typeof renderLotesCard==='function')renderLotesCard();
-  else _renderLotesCardDOM();
-  setTimeout(()=>document.getElementById('lotes-container')?.lastElementChild?.scrollIntoView({behavior:'smooth',block:'start'}),50);
-}
-
-function removeLote(li){
-  const lotes=getLotes();
-  if(lotes.length<=1)return;
-  lotes.splice(li,1);
-  renderLotesCard();
-}
-
-
-
-function calcItemTotal(li,ii){
-  const it=getLotes()[li].itens[ii];
-  const q=parseFloat(String(it.qtde||0).replace(',','.'))||0;
-  const v=parseFloat(String(it.valor_unit||0).replace(/[R$\s.]/g,'').replace(',','.'))||0;
-  it.total=q*v;
-  const el=document.getElementById(`itotal_${li}_${ii}`);
-  if(el)el.textContent='R$ '+it.total.toLocaleString('pt-BR',{minimumFractionDigits:2});
-  atualizarTotaisLote(li);
-}
-
-function atualizarTotaisLote(li){
-  const lote=getLotes()[li];
-  const tot=lote.itens.reduce((s,it)=>s+(parseFloat(it.total)||0),0);
-  lote._total=tot;
-  const el=document.getElementById(`lote_total_${li}`);
-  if(el)el.textContent='Total do lote: R$ '+tot.toLocaleString('pt-BR',{minimumFractionDigits:2});
-  // Atualizar resumo geral
-  const allTot=getLotes().reduce((s,l)=>s+(l._total||0),0);
-  const elAll=document.getElementById('lotes_grand_total');
-  if(elAll)elAll.textContent='R$ '+allTot.toLocaleString('pt-BR',{minimumFractionDigits:2});
-}
-
-
-
-function colarTabela(li, texto){
-  if(!texto.trim())return;
-  const linhas=texto.trim().split('\n').map(l=>l.split('\t'));
-  processarDadosTabela(li, linhas);
-}
-
-function processarDadosTabela(li, data){
-  // Detectar linha de cabeçalho (COD, EQUIPAMENTO, VALOR, UNI/QTDE, TOTAL)
-  let startRow=0;
-  for(let i=0;i<Math.min(data.length,10);i++){
-    const row=data[i].map(c=>String(c||'').toUpperCase());
-    if(row.some(c=>c.includes('EQUIPAMENTO')||c.includes('DESCRI'))){
-      startRow=i+1;break;
-    }
-  }
-  const itens=[];
-  for(let i=startRow;i<data.length;i++){
-    const row=data[i];
-    const nome=String(row[1]||row[0]||'').trim();
-    if(!nome||nome.toUpperCase().includes('TOTAL'))continue;
-    const cod=String(row[0]||'').trim();
-    const vStr=String(row[2]||'0').replace(/[R$\s.]/g,'').replace(',','.');
-    const qStr=String(row[3]||'1').replace(/[^0-9,\.]/g,'').replace(',','.');
-    const vUnit=parseFloat(vStr)||0;
-    const qtde=parseFloat(qStr)||1;
-    itens.push({cod,nome,qtde,valor_unit:vUnit,total:vUnit*qtde,modalidade_item:'',status_item:''});
-  }
-  if(!itens.length){alert('Nenhum item encontrado. Verifique o formato da planilha.');return;}
-  getLotes()[li].itens=itens;
-  renderLoteItens(li);
-  atualizarTotaisLote(li);
-  // Toast
-  const info=document.getElementById('navInfo');
-  if(info){const prev=info.innerHTML;info.innerHTML=`<span style="color:var(--g600)">✓ ${itens.length} itens importados</span>`;setTimeout(()=>info.innerHTML=prev,2500);}
-}
-
-
-function toggleCheckAll(li,checked){
-  document.querySelectorAll(`input[name="check_item_${li}"]`).forEach(c=>c.checked=checked);
-}
-
-function renderLotesCard(){
-  // Versão chamada de contentHTML — retorna HTML do card container
-  const a=acq();
-  const nLotes=(a._lotes&&a._lotes.length)||1;
-  const nItens=(a._lotes||[]).reduce((s,l)=>s+(l.itens||[]).length,0);
-  return '<div class="card" style="border-left:3px solid var(--g400)">'
-    +'<div class="card-title">Lista de equipamentos por lote / modalidade</div>'
-    +'<div style="font-size:12.5px;color:var(--ink2);margin-bottom:14px">Organize os itens desta ação por modalidade de licitação. Importe a planilha do município ou adicione manualmente.</div>'
-    +'<div id="lotes-container"></div>'
-
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2);flex-wrap:wrap;gap:8px">'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    +'<label style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">'
-      +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
-      +'Carregar nova lista'
-      +'<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadNovaLista(this)"/>'
-    +'</label>'
-    +'<button onclick="colarNovaLista()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">'
-      +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
-      +'Colar lista'
-    +'</button>'
-    +'</div>'
-    +'<div style="display:flex;align-items:center;gap:10px">'
-      +'<div style="font-size:12px;color:var(--ink3)">Total geral:</div>'
-      +'<div id="lotes_grand_total" style="font-size:15px;font-weight:700;color:var(--g700)">R$ 0,00</div>'
-    +'</div>'
-    +'</div></div>';
-}
-
-function _renderLotesCardDOM(){
-  const c=document.getElementById('lotes-container');
-  if(!c)return;
-  const a=acq();
-  // Migração: se ainda usa _pool antigo (lista única), converte para _listas[]
-  if(!a._listas){
-    a._listas=[];
-    if(a._pool&&a._pool.length){
-      a._listas.push({id:'lista_'+Date.now(),nome:'Lista 1',itens:a._pool});
-    }
-    delete a._pool;
-  }
-  if(!a._lotes||!a._lotes.length)a._lotes=[{modalidade:'',num_processo:'',valor_executado:'',itens:[],confirmado:false,_listaId:null}];
-
-  c.innerHTML='';
-
-  // ── LOTES CONFIRMADOS ──────────────────────────────────────────────────────
-  a._lotes.filter(l=>l.confirmado).forEach(function(lote,li){
-    const realIdx=a._lotes.indexOf(lote);
-    const totLote=lote.itens.reduce(function(s,it){return s+(it.total||0);},0);
-    const listaOrigem=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
-    const div=document.createElement('div');
-    div.style.cssText='border:1.5px solid var(--g300);border-radius:10px;overflow:hidden;margin-bottom:10px';
-    div.innerHTML=`
-      <div style="background:var(--g50);padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border2)">
-        <div style="width:26px;height:26px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</div>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:700;color:var(--g800)">${lote.modalidade||'Lote '+(realIdx+1)}</div>
-          <div style="font-size:11px;color:var(--ink3)">${lote.num_processo?'Proc. '+lote.num_processo+' · ':''} ${lote.itens.length} itens${listaOrigem?' · de '+listaOrigem.nome:''} · R$ ${(lote._total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        </div>
-        <div style="font-size:13px;font-weight:700;color:var(--g700)">R$ ${totLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        <button onclick="editarLote(${realIdx})" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">✏️ Editar</button>
-        <button onclick="removerLote(${realIdx})" title="Excluir lote" style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;background:#fff;color:#C94040;cursor:pointer;font-family:var(--font)">🗑️</button>
-      </div>`;
-    c.appendChild(div);
-  });
-
-  // ── LOTE EM EDIÇÃO (não confirmado) ───────────────────────────────────────
-  const editIdx=a._lotes.findIndex(l=>!l.confirmado);
-  if(editIdx>=0){
-    const lote=a._lotes[editIdx];
-    // Garantir que o lote tenha uma lista vinculada (se houver listas e nenhuma vinculada ainda)
-    if(!lote._listaId && a._listas.length===1){ lote._listaId=a._listas[0].id; }
-
-    const listaAtual=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
-    const poolDisp=_getPoolDoLote(editIdx);
-
-    const div=document.createElement('div');
-    div.id='lote-editor';
-    div.style.cssText='border:2px solid var(--g400);border-radius:10px;overflow:hidden;margin-bottom:10px';
-    div.innerHTML=`
-      <!-- Cabeçalho do lote em edição -->
-      <div style="background:var(--g800);padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">L${editIdx+1}</div>
-        <select id="lote_modal_sel" style="flex:1;min-width:140px;padding:6px 10px;font-size:13px;border:none;border-radius:6px;font-family:var(--font);background:#fff"
-          onchange="acq()._lotes[${editIdx}].modalidade=this.value">
-          <option value="">Modalidade do lote...</option>
-          ${MODALIDADES_LOTE.map(m=>`<option value="${m}"${lote.modalidade===m?' selected':''}>${m}</option>`).join('')}
-        </select>
-        <input type="text" placeholder="Nº processo / licitação" value="${lote.num_processo||''}"
-          style="width:140px;padding:6px 10px;font-size:12px;border:none;border-radius:6px;font-family:var(--font)"
-          oninput="acq()._lotes[${editIdx}].num_processo=this.value"/>
-      </div>
-
-      <!-- Seletor de lista (se houver mais de uma lista cadastrada) -->
-      ${a._listas.length>1?`
-      <div style="padding:10px 14px;background:#FFF8E1;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:10px">
-        <span style="font-size:12px;font-weight:600;color:#7C4A0A">📋 Montar este lote a partir de:</span>
-        <select onchange="selecionarListaParaLote(${editIdx},this.value)" style="flex:1;max-width:280px;padding:6px 10px;font-size:12.5px;border:1.5px solid #F9A825;border-radius:6px;font-family:var(--font);background:#fff">
-          ${a._listas.map(function(ls){return `<option value="${ls.id}"${ls.id===lote._listaId?' selected':''}>${ls.nome} (${ls.itens.length} itens)</option>`;}).join('')}
-        </select>
-      </div>`:''}
-
-      <!-- Área de importação (só aparece se NENHUMA lista existe ainda) -->
-      ${a._listas.length===0?`
-      <div style="padding:12px 14px;background:var(--g50);border-bottom:1px solid var(--border2);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <span style="font-size:12px;color:var(--ink2);margin-right:4px">Importar lista de itens:</span>
-        <label style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g400);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Importar Excel
-          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadExcelPool(this)"/>
-        </label>
-        <button onclick="abrirColarModal(-1)" style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          Colar lista
-        </button>
-        <a onclick="_baixarModeloXLSX()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;border:1.5px solid var(--g300);border-radius:6px;background:var(--g50);color:var(--g700);cursor:pointer;font-family:var(--font);text-decoration:none;margin-left:auto">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Baixar modelo
-        </a>
-      </div>`:''}
-
-      <!-- Lista de itens disponíveis para seleção (só da lista vinculada a este lote) -->
-      <div style="padding:12px 14px;background:#fff" id="pool-area">
-        ${poolDisp.length?renderPoolHTML(editIdx):(a._listas.length>0?`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Todos os itens desta lista já foram distribuídos em lotes.</div>`:`<div style="text-align:center;padding:24px;color:var(--ink3);font-size:13px">Importe a lista de itens do município para começar.</div>`)}
-      </div>
-    `;
-    c.appendChild(div);
-  }
-
-  // ── BOTÃO ADICIONAR LOTE (só aparece se não há lote em edição) ─────────────
-  if(editIdx<0){
-    const btn=document.createElement('button');
-    btn.onclick=addLote;
-    btn.style.cssText='display:flex;align-items:center;gap:6px;padding:8px 18px;font-size:13px;font-weight:600;border:2px dashed var(--g400);border-radius:20px;background:transparent;color:var(--g600);cursor:pointer;font-family:var(--font);margin-top:4px';
-    btn.innerHTML='+ Adicionar outro lote / modalidade';
-    c.appendChild(btn);
-  }
-
-  // ── RESUMO DE LISTAS IMPORTADAS (cada uma isolada) ──────────────────────────
-  if(a._listas.length>0){
-    const listasDiv=document.createElement('div');
-    listasDiv.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)';
-    listasDiv.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-      +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)">Listas importadas (isoladas entre si)</div>'
-      +'<button class="btn" style="padding:4px 10px;font-size:11px" onclick="sincronizarListasManual()" id="btnSyncListas">🔄 Sincronizar com servidor</button>'
-      +'</div>'
-      +'<div id="syncListasStatus" style="font-size:11px;color:var(--ink3);margin-bottom:8px"></div>'
-      +a._listas.map(function(ls,li){
-        const distribuidos=a._lotes.filter(function(l){return l._listaId===ls.id&&l.confirmado;}).reduce(function(s,l){return s+l.itens.length;},0);
-        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--g50);border-radius:8px;margin-bottom:6px">'
-          +'<span style="font-size:12.5px;font-weight:600;color:var(--ink2);flex:1">📋 '+ls.nome+'</span>'
-          +'<span style="font-size:11px;color:var(--ink3)">'+ls.itens.length+' disponíveis · '+distribuidos+' em lotes</span>'
-          +'</div>';
-      }).join('');
-    c.appendChild(listasDiv);
-  }
-
-  // Atualizar totais
-  calcExecutadoLotes();
-}
-
-// Botão manual de sincronização: empurra as listas pendentes desta ação para o
-// servidor (aba ListasPendentes) imediatamente — útil para "migrar" ações que
-// já estavam preenchidas antes de existir o carry-over automático entre bimestres,
-// sem precisar reabrir/editar nada para disparar o salvamento normal.
-async function sincronizarListasManual(){
-  const a=acq();
-  const btn=document.getElementById('btnSyncListas');
-  const status=document.getElementById('syncListasStatus');
-  if(!a||!a._listas||!a._listas.length){
-    if(status)status.innerHTML='<span style="color:var(--ink3)">Nenhuma lista para sincronizar nesta ação.</span>';
-    return;
-  }
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')){
-    if(status)status.innerHTML='<span style="color:var(--red)">URL do Apps Script não configurada.</span>';
-    return;
-  }
-  if(btn){btn.disabled=true;btn.innerHTML='🔄 Sincronizando…';}
-  if(status)status.innerHTML='';
-  try{
-    const payload={
-      acao:'salvarListasPendentes',
-      municipio:municipio.municipio||'',
-      acao_instrumento:a.acao_instrumento||'',
-      acao_tipo:a.acao_tipo||'',
-      listas:a._listas.map(function(ls){return {id:ls.id,nome:ls.nome,itens:ls.itens||[]};})
-    };
-    const resp=await fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)});
-    const j=await resp.json();
-    if(j&&j.status==='ok'){
-      if(status)status.innerHTML='<span style="color:var(--g600)">✓ '+a._listas.length+' lista(s) sincronizada(s) com o servidor às '+new Date().toLocaleTimeString('pt-BR')+'.</span>';
-    }else{
-      if(status)status.innerHTML='<span style="color:var(--red)">Erro ao sincronizar: '+(j&&j.mensagem||'falha desconhecida')+'</span>';
-    }
-  }catch(e){
-    if(status)status.innerHTML='<span style="color:var(--red)">Falha de conexão ao sincronizar. Tente novamente.</span>';
-  }finally{
-    if(btn){btn.disabled=false;btn.innerHTML='🔄 Sincronizar com servidor';}
-  }
-}
-
-
-// Helper: retorna o array de itens da lista vinculada ao lote em edição
-function _getPoolDoLote(editIdx){
-  const a=acq();
-  const lote=a._lotes[editIdx];
-  if(!lote)return [];
-  const lista=lote._listaId?(a._listas||[]).find(function(ls){return ls.id===lote._listaId;}):null;
-  const poolItens=lista?lista.itens:[];
-  // Garante que os itens já presentes neste lote apareçam mesmo que a lista
-  // de importação original não esteja disponível nesta sessão/navegador —
-  // ex: lote confirmado por outra pessoa e sincronizado do servidor, sem o
-  // "pool" de itens importados que só existe localmente em quem importou.
-  const idsNoPool=new Set(poolItens.map(function(it){return it._pid;}));
-  const itensDoLoteFaltando=(lote.itens||[]).filter(function(it){return !idsNoPool.has(it._pid);});
-  return poolItens.concat(itensDoLoteFaltando);
-}
-
-function renderPoolHTML(editIdx){
-  const a=acq();
-  const pool=_getPoolDoLote(editIdx);
-  if(!pool.length) return '<div style="text-align:center;padding:20px;color:var(--ink3);font-size:13px">Nenhum item disponível.</div>';
-
-  const lote=a._lotes[editIdx];
-  const selIds=new Set((lote.itens||[]).map(it=>it._pid));
-
-  return `<div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3)">${pool.length} itens disponíveis</div>
-      <div style="display:flex;gap:8px">
-        <button onclick="selecionarTodosPool(${editIdx})" style="padding:4px 10px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Selecionar todos</button>
-        <button onclick="confirmarLote(${editIdx})" style="padding:5px 14px;font-size:12px;font-weight:700;border:none;border-radius:6px;background:var(--g700);color:#fff;cursor:pointer;font-family:var(--font)">✓ Confirmar lote</button>
-      </div>
-    </div>
-    <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead>
-        <tr style="background:var(--g50)">
-          <th style="padding:6px 8px;width:32px"><input type="checkbox" id="check_pool_all" onchange="togglePoolAll(${editIdx},this.checked)" style="width:13px;height:13px"></th>
-          <th style="padding:6px 8px;text-align:left;font-weight:600;color:var(--ink3)">Cód</th>
-          <th style="padding:6px 8px;text-align:left;font-weight:600;color:var(--ink3)">Equipamento</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--ink3)">Qtde</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--ink3)">Vl. Unit.</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:600;color:var(--ink3)">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${pool.map((it,ii)=>`
-          <tr style="border-bottom:1px solid var(--border2);${selIds.has(it._pid)?'background:var(--g50)':''}" id="pool_row_${ii}">
-            <td style="padding:5px 8px"><input type="checkbox" class="pool-check" data-pid="${it._pid}" data-ii="${ii}" ${selIds.has(it._pid)?'checked':''} onchange="onPoolCheck(${editIdx},this)" style="width:13px;height:13px"></td>
-            <td style="padding:5px 8px;color:var(--ink3)">${it.cod||'—'}</td>
-            <td style="padding:5px 8px;font-weight:500">${it.nome}</td>
-            <td style="padding:5px 8px;text-align:right">${it.qtde}</td>
-            <td style="padding:5px 8px;text-align:right;color:var(--ink2)">R$ ${(it.valor_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-            <td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--g700)">R$ ${(it.total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border2)">
-      <div id="pool-sel-count" style="font-size:12px;color:var(--ink3)">0 itens selecionados</div>
-      <button onclick="confirmarLote(${editIdx})" style="padding:7px 20px;font-size:13px;font-weight:700;border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer;font-family:var(--font)">✓ Confirmar lote</button>
-    </div>
-  </div>`;
-}
-
-function onPoolCheck(editIdx, cb){
-  const a=acq();
-  const pid=cb.dataset.pid;
-  const poolIt=_getPoolDoLote(editIdx).find(it=>it._pid==pid);
-  if(!poolIt)return;
-  const lote=a._lotes[editIdx];
-  if(cb.checked){
-    if(!lote.itens.find(it=>it._pid==pid))lote.itens.push(poolIt);
-  } else {
-    lote.itens=lote.itens.filter(it=>it._pid!=pid);
-  }
-  // Atualizar contador
-  const n=document.querySelectorAll('.pool-check:checked').length;
-  const el=document.getElementById('pool-sel-count');
-  if(el)el.textContent=n+' '+(n===1?'item selecionado':'itens selecionados');
-  // Realçar linha
-  const row=document.getElementById('pool_row_'+cb.dataset.ii);
-  if(row)row.style.background=cb.checked?'var(--g50)':'';
-}
-
-function togglePoolAll(editIdx, checked){
-  const a=acq();
-  const lote=a._lotes[editIdx];
-  const pool=_getPoolDoLote(editIdx);
-  document.querySelectorAll('.pool-check').forEach(cb=>{
-    cb.checked=checked;
-    const pid=cb.dataset.pid;
-    const poolIt=pool.find(it=>it._pid==pid);
-    if(!poolIt)return;
-    if(checked){if(!lote.itens.find(it=>it._pid==pid))lote.itens.push(poolIt);}
-    else{lote.itens=lote.itens.filter(it=>it._pid!=pid);}
-    const row=document.getElementById('pool_row_'+cb.dataset.ii);
-    if(row)row.style.background=checked?'var(--g50)':'';
-  });
-  const n=a._lotes[editIdx].itens.length;
-  const el=document.getElementById('pool-sel-count');
-  if(el)el.textContent=n+' '+(n===1?'item selecionado':'itens selecionados');
-}
-
-function selecionarTodosPool(editIdx){
-  const all=document.getElementById('check_pool_all');
-  if(all){all.checked=true;togglePoolAll(editIdx,true);}
-}
-
-function confirmarLote(editIdx){
-  const a=acq();
-  const lote=a._lotes[editIdx];
-  if(!lote.itens.length){alert('Selecione ao menos um item para este lote.');return;}
-  if(!lote._listaId){alert('Selecione de qual lista este lote deve ser montado.');return;}
-  // Remover da lista de origem os itens já alocados a este lote
-  const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
-  if(lista){
-    const allocPids=new Set(lote.itens.map(it=>it._pid));
-    lista.itens=lista.itens.filter(it=>!allocPids.has(it._pid));
-  }
-  lote.confirmado=true;
-  lote._total=lote.itens.reduce(function(s,it){return s+(it.total||0);},0);
-  _renderLotesCardDOM();
-  calcExecutadoLotes();
-  salvarListasPendentesSheet(a);
-  salvarLoteEquipamentoServidor(lote);
-}
-
-function editarLote(realIdx){
-  const a=acq();
-  const lote=a._lotes[realIdx];
-  // Devolver itens do lote à lista de origem temporariamente
-  const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
-  if(lista){
-    lote.itens.forEach(function(it){
-      if(!lista.itens.find(function(p){return p._pid==it._pid;}))lista.itens.push(it);
-    });
-  }
-  lote.confirmado=false;
-  _renderLotesCardDOM();
-}
-
-function removerLote(realIdx){
-  const a=acq();
-  const lote=a._lotes[realIdx];
-  if(!lote)return;
-  showConfirmModal('Excluir lote?','Esta ação não pode ser desfeita. O lote e seus itens serão removidos.','Excluir','🗑️','#C94040').then(function(ok){
-    if(!ok)return;
-    // Devolver itens à lista de origem, se ela existir nesta sessão
-    const lista=(a._listas||[]).find(function(ls){return ls.id===lote._listaId;});
-    if(lista){
-      lote.itens.forEach(function(it){
-        if(!lista.itens.find(function(p){return p._pid==it._pid;}))lista.itens.push(it);
-      });
-    }
-    excluirLoteEquipamentoServidor(lote);
-    a._lotes.splice(realIdx,1);
-    if(!a._lotes.length)a._lotes.push({modalidade:'',num_processo:'',valor_executado:'',itens:[],confirmado:false,_listaId:null});
-    _renderLotesCardDOM();
-    calcExecutadoLotes();
-  });
-}
-
-function addLote(){
-  const a=acq();
-  if(!a._lotes)a._lotes=[];
-  // Só adiciona se não há lote em edição
-  if(a._lotes.find(l=>!l.confirmado))return;
-  a._lotes.push({modalidade:'',num_processo:'',valor_executado:'',itens:[],confirmado:false});
-  _renderLotesCardDOM();
-  setTimeout(()=>document.getElementById('lote-editor')?.scrollIntoView({behavior:'smooth',block:'start'}),80);
-}
-
-// Upload vai pro pool (não pro lote)
-function uploadExcelPool(input){
-  const file=input.files[0];
-  if(!file)return;
-  const reader=new FileReader();
-  reader.onload=function(e){
-    try{
-      if(typeof XLSX!=='undefined'){
-        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-        processarDadosPool(data);
-      } else {
-        alert('Aguarde o carregamento da biblioteca Excel e tente novamente.');
-      }
-    }catch(err){console.error(err);alert('Erro ao ler o arquivo.');}
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function colarTabela(li,texto,modo,nomeListaForcado){
-  if(!texto.trim())return;
-  const linhas=texto.trim().split('\n').map(l=>l.split('\t'));
-  processarDadosPool(linhas,modo,nomeListaForcado);
-}
-
-function processarDadosPool(data,modo,nomeListaForcado){
-  let startRow=0;
-  for(let i=0;i<Math.min(data.length,10);i++){
-    const row=data[i].map(c=>String(c||'').toUpperCase());
-    if(row.some(c=>c.includes('EQUIPAMENTO')||c.includes('DESCRI'))){startRow=i+1;break;}
-  }
-  const itens=[];
-  let pid=Date.now();
-  for(let i=startRow;i<data.length;i++){
-    const row=data[i];
-    const nome=String(row[1]||row[0]||'').trim();
-    if(!nome||nome.toUpperCase().includes('TOTAL'))continue;
-    const cod=String(row[0]||'').trim();
-    const vStr=String(row[2]||'0').replace(/[R$\s.]/g,'').replace(',','.');
-    const qStr=String(row[3]||'1').replace(/[^0-9,\.]/g,'').replace(',','.');
-    const vUnit=parseFloat(vStr)||0;
-    const qtde=parseFloat(qStr)||1;
-    itens.push({_pid:pid++,cod,nome,qtde,valor_unit:vUnit,total:vUnit*qtde});
-  }
-  if(!itens.length){alert('Nenhum item encontrado.');return;}
-  const a=acq();
-  if(!a._listas)a._listas=[];
-
-  if(modo==='substituir'){
-    // Substitui TODAS as listas existentes por uma única lista nova
-    a._listas=[{id:'lista_'+Date.now(),nome:nomeListaForcado||'Lista 1',itens:itens}];
-    (a._lotes||[]).forEach(function(l){if(!l.confirmado){l.itens=[];l._listaId=null;}});
-  }else if(modo==='adicionar'){
-    // Cria uma NOVA lista isolada — não mistura com as existentes
-    const novoNome=nomeListaForcado||('Lista '+(a._listas.length+1));
-    a._listas.push({id:'lista_'+Date.now(),nome:novoNome,itens:itens});
-  }else{
-    // Primeira lista (sem listas anteriores)
-    a._listas=[{id:'lista_'+Date.now(),nome:nomeListaForcado||'Lista 1',itens:itens}];
-    (a._lotes||[]).forEach(function(l){if(!l.confirmado){l.itens=[];l._listaId=null;}});
-  }
-  _renderLotesCardDOM();
-  salvarListasPendentesSheet(a);
-  const info=document.getElementById('navInfo');
-  if(info){const prev=info.innerHTML;info.innerHTML=`<span style="color:var(--g600)">✓ ${itens.length} itens carregados</span>`;setTimeout(()=>info.innerHTML=prev,2500);}
-}
-
-
-// Modal para colar lista
-let _colarLoteIdx=-1;
-let _colarModo=undefined,_colarNomeNovaLista=undefined;
-function abrirColarModal(li){
-  _colarLoteIdx=li;
-  document.getElementById('colar-modal').style.display='flex';
-  const ta=document.getElementById('colar-textarea');
-  if(ta){ta.value='';ta.focus();}
-}
-function fecharColarModal(){document.getElementById('colar-modal').style.display='none';_colarLoteIdx=-1;_colarModo=undefined;_colarNomeNovaLista=undefined;}
-function confirmarColarModal(){
-  const ta=document.getElementById('colar-textarea');
-  if(ta)colarTabela(_colarLoteIdx,ta.value,_colarModo,_colarNomeNovaLista);
-  fecharColarModal();
-}
-
-// Colar uma lista quando já existe(m) lista(s) carregada(s) — mesma pergunta de
-// "manter separado vs substituir tudo" que já existia para upload de Excel,
-// só que abrindo o modal de colar em vez do seletor de arquivo.
-async function colarNovaLista(){
-  const a=acq();
-  const listasAtuais=a._listas||[];
-  if(listasAtuais.length===0){ abrirColarModal(-1); return; }
-  const resumoListas=listasAtuais.map(function(ls){return ls.nome+' ('+ls.itens.length+' itens)';}).join(', ');
-  const escolha=await showConfirmModal3(
-    'Colar nova lista',
-    'Você já tem '+listasAtuais.length+' lista(s) carregada(s): <b>'+resumoListas+'</b>.<br><br>Quer <b>manter essas listas separadas</b> e adicionar uma nova lista independente, ou <b>substituir tudo</b> pela nova lista?',
-    'Manter e adicionar nova','Substituir tudo','Cancelar','📋'
-  );
-  if(escolha===false||escolha===undefined)return;
-  _colarModo=escolha==='extra'?'substituir':'adicionar';
-  _colarNomeNovaLista=null;
-  if(_colarModo==='adicionar'){
-    _colarNomeNovaLista=prompt('Nome para esta nova lista (ex: Lista 2, Lote complementar):','Lista '+(listasAtuais.length+1));
-    if(_colarNomeNovaLista===null)return;
-    _colarNomeNovaLista=_colarNomeNovaLista.trim()||('Lista '+(listasAtuais.length+1));
-  }
-  abrirColarModal(-1);
-}
-
-
-function setLoteStatus(li,status){
-  const a=acq();
-  if(a._lotes&&a._lotes[li])a._lotes[li]._status=status;
-  renderMain();
-}
-
-// ── CONTRATAÇÃO — funções de render ──────────────────────────────────────────
-const _STAT_CONT=['Planejamento','Processo aberto','Contratado','Em entrega','Concluído'];
-const _STAT_COLORS={
-  'Planejamento':    'background:#FFF3E0;color:#7C4A0A',
-  'Processo aberto': 'background:#FFF8E1;color:#8B5E00',
-  'Contratado':      'background:#E8F5E9;color:#1B5E20',
-  'Em entrega':      'background:#C8E6C9;color:#1B5E20',
-  'Concluído':  'background:#1B3A2B;color:#ffffff'
-};
-
-function _setSL0(s){setLoteStatus(0,s);} function _setSL1(s){setLoteStatus(1,s);}
-function _setSL2(s){setLoteStatus(2,s);} function _setSL3(s){setLoteStatus(3,s);}
-function _setSL4(s){setLoteStatus(4,s);} function _setSL5(s){setLoteStatus(5,s);}
-function _setSL6(s){setLoteStatus(6,s);} function _setSL7(s){setLoteStatus(7,s);}
-function _setSL8(s){setLoteStatus(8,s);} function _setSL9(s){setLoteStatus(9,s);}
 function setStatusContrat(s){acq()._status_contrat=s;renderMain();}
 
 function maskCNPJ(el){let v=el.value.replace(/\D/g,'').substring(0,14);if(v.length>12)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/,'$1.$2.$3/$4-$5');else if(v.length>8)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4}).*/,'$1.$2.$3/$4');else if(v.length>5)v=v.replace(/^(\d{2})(\d{3})(\d{0,3}).*/,'$1.$2.$3');else if(v.length>2)v=v.replace(/^(\d{2})(\d{0,3}).*/,'$1.$2');el.value=v;el.dispatchEvent(new Event('change'));}
 function maskMoeda(el){let v=el.value.replace(/\D/g,'');if(!v){el.value='';el.dispatchEvent(new Event('change'));return;}v=(parseInt(v,10)/100).toFixed(2);el.value=v.replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');el.dispatchEvent(new Event('change'));}
-function calcDataPrevEntrega(el,idx){
-  // Salvar valor no objeto antes de calcular
-  const a=acq();
-  const lote=idx!==undefined?(a._lotes&&a._lotes[idx]):a;
-  if(!lote)return;
-  // Pegar prazo do campo atual OU do objeto
-  const prazoVal=el?(el.value.replace(/[^0-9]/g,'')||'0'):String(lote.prazo_entrega||'0');
-  if(lote&&el)lote.prazo_entrega=prazoVal;
-  const dataAss=lote.data_assinatura;
-  const prazo=parseInt(prazoVal,10);
-  if(!dataAss||!prazo)return;
-  const d=new Date(dataAss);if(isNaN(d.getTime()))return;
-  // Pular fins de semana
-  let dias=prazo;let cur=new Date(d);
-  while(dias>0){cur.setDate(cur.getDate()+1);const dw=cur.getDay();if(dw!==0&&dw!==6)dias--;}
-  const dataPrev=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0');
-  lote.data_prev_entrega=dataPrev;
-  // Atualizar campo no DOM diretamente sem re-renderizar
-  const selector=idx!==undefined?'[data-field="data_prev_entrega"][data-idx="'+idx+'"]':'[data-field="data_prev_entrega"]';
-  const input=document.querySelector(selector);
-  if(input){input.value=dataPrev;}
-  else{renderMain();}
-}
 function _spField(storeObj,field,label,type,ph,idx){
   const val=(storeObj[field]||'').toString().replace(/"/g,'&quot;');
-  var recalc=(field==='valor_contratado'||field==='valor_proprio')?';calcExecutadoLotes()':'';
-  const onChange=idx!==undefined
-    ? 'onchange="(acq()._lotes||[])['+idx+'][\''+field+'\']=this.value'+recalc+';if((acq()._lotes||[])['+idx+']&&(acq()._lotes||[])['+idx+'].confirmado)salvarLoteEquipamentoServidor((acq()._lotes||[])['+idx+'])"'
-    : 'onchange="acq()[\''+field+'\']=this.value'+recalc+'"';
+  const onChange='onchange="acq()[\''+field+'\']=this.value"';
   if(type==='textarea'){
     return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
       +'<textarea placeholder="'+(ph||'')+'" style="width:100%;min-height:72px;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none;resize:vertical" '+onChange+'>'+val+'</textarea></div>';
   }
-  var extraAttr='';
-  if(field==='empresa_cnpj') extraAttr=' oninput="maskCNPJ(this)" maxlength="18"';
-  else if(field==='valor_contratado'||field==='valor_proprio') extraAttr=' oninput="maskMoeda(this)"';
-  else if(field==='prazo_entrega'){extraAttr=' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')" onblur="calcDataPrevEntrega(this,'+(idx!==undefined?String(idx):'undefined')+')" onkeydown="if(event.key===\'Enter\'){calcDataPrevEntrega(this,'+(idx!==undefined?String(idx):'undefined')+');this.blur();}" inputmode="numeric" placeholder="Ex: 60"';}
-  var dataAttrs=' data-field="'+field+'"'+(idx!==undefined?' data-idx="'+idx+'"':'');
+  var dataAttrs=' data-field="'+field+'"';
   return '<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">'+label+'</label>'
-    +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+extraAttr+dataAttrs+'/></div>';
-}
-
-function _campoEspecifico(lote,li){
-  const mod=lote.modalidade||'';
-  if(mod==='Pregão Eletrônico'||mod==='Pregão Presencial'){
-    return '<div class="row2">'+_spField(lote,'num_pregao','Nº do pregão','text','Ex: 001/2025',li)+_spField(lote,'link_edital','Link do edital (Compras.gov)','url','https://',li)+'</div>';
-  }
-  if(mod==='Dispensa de Licitação'){
-    return _spField(lote,'justificativa_dispensa','Justificativa da dispensa','textarea','Descreva a justificativa legal...',li);
-  }
-  if(mod==='Inexigibilidade'){
-    return _spField(lote,'justificativa_inexig','Justificativa da inexigibilidade','textarea','Descreva a justificativa legal...',li);
-  }
-  if(mod==='COTEP'){
-    return _spField(lote,'num_ata_cotep','Nº da ata COTEP','text','Ex: ATA-COTEP-001/2025',li);
-  }
-  if(mod==='Ata de Registro de Preços'){
-    return '<div class="row2">'+_spField(lote,'num_ata','Nº da ata','text','Ex: ARP-001/2025',li)+_spField(lote,'orgao_gerenciador','Órgão gerenciador','text','Ex: SES-MG',li)+'</div>';
-  }
-  if(mod==='Concorrência'||mod==='Tomada de Preços'){
-    return _spField(lote,'num_processo_lic','Nº do processo licitatório','text','Ex: PL-001/2025',li);
-  }
-  return '';
+    +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+dataAttrs+'/></div>';
 }
 
 function _statusPills(cur,onclickFn){
@@ -4220,55 +3392,29 @@ function _camposContrato(obj,isContratado,idxOrNull){
   var sp=function(f,l,t,ph){return _spField(obj,f,l,t,ph,idxOrNull);};
   var status=obj._status||'Planejamento';
   var emEntrega=['Em entrega','Concluído'].includes(status);
-  var concluido=status==='Concluído';
 
-  // Bloco 1: dados do contrato — aparece a partir de "Contratado"
-  var lockStyleContrato=isContratado?'':'opacity:.5;pointer-events:none';
-  var avisoContrato=isContratado?'':'<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;font-style:italic">Preencha quando o contrato for assinado</div>';
-  var blocoEmpresa=(idxOrNull===undefined)
-    // Ação única (obra / serviço / equipamento sem lotes): permite 1+ empresas.
-    ? ('<div id="empresas-list-container"></div>'
-      +'<button type="button" onclick="addEmpresa()" style="margin:4px 0 14px;padding:6px 14px;font-size:12px;font-weight:600;border:1.5px dashed var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar empresa</button>')
-    // Lote: mantém o campo único de empresa (cada lote já é uma contratação própria).
-    : ('<div class="row2">'+sp('empresa_nome','Empresa contratada','text','Razão social')+sp('empresa_cnpj','CNPJ','text','00.000.000/0000-00')+'</div>');
-  var blocoContrato=(idxOrNull===undefined)
-    ? ('<div style="'+lockStyleContrato+'">'+avisoContrato
-      +blocoEmpresa
-      +'<div class="row2">'+sp('num_contrato','Nº do contrato','text','CT-001/2025')+sp('data_assinatura','Data de assinatura','date','')+'</div>'
-      +'</div>')
-    : ('<div style="'+lockStyleContrato+'">'+avisoContrato
-      +blocoEmpresa
-      +'<div class="row2">'+sp('num_contrato','Nº do contrato','text','CT-001/2025')+sp('valor_contratado','Valor do contrato (R$)','text','0,00')+'</div>'
-      +'<div class="row2">'+sp('data_assinatura','Data de assinatura','date','')+sp('prazo_entrega','Prazo de entrega (dias)','text','Ex: 60')+'</div>'
-      +sp('data_prev_entrega','Data prevista de entrega','date','')
-      +'</div>');
+  // Dados de empresa/modalidade/contrato removidos a pedido — a Contratação
+  // mostra apenas o status (pills, renderizado pelo chamador) e os dados de
+  // entrega abaixo.
 
-  // Bloco 2: dados de entrega — aparece a partir de "Em entrega"
+  // Dados de entrega — status da entrega, data e justificativa de atraso.
   var lockStyleEntrega=emEntrega?'':'opacity:.5;pointer-events:none';
-  var avisoEntrega=emEntrega?'':'<div style="font-size:12px;color:var(--ink3);margin:14px 0 12px;font-style:italic">Preencha quando o lote estiver em entrega</div>';
-  var blocoEntrega='<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
-    +'<div style="'+lockStyleEntrega+'">'+avisoEntrega
+  var avisoEntrega=emEntrega?'':'<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;font-style:italic">Preencha quando a entrega for iniciada</div>';
+  var blocoEntrega='<div style="'+lockStyleEntrega+'">'+avisoEntrega
     +_chipsObj(obj,'Situação da entrega','situacao_entrega',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'],idxOrNull)
     +sp('data_entrega','Data da entrega','date','')
     +_chipsObj(obj,'Houve atraso?','houve_atraso',['Sim','Não'],idxOrNull)
     +sp('justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...')
-    +'</div></div>';
+    +'</div>';
 
-  // Bloco 3: comprovação fiscal — aparece quando Concluído
-  var blocoComprovacao=concluido?('<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
-    +_chipsObj(obj,'Notas fiscais apresentadas?','nf_apresentadas',['Sim','Não'],idxOrNull)
-    +_chipsObj(obj,'Avaliação da qualidade','avaliacao_qualidade',['Conforme','Não conforme','Parcialmente conforme'],idxOrNull)
-    +sp('obs_qualidade','Observações sobre a qualidade','textarea','Descreva pontos relevantes...')
-    +'</div>'):'';
-
-  return blocoContrato+blocoEntrega+blocoComprovacao;
+  return blocoEntrega;
 }
 
 // Helper: chips vinculados a um objeto específico (lote) em vez de acq() global
 function _chipsObj(obj,label,field,options,idxOrNull,setterName){
   var cur=obj[field]||'';
   var groupId='chipgrp_'+field+'_'+(idxOrNull!==undefined&&idxOrNull!==null?idxOrNull:'x');
-  var setterPrefix=setterName?(setterName+'('+idxOrNull+','):(idxOrNull!==undefined?'_setLoteField('+idxOrNull+',':'_setAcqField(');
+  var setterPrefix=setterName?(setterName+'('+idxOrNull+','):'_setAcqField(';
   var pills=options.map(function(o){
     var active=o===cur;
     return '<span onclick="_toggleChipVisual(this,\''+groupId+'\');'+setterPrefix+'\''+field+'\',\''+o+'\')" style="display:inline-block;padding:5px 12px;margin:0 6px 6px 0;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;'+(active?'background:var(--g700);color:#fff':'background:var(--g50);color:var(--ink3);border:1px solid var(--border)')+'">'+o+'</span>';
@@ -4286,11 +3432,6 @@ function _toggleChipVisual(el,groupId){
   });
 }
 
-function _setLoteField(idx,field,value){
-  var a=acq();
-  if(a._lotes&&a._lotes[idx]){a._lotes[idx][field]=value;}
-  renderMain();
-}
 function _setAcqField(field,value){
   acq()[field]=value;
   renderMain();
@@ -4314,16 +3455,6 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
       return '<span onclick="_setAtivStatus('+realIdx+',&apos;'+s+'&apos;)" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:20px;cursor:pointer;'+col+';transition:all .15s">'+s+'</span>';
     }).join('');
     var vlr=(at.empresas||[]).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
-    var empresasResumo=isContr
-      ?('<div style="background:var(--g50);border-radius:8px;padding:12px;margin-bottom:12px">'
-        +(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){
-          return '<div style="font-size:13px;color:var(--ink2);margin-bottom:4px"><strong>'+e.nome+'</strong>'+(e.cnpj?' · '+e.cnpj:'')+(e.valor?' · R$ '+e.valor:'')+(e.prazo?' · '+e.prazo+' meses':'')+'</div>';
-        }).join('')
-        +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Para alterar a empresa ou o valor, volte à etapa "Instrumento".</div>'
-        +'</div>')
-      :('<div style="background:var(--g50);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--ink3)">'
-        +'\uD83D\uDCA1 Os dados da empresa aparecerão aqui quando o status avançar para <strong>Contratado</strong>.'
-        +'</div>');
 
     var lockStyleExec=emExec?'':'opacity:.5;pointer-events:none';
     var avisoExec=emExec?'':'<div style="font-size:12px;color:var(--ink3);margin:14px 0 12px;font-style:italic">Preencha quando a atividade estiver em execução</div>';
@@ -4335,12 +3466,6 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
       +_spFieldGeneric(at,'justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...',realIdx,'_setAtivField')
       +'</div></div>';
 
-    var blocoComprovacao=concluido?('<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
-      +_chipsObj(at,'Comprovações apresentadas?','comprovacoes',['Sim','Não'],realIdx,'_setAtivField')
-      +_chipsObj(at,'Avaliação da qualidade/execução','avaliacao_qualidade',['Conforme','Não conforme','Parcialmente conforme'],realIdx,'_setAtivField')
-      +_spFieldGeneric(at,'obs_qualidade','Observações sobre a execução','textarea','Descreva pontos relevantes...',realIdx,'_setAtivField')
-      +'</div>'):'';
-
     return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
         +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">A'+(realIdx+1)+'</div>'
@@ -4350,8 +3475,7 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
         +'</div>'
       +'</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2)">'+pills+'</div>'
-      +empresasResumo
-      +blocoExec+blocoComprovacao
+      +blocoExec
     +'</div>';
   }).join('');
   return (lockedBanner||'')
@@ -4381,78 +3505,21 @@ function _setAtivField(idx,field,value){
   if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
 }
 
-function renderContratacaoLotes(lotes,lockedBanner,modeBadge){
-  var cards=lotes.map(function(lote,li){
-    var mod=lote.modalidade||('Lote '+(li+1));
-    var cur=lote._status||'Planejamento';
-    var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
-    var borderColor=isContr?'var(--g400)':'var(--border)';
-    var esp=_campoEspecifico(lote,li);
-    var pills=_statusPills(cur,'_setSL'+li);
-    return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
-        +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">L'+(li+1)+'</div>'
-        +'<div style="flex:1;min-width:0;overflow:hidden">'
-          +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+mod+'</div>'
-          +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap">'+(lote.num_processo?'Proc. '+lote.num_processo+' · ':'')+''+(lote.itens?lote.itens.length+' itens':'')+' · R$ '+(lote._total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
-        +'</div>'
-      +'</div>'
-      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2)">'+pills+'</div>'
-      +(esp?'<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2)">'+esp+'</div>':'')
-      +_camposContrato(lote,isContr,li)
-    +'</div>';
-  }).join('');
-  return (lockedBanner||'')
-    +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+(modeBadge||'')+'</h2>'
-    +'<p>Um card por modalidade de licitação configurada na etapa anterior.</p></div>'
-    +cards;
-}
-
 function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   var cur=a._status_contrat||'Planejamento';
   var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
 
-  var modSel='<div class="field"><label style="font-size:11.5px;font-weight:600;color:var(--ink2)">Modalidade de licitação</label>'
-    +'<select style="width:100%;padding:9px 11px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px" onchange="acq().modalidade=this.value">'
-    +'<option value="">Selecione...</option>'
-    +MODALIDADES_LOTE.map(function(m){return '<option value="'+m+'"'+(a.modalidade===m?' selected':'')+'>'+m+'</option>';}).join('')
-    +'</select></div>';
-
   var card='<div class="card">'
     +'<div class="card-title">Status da contratação</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'setStatusContrat')+'</div>'
-    +modSel
-    +_spField(a,'num_processo','Nº do processo / licitação','text','Ex: 001/2025',undefined)
     +_camposContrato(a,isContr,undefined)
     +'</div>';
 
   return ''+
     lockedBanner+
     '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+modeBadge+'</h2>'+
-    '<p>Status licitatório e dados da empresa contratada.</p></div>'+
+    '<p>Status da contratação e dados da entrega.</p></div>'+
     card;
-}
-
-function setLoteStatus(li,status){
-  var a=acq();
-  if(a._lotes&&a._lotes[li]){
-    a._lotes[li]._status=status;
-    if(a._lotes[li].confirmado) salvarLoteEquipamentoServidor(a._lotes[li]);
-  }
-  renderMain();
-  calcExecutadoLotes();
-}
-
-function renderLotesCard_init(){
-  setTimeout(()=>{
-    _renderLotesCardDOM();
-    if(typeof XLSX==='undefined'&&!document.getElementById('sheetjs-script')){
-      const s=document.createElement('script');
-      s.id='sheetjs-script';
-      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      document.head.appendChild(s);
-    }
-  },100);
 }
 
 function deduplicarAquisicoes(){
@@ -4500,16 +3567,7 @@ function renderMain(){
   if(aquisicoes[acqIdx]&&aquisicoes[acqIdx]._locked)mc.classList.add('locked-form');
   else mc.classList.remove('locked-form');
   restoreInputs();
-  if(phase===3){
-    if(isAcqObra())renderMedList();
-    else{renderNFList();applyConditionals();}
-  }
-  if(phase===2||phase===1)applyConditionals();
-  if(phase===2&&document.getElementById('empresas-list-container'))renderEmpresaList();
-  // Inicializar lotes se fase 1 e equipamento
-  if(phase===1&&!isAcqObra()&&acq().modalidade_objeto==='equipamento'){
-    renderLotesCard_init();
-  }
+  if(phase===2||phase===1||phase===3)applyConditionals();
   // Inicializar atividades se fase 1 e custeio (servico)
   if(phase===1&&!isAcqObra()&&acq().modalidade_objeto==='servico'){
     setTimeout(function(){
@@ -4545,8 +3603,6 @@ function restoreInputs(){
     }
     // Aplicar condicionais com base nos valores salvos
     applyConditionals();
-    // Restaurar lista de empresas se visível
-    if(phase===2&&a.fase_contratacao&&a.fase_contratacao!=='Nao iniciada')setTimeout(renderEmpresaList,60);
   }
 }
 
@@ -4669,120 +3725,6 @@ function resetApp(){
 
 // ── EMPRESAS CONTRATADAS ──────────────────────────────────────────────────────
 
-function cnpjMask(v){
-  v=v.replace(/\D/g,'').substring(0,14);
-  if(v.length>12) v=v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})/,'$1.$2.$3/$4-$5');
-  else if(v.length>8) v=v.replace(/(\d{2})(\d{3})(\d{3})(\d{1,4})/,'$1.$2.$3/$4');
-  else if(v.length>5) v=v.replace(/(\d{2})(\d{3})(\d{1,3})/,'$1.$2.$3');
-  else if(v.length>2) v=v.replace(/(\d{2})(\d{1,3})/,'$1.$2');
-  return v;
-}
-
-function cnpjValido(cnpj){
-  const n=cnpj.replace(/\D/g,'');
-  if(n.length!==14||/^(\d)\1+$/.test(n))return false;
-  const calc=function(s,p){
-    let t=0;for(let i=0;i<s.length;i++){t+=parseInt(n[i])*(p-i);}
-    const r=t%11;return r<2?0:11-r;
-  };
-  return calc(n.substring(0,12),14)===parseInt(n[12])&&calc(n.substring(0,13),15)===parseInt(n[13]);
-}
-
-function onCNPJInput(el,idx){
-  el.value=cnpjMask(el.value);
-  if(idx!==undefined&&getEmpresas()[idx])getEmpresas()[idx].cnpj=el.value;
-}
-
-function onCNPJBlur(el,idx){
-  const v=el.value;
-  getEmpresas()[idx].cnpj=v;
-  const digits=v.replace(/\D/g,'');
-  const errId='err_cnpj_'+idx;
-  let err=document.getElementById(errId);
-  if(!err){
-    err=document.createElement('div');
-    err.id=errId;
-    err.style.cssText='font-size:11px;margin-top:4px;';
-    el.parentNode.appendChild(err);
-  }
-  if(digits.length===0){err.textContent='';err.style.color='';el.style.borderColor='';}
-  else if(digits.length<14){
-    err.textContent='CNPJ incompleto.';err.style.color='var(--red)';el.style.borderColor='var(--red)';
-  } else if(!cnpjValido(v)){
-    err.textContent='CNPJ inválido.';err.style.color='var(--red)';el.style.borderColor='var(--red)';
-  } else {
-    err.textContent='✓ CNPJ válido';err.style.color='var(--g600)';el.style.borderColor='var(--g400)';
-  }
-}
-
-function getEmpresas(){
-  const a=acq();
-  if(a._empresas)return a._empresas;
-  // Migração: se já havia dados no formato antigo (campo único de empresa),
-  // usa-os para preencher a primeira linha da lista em vez de começar vazio.
-  const temLegado=a.empresa_nome||a.empresa_cnpj||a.valor_contratado||a.data_homologacao||a.prazo_entrega||a.data_prev_entrega;
-  a._empresas=[temLegado?{nome:a.empresa_nome||'',cnpj:a.empresa_cnpj||'',valor:a.valor_contratado||'',homologacao:a.data_homologacao||'',prazo:a.prazo_entrega||'',prev_entrega:a.data_prev_entrega||''}:{nome:'',cnpj:'',valor:'',homologacao:'',prazo:'',prev_entrega:''}];
-  return a._empresas;
-}
-function renderEmpresaList(){
-  const obra=isAcqObra();
-  const servico=acq().modalidade_objeto==='servico';
-  const ems=getEmpresas();const c=document.getElementById('empresas-list-container');if(!c)return;
-  c.innerHTML=ems.map((em,i)=>`
-    <div class="nf-item" style="${obra?'background:#FFF8F0;border-color:#FFCC80':''}">
-      ${ems.length>1?`<span class="nf-remove" onclick="removeEmpresa(${i})">×</span>`:''}
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);margin-bottom:8px">
-        ${ems.length>1?`Empresa / Lote ${i+1}`:'Empresa contratada'}
-      </div>
-      ${fld('Razão social','_emp_nome_'+i,'text','Nome da empresa')}
-      <div class="row2">
-        <div class="field"><label>CNPJ</label><input type="text" name="_emp_cnpj_${i}" placeholder="xx.xxx.xxx/xxxx-xx" maxlength="18" oninput="onCNPJInput(this,${i})" onblur="onCNPJBlur(this,${i})" inputmode="numeric"/></div>
-        ${fld('Valor contratado (R$)','_emp_valor_'+i,'money')}
-      </div>
-      <div class="row3">
-        ${fld('Data de homologação','_emp_hom_'+i,'date')}
-        ${fld(obra?'Prazo de execução (dias)':(servico?'Prazo do serviço (dias)':'Prazo entrega (dias)'),'_emp_prazo_'+i,'numonly',obra?'Ex: 180':'Ex: 30')}
-        ${fld(obra?'Data prevista de conclusão':(servico?'Término previsto':'Entrega prevista'),'_emp_prev_'+i,'date')}
-      </div>
-    </div>`).join('');
-  // Bind values
-  ems.forEach((em,i)=>{
-    const fields=[['_emp_nome_',em.nome||''],['_emp_cnpj_',em.cnpj||''],['_emp_hom_',em.homologacao||''],['_emp_prev_',em.prev_entrega||'']];
-    fields.forEach(([pfx,val])=>{const el=document.querySelector(`[name="${pfx+i}"]`);if(el)el.value=val;});
-    if(em.valor){const el=document.querySelector(`[name="_emp_valor_${i}"]`);if(el)el.value=fmtBRL(em.valor);}
-    if(em.prazo){const el=document.querySelector(`[name="_emp_prazo_${i}"]`);if(el)el.value=em.prazo;}
-  });
-  // Add listeners
-  ems.forEach((em,i)=>{
-    const bindT=(name,key)=>{const el=document.querySelector(`[name="${name}"]`);if(el){el.oninput=()=>{getEmpresas()[i][key]=el.value;};el.onblur=()=>{getEmpresas()[i][key]=el.value;if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);};}};
-    bindT('_emp_nome_'+i,'nome');bindT('_emp_prev_'+i,'prev_entrega');
-    (function(){
-      const elHom=document.querySelector('[name="_emp_hom_'+i+'"]');
-      if(elHom){elHom.oninput=()=>{getEmpresas()[i].homologacao=elHom.value;};elHom.onblur=()=>{getEmpresas()[i].homologacao=elHom.value;calcDataPrevEmpresa(i);};}
-      const elPrazo=document.querySelector('[name="_emp_prazo_'+i+'"]');
-      if(elPrazo){elPrazo.oninput=()=>{getEmpresas()[i].prazo=elPrazo.value;};elPrazo.onblur=()=>{getEmpresas()[i].prazo=elPrazo.value;calcDataPrevEmpresa(i);};}
-    })();
-    const ve=document.querySelector(`[name="_emp_valor_${i}"]`);
-    if(ve){ve.oninput=()=>onMoneyInput(ve);ve.onblur=()=>{getEmpresas()[i].valor=fmtBRL(ve.value);ve.value=getEmpresas()[i].valor;refreshPctAutoDisplay();};}
-  });
-}
-function calcDataPrevEmpresa(idx){
-  const emp=getEmpresas()[idx];
-  if(!emp)return;
-  const prazo=parseInt((emp.prazo||'').toString().replace(/[^0-9]/g,''),10);
-  if(!emp.homologacao||!prazo)return;
-  const d=new Date(emp.homologacao+'T00:00');if(isNaN(d.getTime()))return;
-  let dias=prazo;let cur=new Date(d);
-  while(dias>0){cur.setDate(cur.getDate()+1);const dw=cur.getDay();if(dw!==0&&dw!==6)dias--;}
-  const dataPrev=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0');
-  emp.prev_entrega=dataPrev;
-  const input=document.querySelector('[name="_emp_prev_'+idx+'"]');
-  if(input)input.value=dataPrev;
-}
-function addEmpresa(){getEmpresas().push({nome:'',cnpj:'',valor:'',homologacao:'',prazo:'',prev_entrega:''});renderEmpresaList();}
-function removeEmpresa(i){if(getEmpresas().length>1){getEmpresas().splice(i,1);renderEmpresaList();}}
-
-
 function parseBRL(v){
   if(!v)return 0;
   const s=String(v).replace(/[R$\s.]/g,'').replace(',','.');
@@ -4869,105 +3811,20 @@ function _verificarEstouroOrcamento(a,valorBase,proprio,elResumo,cardId,corPadra
 }
 function calcTotalUtilizado(){
   const proprio=parseBRL(acq().valor_proprio||'');
-  let executado=0;
-
-  if(acq().modalidade_objeto==='equipamento'){
-    // Soma valor_executado de cada lote
-    executado=(acq()._lotes||[]).reduce(function(s,l){return s+parseBRL(l.valor_executado||'');},0);
-    // Soma total da lista
-    const totalLista=(acq()._lotes||[]).reduce(function(s,l){return s+(l._total||0);},0);
-    const elLista=document.getElementById('val_lista_total');
-    if(elLista)elLista.textContent='R$ '+totalLista.toLocaleString('pt-BR',{minimumFractionDigits:2});
-  } else {
-    executado=parseBRL(acq().valor_executado||''); // executado NESTE bimestre
-    const historico=parseBRL(acq()._executado_historico||0); // acumulado dos bimestres anteriores
-    const totalUtilizado=executado+historico; // recurso próprio já está DENTRO do executado (é um detalhamento, não um valor extra)
-    const elAuto=document.getElementById('val_total_auto');
-    const formattedObra=totalUtilizado>0?totalUtilizado.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
-    if(elAuto)elAuto.value=formattedObra;
-    acq().valor_total_utilizado=formattedObra;
-    _verificarEstouroOrcamento(acq(),executado+historico,proprio,elAuto,'card-financeiro-obra','var(--g700)');
-    const elHistObra=document.getElementById('val_executado_historico');
-    if(elHistObra&&acq()._executado_historico!==undefined)elHistObra.textContent='R$ '+historico.toLocaleString('pt-BR',{minimumFractionDigits:2});
-    return; // evita que o bloco genérico abaixo sobrescreva sem o recurso próprio
-  }
-
-  const total=executado;
-  const formatted=total>0?total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
+  const executado=parseBRL(acq().valor_executado||''); // executado NESTE bimestre
+  const historico=parseBRL(acq()._executado_historico||0); // acumulado dos bimestres anteriores
+  const totalUtilizado=executado+historico; // recurso próprio já está DENTRO do executado (é um detalhamento, não um valor extra)
+  const formatted=totalUtilizado>0?totalUtilizado.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
   acq().valor_total_utilizado=formatted;
-
-  // Equipamentos: atualizar painel resumo
-  const elTotal=document.getElementById('val_total_auto_equip')||document.getElementById('val_total_auto_obra');
-  if(elTotal){
-    if(elTotal.tagName==='INPUT')elTotal.value=formatted;
-    else elTotal.textContent='R$ '+(formatted||'0,00');
+  const elAuto=document.getElementById('val_total_auto')||document.getElementById('val_total_auto_equip')||document.getElementById('val_total_auto_obra');
+  if(elAuto){
+    if(elAuto.tagName==='INPUT')elAuto.value=formatted;
+    else elAuto.textContent='R$ '+(formatted||'0,00');
   }
-}
-
-// Calcular executado dos lotes e atualizar resumo financeiro
-// Regra: "Valor Executado (Contratos Atuais)" é um ACUMULADO histórico — soma
-// o valor contratado de TODOS os lotes confirmados já registrados para esta
-// ação em QUALQUER bimestre (independente do status atual de cada lote), e
-// nunca diminui ao trocar de bimestre. "Já Pago (bimestres anteriores)" soma,
-// separadamente, apenas os lotes com status "Em entrega"/"Concluído" do
-// histórico do servidor + os do bimestre atual.
-function calcExecutadoLotes(){
-  const a=acq();
-  const lotes=a._lotes||[];
-  // Apenas lotes CONFIRMADOS contam para os totais financeiros
-  const lotesConf=lotes.filter(function(l){return l.confirmado;});
-  const STATUS_PAGO=['Em entrega','Concluído'];
-  const lotesPagos=lotesConf.filter(function(l){return STATUS_PAGO.includes(l._status||'Planejamento');});
-  // Acumulado histórico de valor contratado — mantido internamente (não exibido
-  // mais no resumo, a pedido), pois ainda é usado em enviarAcaoSheet/auditoria.
-  const execAcumulado=calcularExecutadoAcumuladoHistorico(a);
-  const execAtualTela=lotesConf.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
-  const exec=Math.max(execAcumulado, execAtualTela);
-  a._executado_acumulado_historico=exec;
-  const pagoLotesAtual=lotesPagos.reduce(function(s,l){return s+parseBRL(l.valor_contratado||'');},0);
-  const historicoServidor=a._executado_historico||0;
-  const historico=historicoServidor+pagoLotesAtual;
-  const lista=lotesConf.reduce(function(s,l){return s+(l._total||0);},0);
-  const proprio=parseBRL(a.valor_proprio||'');
-  // Valor Total Utilizado = o que já foi de fato pago — o recurso próprio NÃO
-  // é somado aqui (é fonte de financiamento do mesmo valor contratado, não
-  // gasto adicional).
-  const total=historico;
-  const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
-  const elLi=document.getElementById('val_lista_total');
+  const cardId=isAcqObra()?'card-financeiro-obra':'card-financeiro-custeio';
+  _verificarEstouroOrcamento(acq(),executado+historico,proprio,elAuto,cardId,'var(--g700)');
   const elHist=document.getElementById('val_executado_historico');
-  const elTot=document.getElementById('val_total_auto_equip');
-  const elGrand=document.getElementById('lotes_grand_total');
-  const elFin=document.getElementById('val_financiamento_equip');
-  // Usa o contratado NESTE bimestre (preenchido na Contratação) quando existir;
-  // senão cai pra soma das listas importadas — assim o aviso de excedente já
-  // aparece logo depois de importar a lista, sem precisar ir até a próxima aba.
-  // Importante: NÃO usar o histórico acumulado aqui (isso já é tratado à parte
-  // em "Valor total utilizado") — misturá-lo mascarava o financiamento real.
-  const baseComparacao=execAtualTela>0?execAtualTela:lista;
-  if(elLi)elLi.textContent=fmt(lista);
-  if(elHist)elHist.textContent=fmt(historico);
-  if(elTot)elTot.textContent=fmt(total);
-  if(elGrand)elGrand.textContent=fmt(lista);
-  _verificarEstouroOrcamento(a,baseComparacao,proprio,elTot,'card-financeiro-equip','var(--g700)');
-  if(elLi){
-    const valorPlano0=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
-    const excedeLista=valorPlano0>0&&lista>valorPlano0&&proprio<(lista-valorPlano0);
-    elLi.style.color=excedeLista?'#C0392B':'var(--ink)';
-  }
-  if(elFin){
-    const valorPlano=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
-    if(!baseComparacao){
-      elFin.innerHTML='<span style="color:var(--ink3)">Nenhum item na lista ainda.</span>';
-    }else if(valorPlano<=0||baseComparacao<=valorPlano){
-      elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(baseComparacao)+'</strong>';
-    }else{
-      const excedente=baseComparacao-valorPlano;
-      const coberto=proprio>=excedente;
-      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio/rendimentos: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(proprio)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'')+(exec<=0?'<div style="font-size:10.5px;color:var(--ink3);margin-top:4px">(baseado na soma da lista de itens — será refinado após preencher o valor contratado na Contratação)</div>':'');
-    }
-  }
-  a.valor_total_utilizado=total.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  if(elHist&&acq()._executado_historico!==undefined)elHist.textContent='R$ '+historico.toLocaleString('pt-BR',{minimumFractionDigits:2});
 }
 
 // ══ LOGIN ════════════════════════════════════════════════════════════════════
@@ -5469,8 +4326,7 @@ async function carregarExecutadoHistorico(){
     a._executado_historico=0;
     if(elHist){elHist.textContent='R$ 0,00';elHist.title='Nenhum registro "Concluído" encontrado para esta ação.';}
   }
-  if(a.modalidade_objeto==='equipamento')calcExecutadoLotes();
-  else calcTotalUtilizado();
+  calcTotalUtilizado();
 }
 
 // Permite zerar manualmente o "já pago" quando o valor carregado estiver
@@ -5505,50 +4361,29 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!registros || !registros.length) return;
   const reg = registros[registros.length-1];
 
-  // 1. Empresa e contrato
-  if(!acqObj.empresa_nome && reg.empresa_nome) acqObj.empresa_nome = reg.empresa_nome;
-  if(!acqObj.empresa_cnpj && reg.empresa_cnpj) acqObj.empresa_cnpj = reg.empresa_cnpj;
-  if(!acqObj.num_contrato && reg.num_contrato) acqObj.num_contrato = reg.num_contrato;
-  if(!acqObj.valor_contratado && reg.valor_contratado) acqObj.valor_contratado = reg.valor_contratado;
-  if(!acqObj.data_assinatura && reg.data_assinatura) acqObj.data_assinatura = reg.data_assinatura;
-  if(!acqObj.prazo_entrega && reg.prazo_entrega) acqObj.prazo_entrega = reg.prazo_entrega;
+  // 1. Endereço e empresa executora (obra)
   if(!acqObj.endereco_obra && reg.endereco_obra) acqObj.endereco_obra = reg.endereco_obra;
+  if(!acqObj.empresa_executora && reg.empresa_executora) acqObj.empresa_executora = reg.empresa_executora;
 
-  // 2. Tipo e modalidade
+  // 2. Tipo
   if(!acqObj.modalidade_objeto && reg.tipo_monitoramento) acqObj.modalidade_objeto = reg.tipo_monitoramento;
-  if(!acqObj.modalidade && reg.modalidade) acqObj.modalidade = reg.modalidade;
-  if(!acqObj.num_processo && reg.num_processo) acqObj.num_processo = reg.num_processo;
 
   // 3. Status e processo (campos que evoluem entre bimestres)
-  if(!acqObj.status_aquisicao && reg.status_aquisicao) acqObj.status_aquisicao = reg.status_aquisicao;
+  if(!acqObj._status_contrat && reg._status_contrat) acqObj._status_contrat = reg._status_contrat;
   if(!acqObj.fonte_recurso && reg.fonte_recurso) acqObj.fonte_recurso = reg.fonte_recurso;
-  if(!acqObj.link_publicacao && reg.link_publicacao) acqObj.link_publicacao = reg.link_publicacao;
   if(!acqObj.data_inicio && reg.data_inicio) acqObj.data_inicio = reg.data_inicio;
   if(!acqObj.data_conclusao && reg.data_conclusao) acqObj.data_conclusao = reg.data_conclusao;
   if(!acqObj.descricao_item && reg.descricao_item) acqObj.descricao_item = reg.descricao_item;
   if(!acqObj.quantidade && reg.quantidade) acqObj.quantidade = String(reg.quantidade);
 
-  // 4. Status de contratação — mantém fase anterior (exceto Concluído que precisa reavaliação)
-  if(!acqObj._status_contrat && reg.fase_contratacao && reg.fase_contratacao !== 'Concluído'){
-    acqObj._status_contrat = reg.fase_contratacao;
-  }
-
-  // 5. Valor executado histórico — usa valor_total_utilizado que já é acumulativo
+  // 4. Valor executado histórico — usa valor_total_utilizado que já é acumulativo
   // (não exige que o registro anterior esteja marcado "Concluído": a maioria dos
   // bimestres de uma obra em andamento é "Parcial", e antes isso fazia o valor
   // histórico nunca carregar — causa raiz do "Já executado" aparecer sempre R$ 0,00)
   const valHist = parseValorSheet(reg.valor_total_utilizado||reg.valor_executado||0);
   if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
 
-  // 6. Boletins de medição (obras) — ACUMULATIVOS entre bimestres: o bimestre
-  // novo herda os boletins já lançados no(s) anterior(es), e a pessoa só
-  // acrescenta o(s) novo(s) deste período.
-  const _medSemDados=!acqObj._medicoes||acqObj._medicoes.length===0||(acqObj._medicoes.length===1&&!acqObj._medicoes[0].num&&!acqObj._medicoes[0].valor);
-  if(reg._medicoes && reg._medicoes.length && _medSemDados){
-    acqObj._medicoes = reg._medicoes.map(function(m){ return Object.assign({},m); });
-  }
-
-  // 7. Conclusão automática — vale para OBRA, EQUIPAMENTO e SERVIÇO/CUSTEIO:
+  // 5. Conclusão automática — vale para OBRA, EQUIPAMENTO e SERVIÇO/CUSTEIO:
   // quando o valor acumulado (histórico + o que a própria ação já registrou)
   // atinge 100% do valor da ação no plano, ela já vem concluída no bimestre
   // seguinte, sem precisar reconfirmar nada. Para obra, usa a soma real dos
@@ -5698,76 +4533,6 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     const sh = mc.querySelector('.step-head');
     if(sh) mc.insertBefore(banner, sh); else mc.prepend(banner);
   }
-}
-
-// ── DOWNLOAD MODELO XLSX ──────────────────────────────────────────────────────
-function _baixarModeloXLSX(){
-  try{
-    const wsData=[['COD','EQUIPAMENTO','VALOR','QNTD']];
-    const ws=XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols']=[{wch:10},{wch:40},{wch:14},{wch:8}];
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,ws,'Modelo');
-    XLSX.writeFile(wb,'modelo_equipamentos.xlsx');
-  }catch(e){
-    showAlertModal('Erro ao gerar modelo: '+e.message,'⚠️');
-  }
-}
-
-// Carregar nova lista — pergunta se quer manter as listas existentes (isoladas) ou substituir tudo
-async function uploadNovaLista(input){
-  const file=input.files[0];
-  if(!file)return;
-  const a=acq();
-  const listasAtuais=a._listas||[];
-  const totalItensAtuais=listasAtuais.reduce(function(s,ls){return s+ls.itens.length;},0);
-  let modo='substituir';
-  let nomeNovaLista=null;
-
-  if(listasAtuais.length>0){
-    const resumoListas=listasAtuais.map(function(ls){return ls.nome+' ('+ls.itens.length+' itens)';}).join(', ');
-    const escolha=await showConfirmModal3(
-      'Carregar nova lista',
-      'Você já tem '+listasAtuais.length+' lista(s) carregada(s): <b>'+resumoListas+'</b>.<br><br>Quer <b>manter essas listas separadas</b> e adicionar uma nova lista independente, ou <b>substituir tudo</b> pela nova lista?',
-      'Manter e adicionar nova','Substituir tudo','Cancelar','📋'
-    );
-    if(escolha===false||escolha===undefined){input.value='';return;}
-    modo=escolha==='extra'?'substituir':'adicionar';
-    if(modo==='adicionar'){
-      nomeNovaLista=prompt('Nome para esta nova lista (ex: Lista 2, Lote complementar):','Lista '+(listasAtuais.length+1));
-      if(nomeNovaLista===null){input.value='';return;}
-      nomeNovaLista=nomeNovaLista.trim()||('Lista '+(listasAtuais.length+1));
-    }
-  }
-
-  const reader=new FileReader();
-  reader.onload=function(e){
-    try{
-      const data=new Uint8Array(e.target.result);
-      const wb=XLSX.read(data,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-      processarDadosPool(rows,modo,nomeNovaLista);
-    }catch(err){
-      showAlertModal('Erro ao processar arquivo: '+err.message,'⚠️');
-    }
-  };
-  reader.readAsArrayBuffer(file);
-  input.value='';
-}
-
-// Trocar de qual lista o lote em edição está puxando itens
-function selecionarListaParaLote(editIdx, listaId){
-  const a=acq();
-  const lote=a._lotes[editIdx];
-  if(!lote)return;
-  if(lote.itens.length>0){
-    const ok=confirm('Trocar a lista vai limpar os itens já selecionados para este lote. Continuar?');
-    if(!ok){_renderLotesCardDOM();return;}
-    lote.itens=[];
-  }
-  lote._listaId=listaId;
-  _renderLotesCardDOM();
 }
 
 carregarPlanoDataDoServidor().then(function(){
@@ -5945,26 +4710,10 @@ function _buildAtividadeEditCard(editIdx){
     +'</div>'
     +'<div style="margin-bottom:12px">'
       +(function(){
-        const STATUS_MOSTRA_EMP=['Contratado','Em execução','Concluído'];
-        const mostra=STATUS_MOSTRA_EMP.includes(at._status);
-        const temEmpHist=(at.empresas||[]).some(function(e){return e.nome;});
-        if(mostra){
-          return '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Empresa(s) contratada(s)</div>'
-            +'<div id="ativ-empresas-'+editIdx+'">'+empHTML+'</div>'
-            +'<button type="button" onclick="_addEmpresaAtiv('+editIdx+')" style="margin-top:4px;padding:5px 14px;font-size:11px;font-weight:600;border:1.5px dashed var(--g300);border-radius:6px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar empresa</button>';
-        } else if(temEmpHist){
-          return '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Empresa(s) contratada(s)</div>'
-            +'<div style="padding:10px 12px;background:var(--g50);border-radius:8px;font-size:12.5px;color:var(--ink2)">'
-            +(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){
-              return '<div style="margin-bottom:4px"><strong>'+e.nome+'</strong>'+(e.cnpj?' · '+e.cnpj:'')+(e.valor?' · R$ '+e.valor:'')+'</div>';
-            }).join('')
-            +'<div style="font-size:11px;color:var(--ink3);margin-top:6px">Avance para "Contratado" para editar os dados da empresa.</div>'
-            +'</div>';
-        } else {
-          return '<div style="padding:10px 12px;background:var(--g50);border-radius:8px;font-size:12px;color:var(--ink3)">'
-            +'\uD83D\uDCA1 Preencha os dados da empresa ao selecionar o status <strong>Contratado</strong> ou superior.'
-            +'</div>';
-        }
+        const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+        const v=(at.empresas&&at.empresas[0])?at.empresas[0].valor:'';
+        return '<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Valor (R$)</label>'
+          +'<input type="text" class="ativ-emp-field ativ-emp-money" data-ativ-idx="'+editIdx+'" data-emp-idx="0" data-field="valor" value="'+esc(v)+'" placeholder="0,00" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/>';
       })()
     +'</div>'
     +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2)">'
@@ -6175,107 +4924,6 @@ function excluirAtividadeCusteioServidor(at){
       descricao:at.descricao||''
     })}).catch(function(){});
   }catch(e){}
-}
-
-// ── LOTES DE EQUIPAMENTOS — persistência server-side (mesmo padrão das
-// atividades de custeio, ver acima) ──────────────────────────────────────────
-async function buscarLotesEquipamentoServidor(municipioNome, instrumento, tipo){
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return [];
-  try{
-    const url=APPS_SCRIPT_URL+'?acao=buscarLotesEquipamento'
-      +'&municipio='+encodeURIComponent(municipioNome||'')
-      +'&instrumento='+encodeURIComponent(instrumento||'')
-      +'&tipo='+encodeURIComponent(tipo||'');
-    const resp=await fetch(url);
-    const j=await resp.json();
-    if(j&&j.status==='ok') return j.lotes||[];
-    return [];
-  }catch(e){ console.error('buscarLotesEquipamentoServidor erro:',e); return []; }
-}
-
-// Salva (upsert) UM lote no servidor — chamado ao confirmar um lote e ao
-// mudar seu status. A planilha é a fonte de verdade entre bimestres/máquinas.
-function salvarLoteEquipamentoServidor(lote){
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return;
-  const a=acq();
-  if(!a.acao_instrumento||!a.acao_tipo) return;
-  if(!lote.modalidade&&!lote.num_processo) return; // nada que identifique o lote ainda
-  try{
-    fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({
-      acao:'salvarLoteEquipamento',
-      municipio:municipio.municipio||'',
-      acao_instrumento:a.acao_instrumento||'',
-      acao_tipo:a.acao_tipo||'',
-      bimestre:municipio.bimestre||'',
-      ano:municipio.ano||'',
-      lote:{
-        modalidade:lote.modalidade||'', num_processo:lote.num_processo||'',
-        _status:lote._status||'Planejamento', valor_contratado:lote.valor_contratado||'',
-        empresa_nome:lote.empresa_nome||'', empresa_cnpj:lote.empresa_cnpj||'',
-        data_homologacao:lote.data_homologacao||'', prazo_entrega:lote.prazo_entrega||'',
-        data_prev_entrega:lote.data_prev_entrega||'', itens:lote.itens||[]
-      }
-    })}).catch(function(){});
-  }catch(e){}
-}
-
-function excluirLoteEquipamentoServidor(lote){
-  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return;
-  const a=acq();
-  if(!a.acao_instrumento||!a.acao_tipo) return;
-  if(!lote.modalidade&&!lote.num_processo) return;
-  try{
-    fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({
-      acao:'excluirLoteEquipamento',
-      municipio:municipio.municipio||'',
-      acao_instrumento:a.acao_instrumento||'',
-      acao_tipo:a.acao_tipo||'',
-      modalidade:lote.modalidade||'',
-      num_processo:lote.num_processo||''
-    })}).catch(function(){});
-  }catch(e){}
-}
-
-// Sincroniza acqObj._lotes com o que está no servidor: traz todos os lotes já
-// confirmados em qualquer bimestre/computador para esta ação e mescla com o
-// que já está em tela, priorizando o servidor em caso de divergência —
-// equivalente ao carry-over completo das atividades de custeio, mas para lotes.
-async function carregarLotesHistoricoEquipamento(acqObj){
-  if(!acqObj) return false;
-  const inst=acqObj.acao_instrumento||'';
-  const tipo=acqObj.acao_tipo||'';
-  if(!inst||!tipo) return false;
-  if(!acqObj._lotes) acqObj._lotes=[];
-
-  const remotos=await buscarLotesEquipamentoServidor(municipio.municipio, inst, tipo);
-  if(!remotos.length) return false;
-
-  const chaveDe=function(l){return (l.modalidade||'')+'|'+(l.num_processo||'');};
-  const localPorChave={};
-  acqObj._lotes.forEach(function(l){ if(l.confirmado) localPorChave[chaveDe(l)]=l; });
-
-  const novosConfirmados=[];
-  remotos.forEach(function(r){
-    const ch=(r.modalidade||'')+'|'+(r.num_processo||'');
-    novosConfirmados.push({
-      modalidade:r.modalidade||'', num_processo:r.num_processo||'',
-      _status:r.status||'Planejamento', valor_contratado:_fmtNumParaCampoBRL(r.valor_contratado),
-      empresa_nome:r.empresa_nome||'', empresa_cnpj:r.empresa_cnpj||'',
-      data_homologacao:r.data_homologacao||'', prazo_entrega:r.prazo_entrega||'',
-      data_prev_entrega:r.data_prev_entrega||'',
-      itens:(r.itens||[]).map(function(it){return Object.assign({},it);}),
-      _total:(r.itens||[]).reduce(function(s,it){return s+(it.total||0);},0),
-      confirmado:true
-    });
-    delete localPorChave[ch];
-  });
-  // Mantém lotes confirmados que existiam só localmente e ainda não
-  // foram sincronizados com o servidor (ex: acabou de confirmar nesta sessão)
-  Object.values(localPorChave).forEach(function(l){ novosConfirmados.push(l); });
-
-  const emEdicao=acqObj._lotes.filter(function(l){return !l.confirmado;});
-  acqObj._lotes=novosConfirmados.concat(emEdicao);
-  return true;
 }
 
 // Sincroniza acqObj._atividades com o que está no servidor: traz tudo que
