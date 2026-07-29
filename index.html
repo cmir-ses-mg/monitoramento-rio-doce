@@ -3380,6 +3380,18 @@ function _spField(storeObj,field,label,type,ph,idx){
     +'<input type="'+(type||'text')+'" placeholder="'+(ph||'')+'" value="'+val+'" style="width:100%;padding:8px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;outline:none" '+onChange+dataAttrs+'/></div>';
 }
 
+// Status possíveis de contratação/entrega e as cores de cada chip. Usado por
+// _statusPills, que é compartilhado por Investimento, Custeio e Obra na
+// Contratação.
+var _STAT_CONT=['Planejamento','Processo aberto','Contratado','Em entrega','Concluído'];
+var _STAT_COLORS={
+  'Planejamento':    'background:#FFF3E0;color:#7C4A0A',
+  'Processo aberto': 'background:#FFF8E1;color:#8B5E00',
+  'Contratado':      'background:#E8F5E9;color:#1B5E20',
+  'Em entrega':      'background:#C8E6C9;color:#1B5E20',
+  'Concluído':  'background:#1B3A2B;color:#ffffff'
+};
+
 function _statusPills(cur,onclickFn){
   return _STAT_CONT.map(function(s){
     var active=s===cur;
@@ -4971,19 +4983,6 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
 // ══ FIM CUSTEIO ═══════════════════════════════════════════════════════════════
 </script>
 
-
-<!-- Modal Colar Lista -->
-<div id="colar-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;max-width:560px;width:92%;padding:24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
-    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">📋 Colar lista de equipamentos</div>
-    <div style="font-size:12.5px;color:var(--ink2);margin-bottom:12px">Abra a planilha no Excel, selecione as linhas de dados (sem título), copie com Ctrl+C e cole abaixo com Ctrl+V.</div>
-    <textarea id="colar-textarea" rows="10" placeholder="Cole aqui os dados copiados do Excel (Ctrl+V)..." style="width:100%;font-family:var(--mono);font-size:11.5px;border:1.5px solid var(--border);border-radius:8px;padding:10px;resize:vertical;outline:none;line-height:1.5" onpaste="setTimeout(()=>this.style.borderColor='var(--g400)',50)"></textarea>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-      <button onclick="fecharColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--ink2);cursor:pointer">Cancelar</button>
-      <button onclick="confirmarColarModal()" style="padding:8px 20px;font-size:13px;font-weight:600;font-family:var(--font);border:none;border-radius:7px;background:var(--g800);color:#fff;cursor:pointer">✓ Importar itens</button>
-    </div>
-  </div>
-</div>
 
 <div id="missing-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(6,31,22,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:14px;max-width:480px;width:90%;padding:28px 24px;box-shadow:0 20px 60px rgba(6,31,22,.25);animation:fadeUp .2s ease">
