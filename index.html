@@ -3402,7 +3402,7 @@ function _statusPills(cur,onclickFn){
 
 function _camposContrato(obj,isContratado,idxOrNull){
   var sp=function(f,l,t,ph){return _spField(obj,f,l,t,ph,idxOrNull);};
-  var status=obj._status||'Planejamento';
+  var status=obj._status_contrat||'Planejamento';
   var emEntrega=['Em entrega','Concluído'].includes(status);
 
   // Dados de empresa/modalidade/contrato removidos a pedido — a Contratação
