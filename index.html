@@ -3520,18 +3520,16 @@ function _setAtivField(idx,field,value){
 
 function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   var cur=a._status_contrat||'Planejamento';
-  var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
 
   var card='<div class="card">'
     +'<div class="card-title">Status da contratação</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'setStatusContrat')+'</div>'
-    +_camposContrato(a,isContr,undefined)
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'+_statusPills(cur,'setStatusContrat')+'</div>'
     +'</div>';
 
   return ''+
     lockedBanner+
     '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+modeBadge+'</h2>'+
-    '<p>Status da contratação e dados da entrega.</p></div>'+
+    '<p>Status da contratação. Os dados de entrega ficam na etapa seguinte.</p></div>'+
     card;
 }
 
