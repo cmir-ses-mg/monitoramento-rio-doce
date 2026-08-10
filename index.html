@@ -1481,18 +1481,30 @@ function calcValorRecebidoBimestre(){return aquisicoes.reduce(function(s,a){retu
 // sobrevivem ao recarregamento da página (o navegador não os serializa), então
 // ao reabrir um bimestre já iniciado o campo voltava vazio e a validação
 // exigia anexar de novo — o que também reenviava o arquivo ao Drive. Aqui
-// guardamos apenas os NOMES do que já foi anexado em municipio.extratos_nomes.
+// guardamos apenas os NOMES do que já subiu, em municipio.extratos_nomes.
 // Isso satisfaz a validação sem reenvio e sem nova contagem de valores.
-function registrarExtratosAnexados(){
-  const novos=(arquivos['mun_extratos_municipio']||[]).map(function(f){return f.name;});
-  const antigos=(municipio.extratos_nomes||[]).filter(function(n){return novos.indexOf(n)===-1;});
-  municipio.extratos_nomes=antigos.concat(novos);
+// IMPORTANTE: o registro só é gravado DEPOIS que o arquivo chega ao Drive.
+// Registrar no momento do clique deixaria a validação satisfeita por um
+// arquivo que, após um recarregamento, nunca teria sido enviado de fato.
+function registrarExtratosEnviados(nomes){
+  const antigos=(municipio.extratos_nomes||[]);
+  (nomes||[]).forEach(function(n){if(antigos.indexOf(n)===-1)antigos.push(n);});
+  municipio.extratos_nomes=antigos;
   municipio._extratosTouchedAt=Date.now();
   saveSession();
 }
+// Sessões salvas antes desta versão não têm registro de extrato. Se alguma ação
+// deste bimestre já foi enviada, o extrato subiu junto com ela — então não faz
+// sentido exigir novo anexo de quem está apenas retomando o preenchimento.
+function _extratoSubiuEmEnvioAnterior(){
+  try{return aquisicoes.some(function(a){return a&&a._sent;});}catch(e){return false;}
+}
 function extratosRegistrados(){
-  return (municipio.extratos_nomes||[]).length>0
-      || (arquivos['mun_extratos_municipio']||[]).length>0;
+  if((arquivos['mun_extratos_municipio']||[]).length>0)return true;
+  if((municipio.extratos_nomes||[]).length>0)return true;
+  if(municipio.extrato_ja_enviado)return true;
+  if(_extratoSubiuEmEnvioAnterior()){municipio.extrato_ja_enviado=true;municipio._extratosTouchedAt=Date.now();saveSession();return true;}
+  return false;
 }
 // Remove um extrato que já havia sido anexado em sessão anterior (só o registro
 // local — o arquivo enviado ao Drive permanece lá).
@@ -1519,9 +1531,12 @@ function _atualizarAvisoExtrato(){
 function handleFilesMun(key,files){
   if(!arquivos['mun_'+key])arquivos['mun_'+key]=[];
   Array.from(files).forEach(f=>arquivos['mun_'+key].push(f));
-  if(key==='extratos_municipio')registrarExtratosAnexados();
   const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePillsMun(key);
-  if(key==='extratos_municipio')_atualizarAvisoExtrato();
+  if(key==='extratos_municipio'){
+    _atualizarAvisoExtrato();
+    // Sobe na hora, para que o registro reflita algo que existe no Drive.
+    enviarAnexosMunicipioDrive();
+  }
 }
 function renderFilePillsMun(key){
   const atuais=(arquivos['mun_'+key]||[]);
@@ -1542,6 +1557,13 @@ function renderFilePillsMun(key){
         +'<span class="rem" onclick="removeExtratoRegistrado(\''+String(n).replace(/'/g,"\\'")+'\')">×</span>'
       +'</div>';
     });
+    // Sessão antiga: sabemos que o extrato subiu, mas não temos o nome do arquivo.
+    if(municipio.extrato_ja_enviado&&!(municipio.extratos_nomes||[]).length){
+      html+='<div class="file-pill" style="opacity:.85" title="Enviado em envio anterior deste bimestre">'
+        +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>'
+        +'Extrato enviado neste bimestre'
+      +'</div>';
+    }
   }
   return html;
 }
@@ -1556,7 +1578,8 @@ function removeFileMun(key,i){
     // Tirar também do registro, senão o arquivo recém-removido reapareceria
     // como "já enviado" na próxima renderização.
     if(_nomeRemovido)municipio.extratos_nomes=(municipio.extratos_nomes||[]).filter(function(n){return n!==_nomeRemovido;});
-    registrarExtratosAnexados();
+    municipio._extratosTouchedAt=Date.now();
+    saveSession();
   }
   const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePillsMun(key);
   if(key==='extratos_municipio')_atualizarAvisoExtrato();
@@ -1757,7 +1780,7 @@ function renderCapaMunicipio(modoResumo){
   const _rendimentosBase=municipio._rendimentosBase||0;
   const _rendimentosAcumulados=_rendimentosBase+parseBRL(municipio.rendimentos_periodo||'');
   const _temExtrato=extratosRegistrados();
-  const _extratoJaEnviado=(municipio.extratos_nomes||[]).length>0&&(arquivos['mun_extratos_municipio']||[]).length===0;
+  const _extratoJaEnviado=((municipio.extratos_nomes||[]).length>0||!!municipio.extrato_ja_enviado)&&(arquivos['mun_extratos_municipio']||[]).length===0;
   // Fora da Revisão final (modoResumo), não exibimos mais a identificação do
   // município nem os valores recebidos/saldo/progresso — apenas o campo de
   // rendimentos do período (que continua obrigatório) e o upload do extrato.
@@ -1910,7 +1933,7 @@ function contentHTML(){
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Valor executado</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre.</div>
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -2493,10 +2516,12 @@ async function enviarAnexosDrive(a){
   }catch(e){ console.warn('Drive anexos:', e); }
 }
 
-// Envia os extratos bancários do município (capa) ao Drive
+// Envia os extratos bancários do município (capa) ao Drive.
+// Idempotente: cada File é marcado após subir, então chamar de novo (no envio
+// final, por exemplo) não duplica o arquivo nem recontabiliza nada.
 async function enviarAnexosMunicipioDrive(){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
-  const arquivosMun = arquivos['mun_extratos_municipio'] || [];
+  const arquivosMun = (arquivos['mun_extratos_municipio'] || []).filter(function(f){return !f._enviadoDrive;});
   if(!arquivosMun.length)return;
   const uploads = await Promise.all(arquivosMun.map(async function(f){
     try{
@@ -2518,6 +2543,10 @@ async function enviarAnexosMunicipioDrive(){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     });
+    // Só agora o registro é gravado — o arquivo está no Drive.
+    arquivosMun.forEach(function(f){f._enviadoDrive=true;});
+    registrarExtratosEnviados(arquivosMun.map(function(f){return f.name;}));
+    _atualizarAvisoExtrato();
   }catch(e){ console.warn('Drive extratos município:', e); }
 }
 
@@ -2910,7 +2939,7 @@ async function enviarSessaoServidor(){
   if((municipio._extratosTouchedAt||0)>(_ultimoSyncEnviado['__capa_municipio__']||0)){
     itens.push({
       acaoKey:'__capa_municipio__',
-      payload:JSON.stringify({extratos_nomes:municipio.extratos_nomes||[]}),
+      payload:JSON.stringify({extratos_nomes:municipio.extratos_nomes||[],extrato_ja_enviado:!!municipio.extrato_ja_enviado}),
       touchedAt:municipio._extratosTouchedAt
     });
   }
@@ -2955,8 +2984,9 @@ async function mesclarSessaoDoServidor(){
         if(_ts<=(municipio._extratosTouchedAt||0))return;
         let _capa=null;try{_capa=JSON.parse(it.payload);}catch(e){return;}
         const _nomes=(_capa&&_capa.extratos_nomes)||[];
-        if(!_nomes.length)return;
-        municipio.extratos_nomes=_nomes;
+        if(!_nomes.length&&!(_capa&&_capa.extrato_ja_enviado))return;
+        if(_nomes.length)municipio.extratos_nomes=_nomes;
+        if(_capa&&_capa.extrato_ja_enviado)municipio.extrato_ja_enviado=true;
         municipio._extratosTouchedAt=_ts;
         aplicadas++;
         return;
