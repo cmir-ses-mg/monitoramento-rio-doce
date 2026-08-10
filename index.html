@@ -5124,6 +5124,9 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
     novasConfirmadas.push({
       descricao:r.descricao||'',
       item_num:r.item_num||'',
+      quantidade:r.quantidade||'',
+      unidade_medida:r.unidade_medida||'',
+      cnes:r.cnes||'',
       empresas:(r.empresas||[]).map(function(e){return Object.assign({},e);}),
       _status:r.status||'Planejamento',
       confirmado:true
