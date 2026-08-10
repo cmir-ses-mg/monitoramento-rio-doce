@@ -1476,6 +1476,16 @@ function _valorExecutadoNesteBimestre(a){
 }
 function calcValorRecebidoBimestre(){return aquisicoes.reduce(function(s,a){return s+_valorExecutadoNesteBimestre(a);},0);}
 
+// Card de rendimentos/extrato: colapsado depois de preenchido, reaberto pelo
+// botão "Editar".
+let _capaEditando=false;
+let _ultimoCapaEnviado='';
+function toggleCapaEdicao(abrir){
+  saveAllInputs();
+  _capaEditando=!!abrir;
+  renderAll();
+}
+
 // ── EXTRATO BANCÁRIO: registro persistente ──────────────────────────────────
 // O extrato é exigido uma vez por município/bimestre. Os objetos File não
 // sobrevivem ao recarregamento da página (o navegador não os serializa), então
@@ -1490,7 +1500,7 @@ function registrarExtratosEnviados(nomes){
   const antigos=(municipio.extratos_nomes||[]);
   (nomes||[]).forEach(function(n){if(antigos.indexOf(n)===-1)antigos.push(n);});
   municipio.extratos_nomes=antigos;
-  municipio._extratosTouchedAt=Date.now();
+  municipio._capaTouchedAt=Date.now();
   saveSession();
 }
 // Sessões salvas antes desta versão não têm registro de extrato. Se alguma ação
@@ -1503,14 +1513,14 @@ function extratosRegistrados(){
   if((arquivos['mun_extratos_municipio']||[]).length>0)return true;
   if((municipio.extratos_nomes||[]).length>0)return true;
   if(municipio.extrato_ja_enviado)return true;
-  if(_extratoSubiuEmEnvioAnterior()){municipio.extrato_ja_enviado=true;municipio._extratosTouchedAt=Date.now();saveSession();return true;}
+  if(_extratoSubiuEmEnvioAnterior()){municipio.extrato_ja_enviado=true;municipio._capaTouchedAt=Date.now();saveSession();return true;}
   return false;
 }
 // Remove um extrato que já havia sido anexado em sessão anterior (só o registro
 // local — o arquivo enviado ao Drive permanece lá).
 function removeExtratoRegistrado(nome){
   municipio.extratos_nomes=(municipio.extratos_nomes||[]).filter(function(n){return n!==nome;});
-  municipio._extratosTouchedAt=Date.now();
+  municipio._capaTouchedAt=Date.now();
   saveSession();
   const el=document.getElementById('files_extratos_municipio');
   if(el)el.innerHTML=renderFilePillsMun('extratos_municipio');
@@ -1578,7 +1588,7 @@ function removeFileMun(key,i){
     // Tirar também do registro, senão o arquivo recém-removido reapareceria
     // como "já enviado" na próxima renderização.
     if(_nomeRemovido)municipio.extratos_nomes=(municipio.extratos_nomes||[]).filter(function(n){return n!==_nomeRemovido;});
-    municipio._extratosTouchedAt=Date.now();
+    municipio._capaTouchedAt=Date.now();
     saveSession();
   }
   const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePillsMun(key);
@@ -1786,6 +1796,21 @@ function renderCapaMunicipio(modoResumo){
   // rendimentos do período (que continua obrigatório) e o upload do extrato.
   // O resumo completo (identificação + valores + progresso) só aparece na
   // Revisão final (modoResumo=true).
+  // Rendimentos + extrato valem para o MUNICÍPIO no bimestre, não por ação.
+  // Como a etapa 1 é revisitada a cada ação, o card reaparecia toda vez e o
+  // campo obrigatório travava o avanço. Depois de preenchido, ele colapsa
+  // num resumo de uma linha, com "Editar" para quem precisar corrigir.
+  const _capaCompleta=String(municipio.rendimentos_periodo||'').trim()!==''&&_temExtrato;
+  if(!modoResumo&&_capaCompleta&&!_capaEditando){
+    return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+      +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u2713</div>'
+      +'<div style="flex:1;min-width:180px">'
+        +'<div style="font-size:12.5px;font-weight:700;color:var(--g800)">Rendimentos do bimestre registrados</div>'
+        +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">R$ '+parseBRL(municipio.rendimentos_periodo||'').toLocaleString('pt-BR',{minimumFractionDigits:2})+' \u00b7 extrato banc\u00e1rio anexado \u00b7 vale para todas as a\u00e7\u00f5es</div>'
+      +'</div>'
+      +'<button type="button" onclick="toggleCapaEdicao(true)" style="padding:5px 14px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
+    +'</div>';
+  }
   if(!modoResumo){
     return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
       +'<div class="card-title">Rendimentos no período</div>'
@@ -1798,6 +1823,7 @@ function renderCapaMunicipio(modoResumo){
       +'<div id="aviso-extrato" style="font-size:11px;color:#C0392B;margin-top:4px;'+(_temExtrato?'display:none':'')+'">Anexe pelo menos um extrato bancário.</div>'
       +'<div id="hint-extrato-ok" style="font-size:11px;color:var(--ink3);margin-top:4px;'+(_temExtrato?'':'display:none')+'">Extrato já anexado neste bimestre — não é preciso enviar de novo. Anexe outro apenas se quiser complementar.</div>'
       +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>'
+      +(_capaEditando?'<div style="margin-top:12px;text-align:right"><button type="button" onclick="toggleCapaEdicao(false)" style="padding:6px 16px;font-size:12px;font-weight:700;background:var(--g700);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:var(--font)">Concluir</button></div>':'')
     +'</div>';
   }
   return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
@@ -1933,7 +1959,7 @@ function contentHTML(){
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Valor executado</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre.</div>
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -2010,11 +2036,6 @@ function contentHTML(){
         +(status==='Planejamento'||status==='Processo aberto'?'<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Avance o status na etapa "Contratação" para registrar a execução.</div>':'')
       +'</div>';
     }).join('')
-    +'<div class="card" style="border-left:3px solid var(--g500)">'
-      +'<div class="card-title">Dados para o Sistema Oficial de Monitoramento</div>'
-      +fld('Unidade de Medida','unidade_medida','text','Ex: Unidade, Hora, Mês')
-      +fld('CNES','cnes','text','Código CNES (7 dígitos)')
-    +'</div>'
     +'<div class="card">'
       +'<div class="card-title">Documentos comprobatórios</div>'
       +'<p class="hint" style="margin-bottom:12px">Clique em cada documento para marcá-lo e anexar o arquivo.</p>'
@@ -2952,14 +2973,19 @@ async function enviarSessaoServidor(){
     if((_ultimoSyncEnviado[a._key]||0)>=a._touchedAt)return;
     itens.push({acaoKey:a._key,payload:_acqParaPayload(a),touchedAt:a._touchedAt});
   });
-  // Registro do extrato bancário da capa: viaja como um item próprio para que
-  // quem reabrir o bimestre em outra máquina também não precise reanexar.
-  if((municipio._extratosTouchedAt||0)>(_ultimoSyncEnviado['__capa_municipio__']||0)){
-    itens.push({
-      acaoKey:'__capa_municipio__',
-      payload:JSON.stringify({extratos_nomes:municipio.extratos_nomes||[],extrato_ja_enviado:!!municipio.extrato_ja_enviado}),
-      touchedAt:municipio._extratosTouchedAt
-    });
+  // Dados da capa (rendimentos do período + registro do extrato): valem para o
+  // município inteiro, não por ação, então viajam como um item próprio. Assim
+  // quem reabrir o bimestre em outra máquina não precisa redigitar nem
+  // reanexar. Enviado sempre que o conteúdo mudar de fato.
+  const _capaPayload=JSON.stringify({
+    rendimentos_periodo:municipio.rendimentos_periodo||'',
+    extratos_nomes:municipio.extratos_nomes||[],
+    extrato_ja_enviado:!!municipio.extrato_ja_enviado
+  });
+  if(_capaPayload!==_ultimoCapaEnviado){
+    municipio._capaTouchedAt=Date.now();
+    itens.push({acaoKey:'__capa_municipio__',payload:_capaPayload,touchedAt:municipio._capaTouchedAt});
+    _ultimoCapaEnviado=_capaPayload;
   }
   if(!itens.length)return;
   try{
@@ -2998,14 +3024,23 @@ async function mesclarSessaoDoServidor(){
       // Item da capa: não é uma ação — nunca deve entrar em `aquisicoes`.
       if(it.acaoKey==='__capa_municipio__'){
         const _ts=Number(it.touchedAt)||0;
-        _ultimoSyncEnviado['__capa_municipio__']=Math.max(_ultimoSyncEnviado['__capa_municipio__']||0,_ts);
-        if(_ts<=(municipio._extratosTouchedAt||0))return;
+        if(_ts<=(municipio._capaTouchedAt||0))return;
         let _capa=null;try{_capa=JSON.parse(it.payload);}catch(e){return;}
-        const _nomes=(_capa&&_capa.extratos_nomes)||[];
-        if(!_nomes.length&&!(_capa&&_capa.extrato_ja_enviado))return;
+        if(!_capa)return;
+        const _nomes=_capa.extratos_nomes||[];
         if(_nomes.length)municipio.extratos_nomes=_nomes;
-        if(_capa&&_capa.extrato_ja_enviado)municipio.extrato_ja_enviado=true;
-        municipio._extratosTouchedAt=_ts;
+        if(_capa.extrato_ja_enviado)municipio.extrato_ja_enviado=true;
+        // Só preenche rendimentos se ainda estiver vazio aqui — nunca sobrescreve
+        // um valor que a pessoa acabou de digitar nesta tela.
+        if(String(municipio.rendimentos_periodo||'').trim()===''&&_capa.rendimentos_periodo){
+          municipio.rendimentos_periodo=_capa.rendimentos_periodo;
+        }
+        municipio._capaTouchedAt=_ts;
+        _ultimoCapaEnviado=JSON.stringify({
+          rendimentos_periodo:municipio.rendimentos_periodo||'',
+          extratos_nomes:municipio.extratos_nomes||[],
+          extrato_ja_enviado:!!municipio.extrato_ja_enviado
+        });
         aplicadas++;
         return;
       }
@@ -3156,7 +3191,7 @@ function resumeSession(){
 
 function discardSession(){
   clearSession(sessionKey());
-  aquisicoes.length=0;acqIdx=0;
+  _capaEditando=false;_ultimoCapaEnviado='';aquisicoes.length=0;acqIdx=0;
   renderAll();
 }
 
@@ -3633,7 +3668,7 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
     +'</div>';
   }).join('');
   return (lockedBanner||'')
-    +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+(modeBadge||'')+'</h2>'
+    +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+(modeBadge||'')+'</h2>'
     +'<p>Um card por atividade selecionada na etapa anterior. A empresa já cadastrada aparece automaticamente.</p></div>'
     +'<div class="card"><div class="card-title">Contratação de pessoal</div>'
     +fld('Nº de contratações de pessoal previstas','pessoal_previsto','numonly','Ex: 5')
@@ -3671,7 +3706,7 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
 
   return ''+
     lockedBanner+
-    '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+modeBadge+'</h2>'+
+    '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'+
     '<p>Status da contratação e dados da entrega.</p></div>'+
     card;
 }
@@ -3860,7 +3895,7 @@ function resetApp(){
   clearSession(sessionKey());
   // Zerar todo o estado
   Object.keys(municipio).forEach(k=>delete municipio[k]);
-  aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
+  _capaEditando=false;_ultimoCapaEnviado='';aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
   Object.keys(arquivos).forEach(k=>delete arquivos[k]);
   // Mostrar UI principal, esconder tela de sucesso
   ['mainContent','navBar','phaseBarWrap'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});
@@ -4142,7 +4177,7 @@ function doLogout(){
   _sessaoUsuario=null;
   localStorage.removeItem('rdoce_sessao');
   Object.keys(municipio).forEach(k=>delete municipio[k]);
-  aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
+  _capaEditando=false;_ultimoCapaEnviado='';aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
   Object.keys(arquivos).forEach(k=>delete arquivos[k]);
   document.getElementById('login-screen').style.display='flex';
   renderAll();
@@ -4806,9 +4841,12 @@ function _renderAtividadesCardDOM(){
     c.appendChild(_buildAtividadeEditCard(idx));
   });
 
-  // ── BOTÃO ADICIONAR NOVA ATIVIDADE ─────────────────────────────────────────
+  // ── BOTÃO ADICIONAR ATIVIDADE ──────────────────────────────────────────────
+  // Nenhum card abre sozinho: a atividade só aparece quando a pessoa pede.
+  const _vazio=a._atividades.length===0;
   const b=document.createElement('div');
-  b.innerHTML='<button type="button" onclick="_addAtividade()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;margin-bottom:8px">+ Adicionar outra atividade</button>';
+  b.innerHTML=(_vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:14px 0 10px;text-align:center">Nenhuma atividade registrada ainda.</div>':'')
+    +'<button type="button" onclick="_addAtividade()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;margin-bottom:8px">+ Adicionar '+(_vazio?'atividade':'outra atividade')+'</button>';
   c.appendChild(b);
 
   calcAtividades();
@@ -4970,9 +5008,6 @@ function excluirAtividade(idx){
     if(!ok)return;
     if(at.confirmado) excluirAtividadeCusteioServidor(at);
     a._atividades.splice(idx,1);
-    if(!a._atividades.length){
-      a._atividades.push({descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
-    }
     _renderAtividadesCardDOM();
   });
 }
@@ -5107,12 +5142,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   if(!acqObj._atividades) acqObj._atividades=[];
 
   const remotas=await buscarAtividadesCusteioServidor(municipio.municipio, inst, tipo);
-  if(!remotas.length){
-    if(!acqObj._atividades.some(function(at){return !at.confirmado;})){
-      acqObj._atividades.push({descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
-    }
-    return false;
-  }
+  if(!remotas.length) return false;
 
   const chaveDe=function(at){return (at.item_num||'')+'|'+(at.descricao||'').substring(0,30);};
   const localPorChave={};
@@ -5138,7 +5168,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   Object.values(localPorChave).forEach(function(at){ novasConfirmadas.push(at); });
 
   const emEdicao=acqObj._atividades.filter(function(at){return !at.confirmado;});
-  acqObj._atividades=novasConfirmadas.concat(emEdicao.length?emEdicao:[{descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false}]);
+  acqObj._atividades=novasConfirmadas.concat(emEdicao);
   return true;
 }
 // ══ FIM CUSTEIO ═══════════════════════════════════════════════════════════════
