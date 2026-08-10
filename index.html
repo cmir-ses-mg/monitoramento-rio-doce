@@ -2003,7 +2003,7 @@ function contentHTML(){
           +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">A'+(realIdx+1)+'</div>'
           +'<div style="flex:1;min-width:0;overflow:hidden">'
             +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(at.item_num?'Item '+at.item_num+': ':'')+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
-            +'<div style="font-size:11px;color:var(--ink3)">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+((at.empresas||[]).filter(function(e){return e.nome;}).length?' · '+(at.empresas||[]).filter(function(e){return e.nome;})[0].nome:'')+'</div>'
+            +'<div style="font-size:11px;color:var(--ink3)">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+(function(){const r=_resumoServicoAtiv(at);return r?' · '+r:'';})()+'</div>'
           +'</div>'
           +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;color:'+statusBadgeColor+'">'+status+'</span>'
         +'</div>'
@@ -2666,6 +2666,24 @@ function gerarPDFBase64(){
             y+=5.2;
           });
           y+=3;
+        });
+      }
+      // Atividades de custeio (serviços) — uma faixa por atividade confirmada
+      if(servico&&a._atividades&&a._atividades.filter(function(at){return at.confirmado;}).length){
+        a._atividades.filter(function(at){return at.confirmado;}).forEach(function(at,ai){
+          const vlrAt=(at.empresas||[]).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
+          chk(12);
+          doc.setFillColor(212,245,229);doc.rect(14,y-4,186,8,'F');
+          doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(26,107,73);
+          doc.text(('ATIVIDADE '+(ai+1)+(at.item_num?' \u2014 Item '+at.item_num:'')).substring(0,70),16,y+1);
+          doc.setFont('helvetica','normal');doc.setTextColor(58,84,70);
+          doc.text((at._status||'Planejamento')+'  \u00b7  R$ '+vlrAt.toLocaleString('pt-BR',{minimumFractionDigits:2}),186,y+1,{align:'right'});
+          y+=10;
+          row('Descri\u00e7\u00e3o do servi\u00e7o:',at.descricao);
+          row('Quantidade:',at.quantidade);
+          row('Unidade de medida:',at.unidade_medida);
+          row('CNES:',at.cnes);
+          y+=2;
         });
       }
       sec('CONTRATAÇÃO');
@@ -3607,7 +3625,7 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
         +'<div style="width:28px;height:28px;border-radius:50%;background:var(--g800);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">A'+(realIdx+1)+'</div>'
         +'<div style="flex:1;min-width:0;overflow:hidden">'
           +'<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(at.item_num?'Item '+at.item_num+': ':'')+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
-          +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
+          +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+(function(){const r=_resumoServicoAtiv(at);return r?' · '+r:'';})()+'</div>'
         +'</div>'
       +'</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2)">'+pills+'</div>'
@@ -4746,6 +4764,13 @@ function renderAtividadesCard(){
     +'</div></div>';
 }
 
+function _resumoServicoAtiv(at){
+  const p=[];
+  if(at.quantidade)p.push(String(at.quantidade)+(at.unidade_medida?' '+at.unidade_medida:''));
+  else if(at.unidade_medida)p.push(String(at.unidade_medida));
+  if(at.cnes)p.push('CNES '+at.cnes);
+  return p.join(' \u00b7 ');
+}
 function _renderAtividadesCardDOM(){
   const c=document.getElementById('atividades-container');
   if(!c) return;
@@ -4766,7 +4791,7 @@ function _renderAtividadesCardDOM(){
       +'<div style="flex:1;min-width:0">'
         +(at.item_num?'<div style="font-size:12px;color:var(--ink3);margin-bottom:2px">'+('Item '+at.item_num)+'</div>':'')
         +'<div style="font-size:13px;font-weight:700;color:var(--g800)">'+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
-        +'<div style="font-size:11px;color:var(--ink3);margin-top:2px"><span style="color:'+cor+';font-weight:600">'+at._status+'</span></div>'
+        +'<div style="font-size:11px;color:var(--ink3);margin-top:2px">'+(function(){const r=_resumoServicoAtiv(at);return r?r+'&nbsp;&middot;&nbsp;':'';})()+'<span style="color:'+cor+';font-weight:600">'+at._status+'</span></div>'
       +'</div>'
       +'<div style="font-size:13px;font-weight:700;color:var(--g700);flex-shrink:0">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
       +'<button onclick="editarAtividade('+realIdx+')" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font);flex-shrink:0">\u270F\uFE0F Editar</button>'
@@ -4836,8 +4861,23 @@ function _buildAtividadeEditCard(editIdx){
       +(function(){
         const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
         const v=(at.empresas&&at.empresas[0])?at.empresas[0].valor:'';
-        return '<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Valor (R$)</label>'
-          +'<input type="text" class="ativ-emp-field ativ-emp-money" data-ativ-idx="'+editIdx+'" data-emp-idx="0" data-field="valor" value="'+esc(v)+'" placeholder="0,00" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/>';
+        const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
+        const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
+        const UNID=['Unidade','Servi\u00e7o','M\u00eas','Hora','Dia','Km','Metro','Metro quadrado','Litro','Quilograma','Coleta','Amostra','Visita','Inspe\u00e7\u00e3o','Verba'];
+        return '<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Servi\u00e7o executado</label>'
+          +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">'
+            +'<div><label style="'+lbl+'">Quantidade</label>'
+              +'<input type="text" inputmode="decimal" oninput="_updAtiv('+editIdx+',\'quantidade\',this.value)" value="'+esc(at.quantidade)+'" placeholder="Ex: 10" style="'+inp+'"/></div>'
+            +'<div><label style="'+lbl+'">Unidade de medida</label>'
+              +'<input type="text" list="lst-unid-medida" oninput="_updAtiv('+editIdx+',\'unidade_medida\',this.value)" value="'+esc(at.unidade_medida)+'" placeholder="Ex: Unidade" style="'+inp+'"/></div>'
+            +'<div><label style="'+lbl+'">Valor (R$)</label>'
+              +'<input type="text" class="ativ-emp-field ativ-emp-money" data-ativ-idx="'+editIdx+'" data-emp-idx="0" data-field="valor" value="'+esc(v)+'" placeholder="0,00" style="'+inp+'"/></div>'
+          +'</div>'
+          +'<datalist id="lst-unid-medida">'+UNID.map(function(u){return '<option value="'+u+'"></option>';}).join('')+'</datalist>'
+          +'<div style="max-width:240px"><label style="'+lbl+'">CNES</label>'
+            +'<input type="text" inputmode="numeric" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,\'\');_updAtiv('+editIdx+',\'cnes\',this.value)" value="'+esc(at.cnes)+'" placeholder="0000000" style="'+inp+'"/>'
+            +'<div style="font-size:10.5px;color:var(--ink3);margin-top:3px">Unidade de sa\u00fade onde o servi\u00e7o foi executado (opcional)</div>'
+          +'</div>';
       })()
     +'</div>'
     +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2)">'
@@ -4899,7 +4939,7 @@ if(!window._ativEmpListenersBound){
   }, true);
 }
 
-function _addAtividade(){const a=acq();if(!a._atividades)a._atividades=[];a._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});_renderAtividadesCardDOM();}
+function _addAtividade(){const a=acq();if(!a._atividades)a._atividades=[];a._atividades.push({descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});_renderAtividadesCardDOM();}
 function _setAtivStatus(idx,status){
   const a=acq();
   if(a._atividades&&a._atividades[idx]){
@@ -4931,7 +4971,7 @@ function excluirAtividade(idx){
     if(at.confirmado) excluirAtividadeCusteioServidor(at);
     a._atividades.splice(idx,1);
     if(!a._atividades.length){
-      a._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
+      a._atividades.push({descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
     }
     _renderAtividadesCardDOM();
   });
@@ -5034,7 +5074,7 @@ function salvarAtividadeCusteioServidor(at){
       acao_tipo:a.acao_tipo||'',
       bimestre:a.bimestre||municipio.bimestre||'',
       ano:a.ano||municipio.ano||'',
-      atividade:{item_num:at.item_num||'', descricao:at.descricao||'', status:at._status||'Planejamento', empresas:at.empresas||[]}
+      atividade:{item_num:at.item_num||'', descricao:at.descricao||'', status:at._status||'Planejamento', quantidade:at.quantidade||'', unidade_medida:at.unidade_medida||'', cnes:at.cnes||'', empresas:at.empresas||[]}
     })}).catch(function(){});
   }catch(e){}
 }
@@ -5069,7 +5109,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   const remotas=await buscarAtividadesCusteioServidor(municipio.municipio, inst, tipo);
   if(!remotas.length){
     if(!acqObj._atividades.some(function(at){return !at.confirmado;})){
-      acqObj._atividades.push({descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
+      acqObj._atividades.push({descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});
     }
     return false;
   }
@@ -5095,7 +5135,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   Object.values(localPorChave).forEach(function(at){ novasConfirmadas.push(at); });
 
   const emEdicao=acqObj._atividades.filter(function(at){return !at.confirmado;});
-  acqObj._atividades=novasConfirmadas.concat(emEdicao.length?emEdicao:[{descricao:'',item_num:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false}]);
+  acqObj._atividades=novasConfirmadas.concat(emEdicao.length?emEdicao:[{descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false}]);
   return true;
 }
 // ══ FIM CUSTEIO ═══════════════════════════════════════════════════════════════
