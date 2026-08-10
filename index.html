@@ -1933,7 +1933,7 @@ function contentHTML(){
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Valor executado</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -4766,7 +4766,7 @@ function _renderAtividadesCardDOM(){
       +'<div style="flex:1;min-width:0">'
         +(at.item_num?'<div style="font-size:12px;color:var(--ink3);margin-bottom:2px">'+('Item '+at.item_num)+'</div>':'')
         +'<div style="font-size:13px;font-weight:700;color:var(--g800)">'+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
-        +'<div style="font-size:11px;color:var(--ink3);margin-top:2px">'+(at.empresas||[]).filter(function(e){return e.nome;}).map(function(e){return e.nome;}).join(', ')+'&nbsp;&middot;&nbsp;<span style="color:'+cor+';font-weight:600">'+at._status+'</span></div>'
+        +'<div style="font-size:11px;color:var(--ink3);margin-top:2px"><span style="color:'+cor+';font-weight:600">'+at._status+'</span></div>'
       +'</div>'
       +'<div style="font-size:13px;font-weight:700;color:var(--g700);flex-shrink:0">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
       +'<button onclick="editarAtividade('+realIdx+')" style="padding:4px 12px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font);flex-shrink:0">\u270F\uFE0F Editar</button>'
@@ -4813,20 +4813,8 @@ function _buildAtividadeEditCard(editIdx){
     return '<button type="button" onclick="_setAtivStatus('+editIdx+',' +"'"+s+"'"+' )" style="padding:4px 10px;font-size:11px;border-radius:20px;border:1.5px solid '+(sel?'var(--g600)':'var(--border)')+';background:'+(sel?'var(--g600)':'#fff')+';color:'+(sel?'#fff':'var(--ink2)')+';cursor:pointer;font-weight:'+(sel?'700':'400')+'">'+s+'</button>';
   }).join('');
 
-  const empHTML=(at.empresas||[]).map(function(em,ei){
-    const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
-    const remBtn=ei>0?(' <button type="button" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" onclick="_removeEmpresaAtiv(this.dataset.ativIdx*1,this.dataset.empIdx*1)" style="margin-left:8px;font-size:10px;color:#C94040;background:none;border:none;cursor:pointer">✕ remover</button>'):'';
-    return '<div style="background:var(--g50);border-radius:8px;padding:12px;margin-bottom:8px">'
-      +'<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:8px">Empresa '+(ei+1)+remBtn+'</div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">'
-        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Razão Social</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="nome" value="'+esc(em.nome)+'" placeholder="Nome da empresa" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">CNPJ</label><input type="text" class="ativ-emp-field ativ-emp-cnpj" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="cnpj" value="'+esc(em.cnpj)+'" placeholder="00.000.000/0000-00" maxlength="18" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-      +'</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
-        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Valor contratado (R$)</label><input type="text" class="ativ-emp-field ativ-emp-money" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="valor" value="'+esc(em.valor)+'" placeholder="0,00" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Data assinatura</label><input type="date" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="homologacao" value="'+esc(em.homologacao)+'" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-        +'<div><label style="font-size:11px;color:var(--ink3);display:block;margin-bottom:3px">Prazo (meses)</label><input type="text" class="ativ-emp-field" data-ativ-idx="'+editIdx+'" data-emp-idx="'+ei+'" data-field="prazo" value="'+esc(em.prazo)+'" placeholder="12" style="width:100%;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;font-family:var(--font);box-sizing:border-box"/></div>'
-      +'</div></div>';
-  }).join('');
+  // (Os campos de empresa foram removidos do card de atividade — o valor é
+  // informado direto no campo "Valor (R$)" logo abaixo do status.)
 
   const div=document.createElement('div');
   div.style.cssText='border:2px solid var(--g400);border-radius:10px;padding:16px;margin-bottom:10px;background:#fff';
@@ -4953,8 +4941,14 @@ function confirmarAtividade(idx){
   const a=acq();if(!a._atividades||!a._atividades[idx])return;
   const at=a._atividades[idx];
   if(!at.descricao&&!at.item_num){showAlertModal('Selecione ou descreva a atividade antes de confirmar.','⚠️');return;}
-  const STATUS_EXIGE_EMP=['Contratado','Em execução','Concluído'];
-  if(STATUS_EXIGE_EMP.includes(at._status)&&!(at.empresas||[]).some(function(e){return e.nome;})){showAlertModal('Adicione ao menos uma empresa.','⚠️');return;}
+  const STATUS_EXIGE_VALOR=['Contratado','Em execução','Concluído'];
+  // O card de atividade não pede dados de empresa — só descrição, status e
+  // valor. Exigir razão social aqui travava a confirmação para sempre, já que
+  // não há campo na tela onde informá-la. O que precisa estar preenchido nesses
+  // status é o valor.
+  if(STATUS_EXIGE_VALOR.includes(at._status)&&!(at.empresas||[]).some(function(e){return parseBRL(e.valor||'')>0;})){
+    showAlertModal('Informe o valor da atividade antes de confirmar.','⚠️');return;
+  }
   at.confirmado=true;
   salvarAtividadeCusteioServidor(at);
   _renderAtividadesCardDOM();calcAtividades();
