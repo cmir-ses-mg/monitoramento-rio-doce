@@ -1438,31 +1438,10 @@ function handleConditional(key,val){
 function setV(id,show){const el=document.getElementById(id);if(el)el.style.display=show?'':'none';}
 function applyConditionals(){
   const a=acq();
-  const entregaNao=!a.situacao_entrega||a.situacao_entrega==='Não iniciada';
-  setV('card-data-entrega',!entregaNao);
-}
-
-// ── % ACUMULADO DA OBRA (calculado, não digitável) ───────────────────────────
-// Acumulado até o período = maior acumulado registrado nos bimestres anteriores
-// (carregado do histórico) + % medido informado neste bimestre. Limitado a 100.
-function _parsePct(v){return parseFloat(String(v==null?'':v).replace('%','').replace(',','.'))||0;}
-function _fmtPct(n){return String(Math.round(n*100)/100).replace('.',',');}
-function calcPctAcumuladoObra(a){
-  const hist=_parsePct(a._pct_acumulado_historico);
-  const medido=_parsePct(a.pct_medido_periodo);
-  const calc=Math.min(100,Math.round((hist+medido)*100)/100);
-  // Registro já enviado, reaberto antes do histórico carregar: preserva o
-  // acumulado salvo na planilha se ele for maior que o cálculo parcial.
-  const salvo=_parsePct(a.pct_acumulado_periodo);
-  if(a._pct_acumulado_historico===undefined&&salvo>calc)return salvo;
-  return calc;
-}
-function atualizarPctAcumuladoObra(){
-  const a=acq();if(!a)return;
-  const ac=calcPctAcumuladoObra(a);
-  a.pct_acumulado_periodo=_fmtPct(ac);
-  const el=document.getElementById('pct_acumulado_display');
-  if(el)el.textContent=_fmtPct(ac)+'%';
+  if(!isAcqObra()){
+    const entregaNao=!a.situacao_entrega||a.situacao_entrega==='Não iniciada';
+    setV('card-data-entrega',!entregaNao);
+  }
 }
 
 // Upload
@@ -1497,21 +1476,90 @@ function _valorExecutadoNesteBimestre(a){
 }
 function calcValorRecebidoBimestre(){return aquisicoes.reduce(function(s,a){return s+_valorExecutadoNesteBimestre(a);},0);}
 
+// ── EXTRATO BANCÁRIO: registro persistente ──────────────────────────────────
+// O extrato é exigido uma vez por município/bimestre. Os objetos File não
+// sobrevivem ao recarregamento da página (o navegador não os serializa), então
+// ao reabrir um bimestre já iniciado o campo voltava vazio e a validação
+// exigia anexar de novo — o que também reenviava o arquivo ao Drive. Aqui
+// guardamos apenas os NOMES do que já foi anexado em municipio.extratos_nomes.
+// Isso satisfaz a validação sem reenvio e sem nova contagem de valores.
+function registrarExtratosAnexados(){
+  const novos=(arquivos['mun_extratos_municipio']||[]).map(function(f){return f.name;});
+  const antigos=(municipio.extratos_nomes||[]).filter(function(n){return novos.indexOf(n)===-1;});
+  municipio.extratos_nomes=antigos.concat(novos);
+  municipio._extratosTouchedAt=Date.now();
+  saveSession();
+}
+function extratosRegistrados(){
+  return (municipio.extratos_nomes||[]).length>0
+      || (arquivos['mun_extratos_municipio']||[]).length>0;
+}
+// Remove um extrato que já havia sido anexado em sessão anterior (só o registro
+// local — o arquivo enviado ao Drive permanece lá).
+function removeExtratoRegistrado(nome){
+  municipio.extratos_nomes=(municipio.extratos_nomes||[]).filter(function(n){return n!==nome;});
+  municipio._extratosTouchedAt=Date.now();
+  saveSession();
+  const el=document.getElementById('files_extratos_municipio');
+  if(el)el.innerHTML=renderFilePillsMun('extratos_municipio');
+  _atualizarAvisoExtrato();
+}
+// Atualiza o destaque vermelho / mensagens da zona de upload sem re-renderizar
+// a tela inteira (o que apagaria o que estiver sendo digitado nos campos).
+function _atualizarAvisoExtrato(){
+  const ok=extratosRegistrados();
+  const zone=document.querySelector('#card-capa-municipio .upload-zone');
+  if(zone)zone.style.borderColor=ok?'':'#C0392B';
+  const av=document.getElementById('aviso-extrato');
+  if(av)av.style.display=ok?'none':'';
+  const okmsg=document.getElementById('hint-extrato-ok');
+  if(okmsg)okmsg.style.display=ok?'':'none';
+}
+
 function handleFilesMun(key,files){
   if(!arquivos['mun_'+key])arquivos['mun_'+key]=[];
   Array.from(files).forEach(f=>arquivos['mun_'+key].push(f));
+  if(key==='extratos_municipio')registrarExtratosAnexados();
   const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePillsMun(key);
+  if(key==='extratos_municipio')_atualizarAvisoExtrato();
 }
 function renderFilePillsMun(key){
-  return(arquivos['mun_'+key]||[]).map((f,i)=>`
+  const atuais=(arquivos['mun_'+key]||[]);
+  let html=atuais.map((f,i)=>`
     <div class="file-pill">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       ${f.name}<span class="rem" onclick="removeFileMun('${key}',${i})">×</span>
     </div>`).join('');
+  // Extratos já anexados em sessão anterior: mostrados como "já enviado", sem
+  // reenvio. O × remove apenas o registro, caso queiram substituir o arquivo.
+  if(key==='extratos_municipio'){
+    const nomesAtuais=atuais.map(function(f){return f.name;});
+    (municipio.extratos_nomes||[]).forEach(function(n){
+      if(nomesAtuais.indexOf(n)!==-1)return;
+      html+='<div class="file-pill" style="opacity:.85" title="Já enviado neste bimestre — não será reenviado">'
+        +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>'
+        +String(n).replace(/</g,'&lt;')+' <span style="font-size:10px;color:var(--ink3)">· já enviado</span>'
+        +'<span class="rem" onclick="removeExtratoRegistrado(\''+String(n).replace(/'/g,"\\'")+'\')">×</span>'
+      +'</div>';
+    });
+  }
+  return html;
 }
 function removeFileMun(key,i){
-  if(arquivos['mun_'+key])arquivos['mun_'+key].splice(i,1);
+  let _nomeRemovido=null;
+  if(arquivos['mun_'+key]){
+    const _f=arquivos['mun_'+key][i];
+    if(_f)_nomeRemovido=_f.name;
+    arquivos['mun_'+key].splice(i,1);
+  }
+  if(key==='extratos_municipio'){
+    // Tirar também do registro, senão o arquivo recém-removido reapareceria
+    // como "já enviado" na próxima renderização.
+    if(_nomeRemovido)municipio.extratos_nomes=(municipio.extratos_nomes||[]).filter(function(n){return n!==_nomeRemovido;});
+    registrarExtratosAnexados();
+  }
   const el=document.getElementById('files_'+key);if(el)el.innerHTML=renderFilePillsMun(key);
+  if(key==='extratos_municipio')_atualizarAvisoExtrato();
 }
 
 function toggleDoc(key,el){
@@ -1598,19 +1646,11 @@ function chipsHTML(label,key,opts){
 
 // Chips de múltipla escolha (armazena array em acq()[key])
 function multiChipsHTML(label,key,opts){
-  const cur=_asMultiArray(acq()[key]);
-  // Usa <div> em vez de <label> com checkbox interno: o label disparava o
-  // clique duas vezes (label + input encaminhado), marcando e desmarcando o
-  // chip no mesmo clique — por isso a seleção múltipla "não funcionava".
-  return`<div class="field"><label>${label}</label><div class="chip-group">${opts.map(o=>`<div class="chip${cur.indexOf(o)>=0?' on':''}" onclick="toggleMultiChip('${key}','${o}',this)">${o}</div>`).join('')}</div></div>`;
-}
-function _asMultiArray(v){
-  if(Array.isArray(v))return v;
-  if(!v)return[];
-  return String(v).split(/\s*;\s*/).filter(Boolean);
+  const cur=acq()[key]||[];
+  return`<div class="field"><label>${label}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur.indexOf(o)>=0?' on':''}" onclick="toggleMultiChip('${key}','${o}',this)"><input type="checkbox" name="${key}" value="${o}">${o}</label>`).join('')}</div></div>`;
 }
 function toggleMultiChip(key,val,el){
-  acq()[key]=_asMultiArray(acq()[key]);
+  if(!acq()[key])acq()[key]=[];
   const arr=acq()[key];
   const i=arr.indexOf(val);
   if(i>=0)arr.splice(i,1);else arr.push(val);
@@ -1716,27 +1756,25 @@ function renderCapaMunicipio(modoResumo){
   const _aindaCarregando=_valorRecebidoCache.municipio!==municipio.municipio;
   const _rendimentosBase=municipio._rendimentosBase||0;
   const _rendimentosAcumulados=_rendimentosBase+parseBRL(municipio.rendimentos_periodo||'');
-  const _temExtrato=(arquivos['mun_extratos_municipio']||[]).length>0;
+  const _temExtrato=extratosRegistrados();
+  const _extratoJaEnviado=(municipio.extratos_nomes||[]).length>0&&(arquivos['mun_extratos_municipio']||[]).length===0;
   // Fora da Revisão final (modoResumo), não exibimos mais a identificação do
   // município nem os valores recebidos/saldo/progresso — apenas o campo de
   // rendimentos do período (que continua obrigatório) e o upload do extrato.
   // O resumo completo (identificação + valores + progresso) só aparece na
   // Revisão final (modoResumo=true).
-  // Bloco editável de rendimentos + extrato — usado na tela inicial do
-  // Instrumento (antes de selecionar uma ação) e novamente na Revisão final.
-  const _blocoRendimentos=''
+  if(!modoResumo){
+    return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
       +'<div class="card-title">Rendimentos no período</div>'
       +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
       +'<p class="hint" style="margin:6px 0 6px">Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</p>'
       +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
       +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
-        +'<div class="upload-zone-text"><strong>Clique para anexar extratos bancários</strong> (PDF, imagem) <span class="req">*</span></div>'
+        +'<div class="upload-zone-text"><strong>'+(_extratoJaEnviado?'Clique para anexar outro extrato':'Clique para anexar extratos bancários')+'</strong> (PDF, imagem) <span class="req">*</span></div>'
       +'</div>'
-      +(_temExtrato?'':'<div style="font-size:11px;color:#C0392B;margin-top:4px">Anexe pelo menos um extrato bancário.</div>')
-      +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>';
-  if(!modoResumo){
-    return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
-      +_blocoRendimentos
+      +'<div id="aviso-extrato" style="font-size:11px;color:#C0392B;margin-top:4px;'+(_temExtrato?'display:none':'')+'">Anexe pelo menos um extrato bancário.</div>'
+      +'<div id="hint-extrato-ok" style="font-size:11px;color:var(--ink3);margin-top:4px;'+(_temExtrato?'':'display:none')+'">Extrato já anexado neste bimestre — não é preciso enviar de novo. Anexe outro apenas se quiser complementar.</div>'
+      +'<div class="file-list" id="files_extratos_municipio">'+renderFilePillsMun('extratos_municipio')+'</div>'
     +'</div>';
   }
   return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
@@ -1762,9 +1800,6 @@ function renderCapaMunicipio(modoResumo){
     +'<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
       +'<div class="r-lbl">Rendimentos acumulados (todos os bimestres)</div>'
       +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_rendimentosAcumulados.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
-    +'</div>'
-    +'<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border2)">'
-      +_blocoRendimentos
     +'</div>'
   +'</div>';
 }
@@ -1837,7 +1872,7 @@ function contentHTML(){
         +'</select></div>'
       +'</div></div>'
     ):''}
-    ${a.acao_tipo?'':renderCapaMunicipio()}
+    ${renderCapaMunicipio()}
     ${renderSessionHistoryCard()}
     <div class="step-head"><h2>Instrumento e Ação</h2><p>Selecione a ação no menu lateral para iniciar o preenchimento.</p></div>
     ${a.acao_tipo?`
@@ -1875,7 +1910,7 @@ function contentHTML(){
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Valor executado</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -1913,22 +1948,10 @@ function contentHTML(){
         ${fld('Fiscal Responsável','fiscal_responsavel','text','Exemplo de nome e registro')}
       </div>
       <div class="row2">
-        <div class="field"><label>% Medido no Período</label><input type="text" name="pct_medido_periodo" data-store="acq" value="${acq().pct_medido_periodo||''}" placeholder="Ex: 15" inputmode="decimal" oninput="sv(this);atualizarPctAcumuladoObra()" onblur="validateField(this)"/></div>
-        ${(()=>{const _a=acq();const _ac=calcPctAcumuladoObra(_a);_a.pct_acumulado_periodo=_fmtPct(_ac);
-          return '<div class="field"><label>% Acumulado até o Período <span style="font-weight:400;color:var(--g600);font-size:11px;text-transform:none">(calculado — bimestres anteriores + período atual)</span></label>'
-          +'<div id="pct_acumulado_display" style="padding:10px 12px;background:var(--g50);border:1px solid var(--border2);border-radius:7px;font-size:13px;font-weight:700;color:var(--g800)">'+_fmtPct(_ac)+'%</div></div>';})()}
+        ${fld('% Medido no Período','pct_medido_periodo','text','Ex: 15')}
+        ${fld('% Acumulado até o Período','pct_acumulado_periodo','text','Ex: 45')}
       </div>
       ${fld('Observações','observacoes_oficial','textarea','Exemplo de observações adicionais')}
-    </div>
-    <div class="card">
-      <div class="card-title">Situação da entrega</div>
-      ${chipsHTML('Situação da entrega','situacao_entrega',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'])}
-    </div>
-    <div class="card" id="card-data-entrega" style="display:none">
-      <div class="card-title">Data da entrega</div>
-      ${fld('Data da entrega ou período','data_entrega','text','Ex: 15/03/2025')}
-      ${chipsHTML('Houve atraso?','houve_atraso',['Sim','Não'])}
-      ${fld('Se houve atraso, justificar','justificativa_atraso','textarea','Descreva o motivo do atraso...')}
     </div>
     <div class="card" id="card-arquivos-obra">
       <div class="card-title">Arquivos Inseridos</div>
@@ -2304,7 +2327,7 @@ function nextPhase(){
   if(phase===1&&(!municipio.bimestre||!municipio.ano)){
     showAlertModal('Selecione o bimestre e o ano antes de continuar.','⚠️');return;
   }
-  if(phase===1&&(arquivos['mun_extratos_municipio']||[]).length===0){
+  if(phase===1&&!extratosRegistrados()){
     showAlertModal('Anexe o extrato bancário do período na "Identificação do município" antes de continuar.','⚠️');return;
   }
   if(phase===1&&!acq().acao_tipo){
@@ -2638,7 +2661,7 @@ function gerarPDFBase64(){
       sec('EXECUÇÃO FINALÍSTICA — METAS E RESULTADOS');
       row('Problemas/Riscos:',a.problemas);row('Medidas saneadoras:',a.medidas);
       row('Meta prevista:',a.meta_prevista);row('Status da meta:',a.status_meta);
-      row('Resultados alcançados:',_asMultiArray(a.resultados_alcancados).join('; '));
+      row('Resultados alcançados:',(a.resultados_alcancados||[]).join('; '));
       row('Atendimentos realizados:',a.atendimentos_realizados);
       rowDestacado('Preenchido/editado por:',a._editadoPor||municipio.responsavel||'');
     });
@@ -2794,7 +2817,6 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_total_recebido:((municipio._recebidoBase||0)+calcValorRecebidoBimestre()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       rendimentos_acumulados:((municipio._rendimentosBase||0)+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       docs_marcados:docsOk,
-      pct_acumulado_periodo:(a.modalidade_objeto==='obra')?(function(){const _v=calcPctAcumuladoObra(a);return _v?_fmtPct(_v):'';})():(a.pct_acumulado_periodo||''),
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
       acao_concluida:(tipoRegistro==='Conclusao'||tipoRegistro==='Correcao')?'Sim':'Nao',
@@ -2883,6 +2905,15 @@ async function enviarSessaoServidor(){
     if((_ultimoSyncEnviado[a._key]||0)>=a._touchedAt)return;
     itens.push({acaoKey:a._key,payload:_acqParaPayload(a),touchedAt:a._touchedAt});
   });
+  // Registro do extrato bancário da capa: viaja como um item próprio para que
+  // quem reabrir o bimestre em outra máquina também não precise reanexar.
+  if((municipio._extratosTouchedAt||0)>(_ultimoSyncEnviado['__capa_municipio__']||0)){
+    itens.push({
+      acaoKey:'__capa_municipio__',
+      payload:JSON.stringify({extratos_nomes:municipio.extratos_nomes||[]}),
+      touchedAt:municipio._extratosTouchedAt
+    });
+  }
   if(!itens.length)return;
   try{
     const resp=await fetch(APPS_SCRIPT_URL,{
@@ -2917,6 +2948,19 @@ async function mesclarSessaoDoServidor(){
     let aplicadas=0;
     data.itens.forEach(function(it){
       if(!it.acaoKey||!it.payload)return;
+      // Item da capa: não é uma ação — nunca deve entrar em `aquisicoes`.
+      if(it.acaoKey==='__capa_municipio__'){
+        const _ts=Number(it.touchedAt)||0;
+        _ultimoSyncEnviado['__capa_municipio__']=Math.max(_ultimoSyncEnviado['__capa_municipio__']||0,_ts);
+        if(_ts<=(municipio._extratosTouchedAt||0))return;
+        let _capa=null;try{_capa=JSON.parse(it.payload);}catch(e){return;}
+        const _nomes=(_capa&&_capa.extratos_nomes)||[];
+        if(!_nomes.length)return;
+        municipio.extratos_nomes=_nomes;
+        municipio._extratosTouchedAt=_ts;
+        aplicadas++;
+        return;
+      }
       if(it.acaoKey===chaveAtual)return;
       let remoto=null;
       try{remoto=JSON.parse(it.payload);}catch(e){return;}
@@ -3569,16 +3613,18 @@ function _setAtivField(idx,field,value){
 
 function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   var cur=a._status_contrat||'Planejamento';
+  var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
 
   var card='<div class="card">'
     +'<div class="card-title">Status da contratação</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'+_statusPills(cur,'setStatusContrat')+'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'setStatusContrat')+'</div>'
+    +_camposContrato(a,isContr,undefined)
     +'</div>';
 
   return ''+
     lockedBanner+
     '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+acqIdx+'</span>'+modeBadge+'</h2>'+
-    '<p>Status da contratação. Os dados de entrega ficam na etapa seguinte.</p></div>'+
+    '<p>Status da contratação e dados da entrega.</p></div>'+
     card;
 }
 
@@ -4442,22 +4488,6 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // histórico nunca carregar — causa raiz do "Já executado" aparecer sempre R$ 0,00)
   const valHist = parseValorSheet(reg.valor_total_utilizado||reg.valor_executado||0);
   if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
-
-  // 4b. % acumulado da obra — carrega o maior "% Acumulado até o Período" já
-  // registrado nos bimestres anteriores; se nunca foi preenchido, usa a soma
-  // dos "% Medido no Período" anteriores. O campo atual passa a ser calculado
-  // (acumulado histórico + medido do bimestre corrente), não digitável.
-  if(acqObj._pct_acumulado_historico===undefined){
-    var _pctsAcum=registros.map(function(r){return _parsePct(r.pct_acumulado_periodo);});
-    var _maxAcum=Math.max.apply(null,_pctsAcum.concat([0]));
-    if(!_maxAcum){
-      _maxAcum=registros.reduce(function(s,r){return s+_parsePct(r.pct_medido_periodo);},0);
-    }
-    acqObj._pct_acumulado_historico=Math.min(100,_maxAcum);
-    // O acumulado herdado do histórico não deve vir pré-preenchido como se
-    // fosse o valor deste bimestre — será recalculado na renderização.
-    acqObj.pct_acumulado_periodo='';
-  }
 
   // 5. Conclusão automática — vale para OBRA, EQUIPAMENTO e SERVIÇO/CUSTEIO:
   // quando o valor acumulado (histórico + o que a própria ação já registrou)
