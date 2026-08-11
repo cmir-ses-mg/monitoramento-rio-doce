@@ -1959,7 +1959,7 @@ function contentHTML(){
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Valor executado</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -3048,6 +3048,7 @@ async function mesclarSessaoDoServidor(){
       let remoto=null;
       try{remoto=JSON.parse(it.payload);}catch(e){return;}
       remoto._touchedAt=Number(it.touchedAt)||remoto._touchedAt||0;
+      limparAtividadesEmBranco(remoto);
       const idxLocal=aquisicoes.findIndex(function(a){return a._key===it.acaoKey;});
       if(idxLocal===-1){
         aquisicoes.push(remoto);aplicadas++;
@@ -3124,6 +3125,7 @@ function loadSession(key){
     Object.assign(municipio,data.municipio||{});
     aquisicoes.length=0;
     (data.aquisicoes||[{}]).forEach(a=>aquisicoes.push(a));
+    aquisicoes.forEach(limparAtividadesEmBranco); // descarta cards fantasma de sessões antigas
     // aquisicoes can be empty — getOrCreateAcq will populate on action select
     phase=data.phase||0;
     acqIdx=Math.min(data.acqIdx||0,aquisicoes.length-1);
@@ -3669,11 +3671,12 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
   }).join('');
   return (lockedBanner||'')
     +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+(modeBadge||'')+'</h2>'
-    +'<p>Um card por atividade selecionada na etapa anterior. A empresa já cadastrada aparece automaticamente.</p></div>'
-    +'<div class="card"><div class="card-title">Contratação de pessoal</div>'
-    +fld('Nº de contratações de pessoal previstas','pessoal_previsto','numonly','Ex: 5')
-    +fld('Nº de contratações de pessoal realizadas até o momento','pessoal_realizado','numonly','Ex: 3')
-    +'</div>'
+    +'<p>Um card por atividade selecionada na etapa anterior.</p></div>'
+    // O card "Contratação de pessoal" saiu daqui: as listas de custeio já trazem
+    // os itens de contratação de equipe ("Contratação de membros...", "de
+    // profissionais de digitação", "de agentes..."), então o número de pessoas
+    // é registrado como Quantidade da própria atividade, com unidade "Pessoa".
+    // Manter os dois lugares gerava contagem duplicada.
     +cards;
 }
 
@@ -4387,11 +4390,14 @@ function calcAcqStatusAgregado(benef,item){
   });
   const statuses=idxs.map(function(i){return calcAcqStatus(i>=0?aquisicoes[i]:null);});
   const concluidas=statuses.filter(function(s){return s==='complete'||s==='locked';}).length;
-  const todasLocked=statuses.length>0&&statuses.every(function(s){return s==='locked';});
   const iniciadas=statuses.filter(function(s){return s!=='empty';}).length;
   let status='empty';
-  if(todasLocked)status='locked';
-  else if(concluidas===statuses.length)status='complete';
+  // Uma ação com várias unidades ("4 UBS tipo I") só era marcada como concluída
+  // se TODAS as unidades estivessem travadas — então ela ficava com bolinha
+  // verde enquanto as ações de unidade única já apareciam com ✅ e o selo
+  // "Concluída — clique para reabrir". Agora o critério é o mesmo que o do
+  // contador "4/4 concluídas" logo abaixo, e os três concordam entre si.
+  if(statuses.length&&concluidas===statuses.length)status='locked';
   else if(iniciadas>0)status='partial';
   return{multi:true,status:status,total:statuses.length,concluidas:concluidas,iniciadas:iniciadas,idxs:idxs};
 }
@@ -4799,6 +4805,23 @@ function renderAtividadesCard(){
     +'</div></div>';
 }
 
+// Uma atividade "em branco" é a que a pessoa nunca chegou a preencher. Sessões
+// salvas antes desta versão trazem uma dessas, porque o card antigo abria
+// sozinho — ela precisa ser descartada ao carregar, senão o card fantasma
+// reaparece mesmo depois de o comportamento automático ter sido removido.
+function _ativEmBranco(at){
+  if(!at||at.confirmado)return false;
+  const vazio=function(v){return String(v==null?'':v).trim()==='';};
+  if(!vazio(at.descricao)||!vazio(at.item_num)||!vazio(at.quantidade)||!vazio(at.unidade_medida)||!vazio(at.cnes))return false;
+  return !(at.empresas||[]).some(function(e){
+    return e&&(!vazio(e.nome)||!vazio(e.cnpj)||!vazio(e.valor)||!vazio(e.homologacao)||!vazio(e.prazo));
+  });
+}
+function limparAtividadesEmBranco(a){
+  if(!a||!a._atividades)return;
+  a._atividades=a._atividades.filter(function(at){return !_ativEmBranco(at);});
+}
+
 function _resumoServicoAtiv(at){
   const p=[];
   if(at.quantidade)p.push(String(at.quantidade)+(at.unidade_medida?' '+at.unidade_medida:''));
@@ -4901,7 +4924,7 @@ function _buildAtividadeEditCard(editIdx){
         const v=(at.empresas&&at.empresas[0])?at.empresas[0].valor:'';
         const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
         const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
-        const UNID=['Unidade','Servi\u00e7o','M\u00eas','Hora','Dia','Km','Metro','Metro quadrado','Litro','Quilograma','Coleta','Amostra','Visita','Inspe\u00e7\u00e3o','Verba'];
+        const UNID=['Pessoa','Profissional','Unidade','Servi\u00e7o','M\u00eas','Hora','Dia','Di\u00e1ria','Km','Metro','Metro quadrado','Litro','Quilograma','Coleta','Amostra','Visita','Inspe\u00e7\u00e3o','Verba'];
         return '<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Servi\u00e7o executado</label>'
           +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">'
             +'<div><label style="'+lbl+'">Quantidade</label>'
@@ -4925,6 +4948,13 @@ function _buildAtividadeEditCard(editIdx){
 }
 
 // Ao selecionar atividade do dropdown: preenche descricao e item_num, re-renderiza
+// "Contratação de laboratórios/drones/capacitações" não é contratação de
+// pessoal — por isso a checagem olha o complemento, não só o verbo.
+function _ehContratacaoDePessoal(desc){
+  const d=String(desc||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  if(d.indexOf('contratacao')!==0&&d.indexOf('contratacao')<0)return false;
+  return /(membros|profissionais|agentes|equipe|servidores|pessoal)/.test(d);
+}
 function _onSelecionarAtividade(idx, sel){
   const a=acq();
   if(!a._atividades||!a._atividades[idx]) return;
@@ -4935,6 +4965,12 @@ function _onSelecionarAtividade(idx, sel){
   if(item){
     a._atividades[idx].item_num=item.num;
     a._atividades[idx].descricao=item.descricao;
+    // Itens de contratação de equipe já sugerem a unidade "Pessoa" — é onde o
+    // número de contratações passa a ser registrado, no lugar do antigo card
+    // separado de contratação de pessoal.
+    if(!String(a._atividades[idx].unidade_medida||'').trim()&&_ehContratacaoDePessoal(item.descricao)){
+      a._atividades[idx].unidade_medida='Pessoa';
+    }
     _renderAtividadesCardDOM();
   }
 }
@@ -5141,6 +5177,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   if(!inst||!tipo) return false;
   if(!acqObj._atividades) acqObj._atividades=[];
 
+  limparAtividadesEmBranco(acqObj);
   const remotas=await buscarAtividadesCusteioServidor(municipio.municipio, inst, tipo);
   if(!remotas.length) return false;
 
@@ -5167,7 +5204,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   // foram sincronizadas com o servidor (ex: acabou de confirmar nesta sessão)
   Object.values(localPorChave).forEach(function(at){ novasConfirmadas.push(at); });
 
-  const emEdicao=acqObj._atividades.filter(function(at){return !at.confirmado;});
+  const emEdicao=acqObj._atividades.filter(function(at){return !at.confirmado&&!_ativEmBranco(at);});
   acqObj._atividades=novasConfirmadas.concat(emEdicao);
   return true;
 }
