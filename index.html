@@ -1014,6 +1014,9 @@ function getOrCreateAcq(instrumento, tipo, planItem){
       acao_descricao:planItem.acao,
       acao_eixo:planItem.eixo,
       acao_valor:planItem.valor,
+      // Endereço já registrado por este município em bimestre anterior — segue
+      // editável, para corrigir digitação errada.
+      endereco_obra:enderecoRegistrado(instrumento,tipo)||planItem.endereco||'',
       modalidade_objeto:sugerido,
     });
     idx=aquisicoes.length-1;
@@ -1344,6 +1347,68 @@ function saveAllInputs(){
     });
   }
   if(mudou&&phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
+  if(mudou)_sincronizarEnderecoObra(aquisicoes[acqIdx]);
+}
+
+// ── ENDEREÇO DA OBRA: registro permanente por unidade ───────────────────────
+// O endereço não muda entre bimestres, mas quem sabe qual é são os municípios —
+// não é dado do plano. Fica na aba EnderecosObras, criada pelo próprio script e
+// alimentada assim que alguém digita. Nos bimestres seguintes já chega
+// preenchido, e segue editável: corrigir aqui atualiza para os próximos.
+let _enderecosObras=null;      // "instrumento||tipo" -> endereço
+let _enderecosObrasCarregando=false;
+const _ultimoEnderecoEnviado={};
+
+async function carregarEnderecosObras(){
+  if(_enderecosObras||_enderecosObrasCarregando)return;
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  if(!municipio.municipio)return;
+  _enderecosObrasCarregando=true;
+  try{
+    const url=APPS_SCRIPT_URL+'?acao=buscarEnderecosObras&municipio='+encodeURIComponent(municipio.municipio);
+    const resp=await fetch(url);
+    const data=await resp.json();
+    _enderecosObras=(data&&data.status==='ok')?(data.enderecos||{}):{};
+    // Preencher o que ainda estiver vazio e redesenhar.
+    let aplicou=false;
+    aquisicoes.forEach(function(a){
+      if(!a||a.endereco_obra)return;
+      const e=_enderecosObras[(a.acao_instrumento||'')+'||'+(a.acao_tipo||'')];
+      if(e){a.endereco_obra=e;aplicou=true;}
+    });
+    if(aplicou)renderAll();
+  }catch(e){ _enderecosObras={}; }
+  finally{ _enderecosObrasCarregando=false; }
+}
+
+function enderecoRegistrado(instrumento,tipo){
+  if(!_enderecosObras)return '';
+  return _enderecosObras[(instrumento||'')+'||'+(tipo||'')]||'';
+}
+
+function _sincronizarEnderecoObra(a){
+  if(!a||a.modalidade_objeto!=='obra')return;
+  const end=(a.endereco_obra||'').trim();
+  if(!end)return;
+  const chave=(a.acao_instrumento||'')+'||'+(a.acao_tipo||'');
+  if(_ultimoEnderecoEnviado[chave]===end)return;
+  _ultimoEnderecoEnviado[chave]=end;
+  if(_enderecosObras)_enderecosObras[chave]=end;
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  try{
+    fetch(APPS_SCRIPT_URL,{
+      method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        acao:'salvarEnderecoObra',
+        municipio:municipio.municipio||'',
+        acao_instrumento:a.acao_instrumento||'',
+        acao_tipo:a.acao_tipo||'',
+        endereco:end,
+        editado_por:(_sessaoUsuario&&(_sessaoUsuario.nome||_sessaoUsuario.email))||municipio.responsavel||''
+      })
+    });
+  }catch(e){ console.warn('salvarEnderecoObra:',e); }
 }
 function _marcarTocado(a){
   if(!a)return;
@@ -1475,6 +1540,63 @@ function _valorExecutadoNesteBimestre(a){
   return parseBRL(a.valor_executado||'');
 }
 function calcValorRecebidoBimestre(){return aquisicoes.reduce(function(s,a){return s+_valorExecutadoNesteBimestre(a);},0);}
+
+// ── HISTÓRICO DE RENDIMENTOS POR BIMESTRE ───────────────────────────────────
+// O rendimento é do município no período. Como cada bimestre pode render um
+// valor diferente, quem preenche precisa enxergar o que já foi informado antes
+// para não repetir nem somar errado. A lista vem do servidor e é só leitura.
+let _rendHistorico=null; // [{bimestre,ano,valor,ordem}]
+let _rendHistoricoCarregando=false;
+
+async function carregarRendimentosHistorico(){
+  if(_rendHistoricoCarregando||_rendHistorico)return;
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  if(!municipio.municipio)return;
+  _rendHistoricoCarregando=true;
+  try{
+    const url=APPS_SCRIPT_URL+'?acao=buscarRendimentosPorBimestre&municipio='+encodeURIComponent(municipio.municipio);
+    const resp=await fetch(url);
+    const data=await resp.json();
+    _rendHistorico=(data&&data.status==='ok')?(data.periodos||[]):[];
+    const el=document.getElementById('rend-historico');
+    if(el)el.innerHTML=renderRendimentosHistorico();
+  }catch(e){ _rendHistorico=[]; }
+  finally{ _rendHistoricoCarregando=false; }
+}
+
+function _ordemPeriodoAtual(){
+  const b=parseInt(String(municipio.bimestre||'').replace(/[^0-9]/g,''))||0;
+  const a=parseInt(municipio.ano)||0;
+  return a*10+b;
+}
+
+function renderRendimentosHistorico(){
+  if(_rendHistorico===null)return '<div style="font-size:11px;color:var(--ink3)">Carregando bimestres anteriores…</div>';
+  // Só os períodos ANTERIORES ao que está aberto — o atual está sendo digitado.
+  const ordemAtual=_ordemPeriodoAtual();
+  const antes=_rendHistorico.filter(function(p){return p.ordem<ordemAtual;});
+  if(!antes.length)return '<div style="font-size:11px;color:var(--ink3)">Nenhum rendimento registrado em bimestres anteriores.</div>';
+  const somaAnterior=antes.reduce(function(s,p){return s+(p.valor||0);},0);
+  const atual=parseBRL(municipio.rendimentos_periodo||'')||0;
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  const cel='padding:5px 8px;font-size:11.5px;border-bottom:1px solid var(--border2)';
+  return '<div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-top:4px">'
+    +'<table style="width:100%;border-collapse:collapse">'
+      +'<tr style="background:var(--g50)">'
+        +'<th style="'+cel+';text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Bimestre</th>'
+        +'<th style="'+cel+';text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Rendimento</th>'
+      +'</tr>'
+      +antes.map(function(p){
+        return '<tr><td style="'+cel+';color:var(--ink2)">'+p.bimestre+' / '+p.ano+'</td>'
+          +'<td style="'+cel+';text-align:right;color:var(--ink2)">'+fmt(p.valor)+'</td></tr>';
+      }).join('')
+      +'<tr><td style="'+cel+';color:var(--ink3);font-style:italic">'+(municipio.bimestre||'Este bimestre')+' / '+(municipio.ano||'')+' (em preenchimento)</td>'
+        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atual)+'</td></tr>'
+      +'<tr style="background:var(--g50)"><td style="'+cel+';font-weight:700;color:var(--g800);border-bottom:none">Acumulado</td>'
+        +'<td style="'+cel+';text-align:right;font-weight:700;color:var(--g800);border-bottom:none">'+fmt(somaAnterior+atual)+'</td></tr>'
+    +'</table>'
+  +'</div>';
+}
 
 // Card de rendimentos/extrato: colapsado depois de preenchido, reaberto pelo
 // botão "Editar".
@@ -1806,7 +1928,13 @@ function renderCapaMunicipio(modoResumo){
       +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u2713</div>'
       +'<div style="flex:1;min-width:180px">'
         +'<div style="font-size:12.5px;font-weight:700;color:var(--g800)">Rendimentos do bimestre registrados</div>'
-        +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">R$ '+parseBRL(municipio.rendimentos_periodo||'').toLocaleString('pt-BR',{minimumFractionDigits:2})+' \u00b7 extrato banc\u00e1rio anexado \u00b7 vale para todas as a\u00e7\u00f5es</div>'
+        +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">R$ '+parseBRL(municipio.rendimentos_periodo||'').toLocaleString('pt-BR',{minimumFractionDigits:2})+' neste bimestre'+(function(){
+            const ordemAtual=_ordemPeriodoAtual();
+            const antes=(_rendHistorico||[]).filter(function(p){return p.ordem<ordemAtual;});
+            if(!antes.length)return '';
+            const acum=antes.reduce(function(s,p){return s+(p.valor||0);},0)+parseBRL(municipio.rendimentos_periodo||'');
+            return ' \u00b7 acumulado R$ '+acum.toLocaleString('pt-BR',{minimumFractionDigits:2});
+          })()+' \u00b7 extrato anexado</div>'
       +'</div>'
       +'<button type="button" onclick="toggleCapaEdicao(true)" style="padding:5px 14px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
     +'</div>';
@@ -1815,6 +1943,7 @@ function renderCapaMunicipio(modoResumo){
     return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
       +'<div class="card-title">Rendimentos no período</div>'
       +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
+      +'<div id="rend-historico" style="margin:8px 0 12px">'+renderRendimentosHistorico()+'</div>'
       +'<p class="hint" style="margin:6px 0 6px">Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</p>'
       +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
       +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
@@ -1959,7 +2088,7 @@ function contentHTML(){
     <div class="card" id="card-financeiro-obra">
       <div class="card-title">Valor executado</div>
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre.</div>
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?`
     <div class="card" id="card-financeiro-equip">
@@ -1990,11 +2119,11 @@ function contentHTML(){
       <div class="card-title">Informações do Projeto</div>
       <div class="row2">
         ${fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
-        ${fld('Endereço','endereco_obra','text','Exemplo de endereço')}
+        ${fld('Data de Início','data_inicio_obra','date')}
       </div>
       <div class="row2">
-        ${fld('Data de Início','data_inicio_obra','date')}
         ${fld('Fiscal Responsável','fiscal_responsavel','text','Exemplo de nome e registro')}
+        <div></div>
       </div>
       <div class="row2">
         ${fld('% Medido no Período','pct_medido_periodo','text','Ex: 15')}
@@ -2152,15 +2281,7 @@ function contentHTML(){
       </div>
       <div class="file-list" id="files_evidencia_resultados">${renderFilePills('evidencia_resultados')}</div>
     </div>
-    <div class="card" id="card-fotos-execucao" style="border-left:3px solid var(--orange)">
-      <div class="card-title obra">Registro fotográfico</div>
-      <p class="hint" style="margin-bottom:12px">Fotos que ilustrem a execução física desta ação.</p>
-      <input type="file" style="display:none" id="file_fotos_execucao" multiple accept=".jpg,.jpeg,.png,.webp,.heic" onchange="handleFiles('fotos_execucao',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('fotos_execucao')">
-        <div class="upload-zone-text"><strong>Clique para anexar fotos</strong> (JPG, PNG, HEIC)</div>
-      </div>
-      <div class="file-list" id="files_fotos_execucao">${renderFilePills('fotos_execucao')}</div>
-    </div>`;
+`;
 
   if(phase===5){
     const _valorGlobal=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);
@@ -2617,7 +2738,11 @@ function gerarPDFBase64(){
       if(!v||String(v).trim()===''||v==='undefined')return;
       chk(7);doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GR);doc.text(l,14,y);
       doc.setFont('helvetica','normal');doc.setTextColor(...BK);
-      const lines=doc.splitTextToSize(String(v),128);doc.text(lines,62,y);y+=Math.max(6,lines.length*5.2);
+      // O valor ficava fixo em x=62 e rótulos longos ("Rendimentos no Período
+      // (Município):") passavam por baixo dele, sobrepondo os textos. Agora a
+      // coluna do valor recua conforme a largura real do rótulo.
+      const vx=Math.max(62,14+doc.getTextWidth(l)+3);
+      const lines=doc.splitTextToSize(String(v),196-vx);doc.text(lines,vx,y);y+=Math.max(6,lines.length*5.2);
     }
     // Linha destacada com fundo colorido — usada para chamar atenção pra quem
     // foi responsável por preencher/editar cada ação especificamente.
@@ -2627,7 +2752,8 @@ function gerarPDFBase64(){
       doc.setFillColor(232,245,233);doc.rect(12,y-4.5,184,8,'F');
       doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GD);doc.text(l,14,y);
       doc.setTextColor(...BK);
-      const lines=doc.splitTextToSize(String(v),110);doc.text(lines,72,y);y+=Math.max(8,lines.length*5.2+2);
+      const vx2=Math.max(72,14+doc.getTextWidth(l)+3);
+      const lines=doc.splitTextToSize(String(v),192-vx2);doc.text(lines,vx2,y);y+=Math.max(8,lines.length*5.2+2);
     }
     doc.setFillColor(...GD);doc.rect(0,0,210,28,'F');
     doc.setFontSize(13);doc.setFont('helvetica','bold');doc.setTextColor(...WH);
@@ -3111,6 +3237,9 @@ function migrarAquisicoesAgregadas(){
         acao_descricao:item.acao,
         acao_eixo:item.eixo,
         acao_valor:u.valor,
+        // Endereço já registrado por este município em bimestre anterior —
+        // continua editável, para o caso de estar errado.
+        endereco_obra:enderecoRegistrado(item.instrumento,u.tipo)||u.endereco||'',
         modalidade_objeto:detectarTipoMonitoramento(item.instrumento,u.tipo)
       });
     });
@@ -3193,7 +3322,7 @@ function resumeSession(){
 
 function discardSession(){
   clearSession(sessionKey());
-  _capaEditando=false;_ultimoCapaEnviado='';aquisicoes.length=0;acqIdx=0;
+  _capaEditando=false;_ultimoCapaEnviado='';_rendHistorico=null;_enderecosObras=null;aquisicoes.length=0;acqIdx=0;
   renderAll();
 }
 
@@ -3898,7 +4027,7 @@ function resetApp(){
   clearSession(sessionKey());
   // Zerar todo o estado
   Object.keys(municipio).forEach(k=>delete municipio[k]);
-  _capaEditando=false;_ultimoCapaEnviado='';aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
+  _capaEditando=false;_ultimoCapaEnviado='';_rendHistorico=null;_enderecosObras=null;aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
   Object.keys(arquivos).forEach(k=>delete arquivos[k]);
   // Mostrar UI principal, esconder tela de sucesso
   ['mainContent','navBar','phaseBarWrap'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});
@@ -4180,7 +4309,7 @@ function doLogout(){
   _sessaoUsuario=null;
   localStorage.removeItem('rdoce_sessao');
   Object.keys(municipio).forEach(k=>delete municipio[k]);
-  _capaEditando=false;_ultimoCapaEnviado='';aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
+  _capaEditando=false;_ultimoCapaEnviado='';_rendHistorico=null;_enderecosObras=null;aquisicoes.length=0;acqIdx=0;phase=0;cienciaAceita=false;
   Object.keys(arquivos).forEach(k=>delete arquivos[k]);
   document.getElementById('login-screen').style.display='flex';
   renderAll();
@@ -4351,7 +4480,7 @@ function unidadesDoItem(benef,item){
         Object.keys(porLabel).forEach(function(label){
           const lista=porLabel[label];
           lista.forEach(function(r,i){
-            resultado.push({tipo:label+(lista.length>1?' — Unidade '+(i+1)+' de '+lista.length:''),valor:r.valor});
+            resultado.push({tipo:label+(lista.length>1?' — Unidade '+(i+1)+' de '+lista.length:''),valor:r.valor,endereco:r.endereco||''});
           });
         });
       }else{
@@ -4370,7 +4499,7 @@ function getOrCreateAcqsParaItem(benef,item){
   const unidades=unidadesDoItem(benef,item);
   if(!unidades)return[getOrCreateAcq(item.instrumento,item.tipo,item)];
   return unidades.map(function(u){
-    return getOrCreateAcq(item.instrumento,u.tipo,{tipo:item.tipo,acao:item.acao,eixo:item.eixo,valor:u.valor});
+    return getOrCreateAcq(item.instrumento,u.tipo,{tipo:item.tipo,acao:item.acao,eixo:item.eixo,valor:u.valor,endereco:u.endereco||''});
   });
 }
 // Status agregado de um item do plano para exibição na lista (ETAPA 1):
@@ -4446,6 +4575,8 @@ async function buscarValorRecebidoMunicipioServidor(municipioNome){
 }
 function _dispararBuscaValorRecebidoSeNecessario(municipioNome){
   if(!municipioNome)return;
+  carregarRendimentosHistorico(); // tabela de rendimentos por bimestre da capa
+  carregarEnderecosObras();       // endereços de obra já registrados pelo município
   if(_valorRecebidoCache.municipio===municipioNome)return; // já tem (ou já está buscando) para este município
   if(_valorRecebidoCache.loading)return;
   _valorRecebidoCache.loading=true;
@@ -4556,9 +4687,14 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!registros || !registros.length) return;
   const reg = registros[registros.length-1];
 
-  // 1. Endereço e empresa executora (obra)
-  if(!acqObj.endereco_obra && reg.endereco_obra) acqObj.endereco_obra = reg.endereco_obra;
-  if(!acqObj.empresa_executora && reg.empresa_executora) acqObj.empresa_executora = reg.empresa_executora;
+  // 1. Dados FIXOS da obra: endereço, empresa, fiscal e data de início não
+  // mudam de um bimestre para o outro — pedir de novo a cada período só gera
+  // retrabalho e divergência entre bimestres. Só preenche o que estiver vazio,
+  // então uma correção feita neste bimestre nunca é sobrescrita.
+  ['endereco_obra','empresa_executora','fiscal_responsavel','data_inicio_obra',
+   'unidade_medida','cnes','meta_prevista'].forEach(function(campo){
+    if(!acqObj[campo] && reg[campo]) acqObj[campo] = reg[campo];
+  });
 
   // 2. Tipo
   if(!acqObj.modalidade_objeto && reg.tipo_monitoramento) acqObj.modalidade_objeto = reg.tipo_monitoramento;
