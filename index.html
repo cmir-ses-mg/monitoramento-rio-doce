@@ -991,6 +991,10 @@ function validateField(el){
 
 }
 function validateStep(){
+  // O administrador navega para conferir e corrigir pontualmente o que o
+  // município preencheu — exigir campos dele o impediria de abrir uma ação só
+  // para consultá-la. A obrigatoriedade vale para quem presta a informação.
+  if(isAdmin(_sessaoUsuario))return true;
   let ok=true;
   document.querySelectorAll('[data-required=true]').forEach(el=>{if(!validateField(el))ok=false;});
   if(!ok){const fe=document.querySelector('.error');if(fe)fe.scrollIntoView({behavior:'smooth',block:'center'});}
@@ -2058,16 +2062,21 @@ function contentHTML(){
   return (
     '<div class="step-head"><h2>'+(_admin?'Selecione o beneficiário':'Início do monitoramento')+'</h2>'
     +'<p>'+(_admin?'Escolha o município/consórcio e o período para iniciar.':'Confirme o período e os dados do responsável para iniciar.')+'</p></div>'
+    +(_admin
+      ? '<div style="background:var(--g50);border:1px solid var(--g400);border-radius:8px;padding:10px 13px;margin-bottom:14px;font-size:12px;color:var(--ink2);line-height:1.5">'
+        +'<strong>Acesso administrativo.</strong> Você pode abrir qualquer beneficiário para consultar o preenchimento e corrigir o que for necessário. Nenhum campo é obrigatório para você; as edições ficam registradas no seu nome.'
+      +'</div>'
+      : '')
     +'<div class="card"><div class="card-title">'+(_admin?'Beneficiário e período':'Município e período')+'</div>'
     +_campoMunicipio
     +'<div class="row2">'
       +'<div class="field"><label>Bimestre</label>'
-        +'<select name="bimestre" data-store="municipio" onchange="sv(this);renderAll()">'
+        +'<select name="bimestre" data-store="mun" onchange="sv(this);renderAll()">'
           +'<option value="">Selecione...</option>'
           +['1º Bimestre','2º Bimestre','3º Bimestre','4º Bimestre','5º Bimestre','6º Bimestre'].map(function(b){return '<option value="'+b+'"'+(municipio.bimestre===b?' selected':'')+'>'+b+'</option>';}).join('')
         +'</select></div>'
       +'<div class="field"><label>Ano</label>'
-        +'<select name="ano" data-store="municipio" onchange="sv(this);renderAll()">'
+        +'<select name="ano" data-store="mun" onchange="sv(this);renderAll()">'
           +'<option value="">Selecione...</option>'
           +[2026,2027,2028,2029,2030,2031,2032].map(function(a){return '<option value="'+a+'"'+(municipio.ano==a?' selected':'')+'>'+a+'</option>';}).join('')
         +'</select></div>'
@@ -2534,22 +2543,28 @@ function getMetaOficial(instrumento,acaoTexto,tipoTexto,municipioTexto){
 function nextPhase(){
   saveAllInputs();
   if(phase===0){
-    if(!municipio.municipio){showAlertModal(isAdmin(_sessaoUsuario)?'Selecione o beneficiário.':'Município não identificado. Faça login novamente.','⚠️');return;}
+    const _adm=isAdmin(_sessaoUsuario);
     // Trava de segurança: o beneficiário só preenche o próprio município,
     // mesmo que o valor tenha sido alterado por outro caminho.
-    if(!isAdmin(_sessaoUsuario)&&_sessaoUsuario&&_sessaoUsuario.municipio
+    if(!_adm&&_sessaoUsuario&&_sessaoUsuario.municipio
        &&municipio.municipio!==_sessaoUsuario.municipio){
       municipio.municipio=_sessaoUsuario.municipio;
     }
+    // O beneficiário é quem presta a informação, então para ele os campos são
+    // obrigatórios. O administrador entra para consultar e corrigir pontualmente
+    // o que o município preencheu — travar campos aqui só o impediria de abrir
+    // uma ação para conferir. Só o que é indispensável para saber O QUE abrir
+    // (beneficiário e período) é exigido dele.
+    if(!municipio.municipio){showAlertModal(_adm?'Selecione o beneficiário.':'Município não identificado. Faça login novamente.','⚠️');return;}
     if(!municipio.bimestre||!municipio.ano){showAlertModal('Selecione o bimestre e o ano.','⚠️');return;}
-    if(!String(municipio.responsavel||'').trim()){showAlertModal('Informe o nome do responsável pelo preenchimento.','⚠️');return;}
+    if(!_adm&&!String(municipio.responsavel||'').trim()){showAlertModal('Informe o nome do responsável pelo preenchimento.','⚠️');return;}
     phase=1;renderAll();return;
   }
   // Validar seleção de modo na fase 1
   if(phase===1&&(!municipio.bimestre||!municipio.ano)){
     showAlertModal('Selecione o bimestre e o ano antes de continuar.','⚠️');return;
   }
-  if(phase===1&&!extratosRegistrados()){
+  if(phase===1&&!isAdmin(_sessaoUsuario)&&!extratosRegistrados()){
     showAlertModal('Anexe o extrato bancário do período na "Identificação do município" antes de continuar.','⚠️');return;
   }
   if(phase===1&&!acq().acao_tipo){
