@@ -747,10 +747,16 @@ window.addEventListener('load', function(){
       <img id="login-logo-img" src="" style="width:64px;height:64px;border-radius:10px;object-fit:contain;flex-shrink:0;background:#fff;padding:2px" onerror="this.style.display='none'"/>
       <div class="login-logo-text">Plano de Ação em Saúde do Rio Doce<span>Monitoramento Bimestral · SES-MG</span></div>
     </div>
+    <!-- Duas naturezas de conta: quem preenche o monitoramento (beneficiário:
+         município ou consórcio) e quem acompanha tudo (administrador SES-MG).
+         Contas são criadas pela CMIR e enviadas por e-mail — não há
+         auto-cadastro. A aba escolhida apenas orienta o login; o perfil real
+         vem do servidor, então marcar a aba errada não dá acesso indevido. -->
     <div class="login-tabs" id="login-tabs-bar">
-      <button class="login-tab active" id="tab-login" onclick="switchLoginTab('login')">Entrar</button>
-      <button class="login-tab" id="tab-cadastro" onclick="switchLoginTab('cadastro')">Criar conta</button>
+      <button class="login-tab active" id="tab-benef" onclick="switchPerfilLogin('beneficiario')">Beneficiários</button>
+      <button class="login-tab" id="tab-admin" onclick="switchPerfilLogin('admin')">Administradores</button>
     </div>
+    <div id="login-perfil-hint" style="font-size:11.5px;color:var(--ink3);margin:-10px 0 16px;text-align:center;line-height:1.5">Municípios e consórcios beneficiários do Plano Rio Doce.</div>
     <div class="login-error" id="login-error"></div>
     <div class="login-success" id="login-success"></div>
     <!-- Login -->
@@ -759,22 +765,46 @@ window.addEventListener('load', function(){
       <div class="login-field"><label>Senha</label><input type="password" id="login-senha" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
       <button class="login-btn-primary" onclick="doLogin()">Entrar →</button>
       <span class="login-link" onclick="switchLoginTab('recuperar')">Esqueci minha senha</span>
-      <div class="login-footer">Não tem conta? <a onclick="switchLoginTab('cadastro')">Criar agora</a></div>
+      <div class="login-footer" style="line-height:1.5">O acesso é enviado por e-mail pela SES-MG.<br>Não recebeu? Fale com a CMIR.</div>
     </div>
-    <!-- Cadastro -->
-    <div id="painel-cadastro" style="display:none">
-      <div class="login-field"><label>Nome completo</label><input type="text" id="cad-nome" placeholder="Seu nome"/></div>
-      <div class="login-field"><label>E-mail</label><input type="email" id="cad-email" placeholder="seu@email.com"/></div>
+    <!-- Suporte: abre um chamado por e-mail para a CMIR. Fica fora do login
+         porque quem não consegue entrar é justamente quem mais precisa dele. -->
+    <div id="painel-suporte" style="display:none">
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">Novo chamado</div>
+      <p style="font-size:12.5px;color:var(--ink2);margin:0 0 16px">Descreva o problema. A CMIR responde no e-mail informado.</p>
+      <div class="login-field"><label>Nome</label><input type="text" id="sup-nome" placeholder="Seu nome completo"/></div>
+      <div class="login-field"><label>E-mail</label><input type="email" id="sup-email" placeholder="seu@email.com"/></div>
       <div class="login-field"><label>Município / Consórcio</label>
-        <select id="cad-municipio" style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;background:#fff">
+        <select id="sup-municipio" style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;background:#fff">
           <option value="">Selecione...</option>
         </select>
       </div>
-      <div class="login-field"><label>Cargo / Função</label><input type="text" id="cad-cargo" placeholder="Ex: Secretário de Saúde"/></div>
-      <div class="login-field"><label>Senha</label><input type="password" id="cad-senha" placeholder="Mínimo 6 caracteres"/></div>
-      <div class="login-field"><label>Confirmar senha</label><input type="password" id="cad-senha2" placeholder="Repita a senha" onkeydown="if(event.key==='Enter')doCadastro()"/></div>
-      <button class="login-btn-primary" onclick="doCadastro()">Criar conta →</button>
-      <div class="login-footer">Já tem conta? <a onclick="switchLoginTab('login')">Entrar</a></div>
+      <div class="login-field"><label>Assunto</label>
+        <select id="sup-assunto" style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;background:#fff">
+          <option value="">Selecione o assunto</option>
+          <option value="Problema com a senha">Problema com a senha</option>
+          <option value="Solicitar acesso">Solicitar acesso</option>
+          <option value="Não recebi o e-mail de acesso">Não recebi o e-mail de acesso</option>
+          <option value="Dúvida sobre o preenchimento">Dúvida sobre o preenchimento</option>
+          <option value="Reportar erro no sistema">Reportar erro no sistema</option>
+          <option value="Outros">Outros</option>
+        </select>
+      </div>
+      <div class="login-field"><label>Descrição</label>
+        <textarea id="sup-descricao" rows="4" placeholder="Descreva o que aconteceu, em qual etapa e qual mensagem apareceu." style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;resize:vertical"></textarea>
+      </div>
+      <button class="login-btn-primary" onclick="enviarChamadoSuporte()">Enviar chamado →</button>
+      <span class="login-link" onclick="switchLoginTab('login')">← Voltar ao login</span>
+    </div>
+    <!-- Troca de senha obrigatória no primeiro acesso -->
+    <div id="painel-trocarsenha" style="display:none">
+      <p style="font-size:13px;color:var(--ink2);margin-bottom:16px">Este é seu primeiro acesso. Defina uma senha pessoal para continuar — a senha enviada por e-mail deixará de valer.</p>
+      <div class="login-field"><label>Nova senha</label><input type="password" id="ts-senha" placeholder="Mínimo 6 caracteres"/></div>
+      <div class="login-field"><label>Confirmar nova senha</label><input type="password" id="ts-senha2" placeholder="Repita a nova senha" onkeydown="if(event.key==='Enter')doTrocarSenhaPrimeiroAcesso()"/></div>
+      <button class="login-btn-primary" onclick="doTrocarSenhaPrimeiroAcesso()">Definir senha e entrar →</button>
+    </div>
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border2);text-align:center">
+      <button type="button" onclick="switchLoginTab('suporte')" style="padding:7px 20px;font-size:12px;font-weight:700;font-family:var(--font);border:none;border-radius:20px;background:var(--g700);color:#fff;cursor:pointer;letter-spacing:.03em">Suporte</button>
     </div>
     <!-- Recuperar -->
     <div id="painel-recuperar" style="display:none">
@@ -4204,15 +4234,16 @@ function limparMensagensLogin(){document.getElementById('login-error').style.dis
 
 function switchLoginTab(tab){
   limparMensagensLogin();
-  ['login','cadastro','recuperar'].forEach(function(k){
+  ['login','recuperar','trocarsenha','suporte'].forEach(function(k){
     const el=document.getElementById('painel-'+k);
     if(el)el.style.display=k===tab?'':'none';
   });
-  document.getElementById('tab-login')?.classList.toggle('active',tab==='login');
-  document.getElementById('tab-cadastro')?.classList.toggle('active',tab==='cadastro');
+  // As abas de perfil e a dica só fazem sentido na tela de login.
   const tb=document.getElementById('login-tabs-bar');
-  if(tb)tb.style.display=tab==='recuperar'?'none':'';
-  if(tab==='cadastro')_popularMunicipiosCad();
+  if(tb)tb.style.display=tab==='login'?'':'none';
+  const hint=document.getElementById('login-perfil-hint');
+  if(hint)hint.style.display=tab==='login'?'':'none';
+  if(tab==='suporte')_popularMunicipiosSuporte();
   if(tab==='recuperar'){
     document.getElementById('painel-rec-email').style.display='';
     document.getElementById('painel-rec-codigo').style.display='none';
@@ -4246,7 +4277,17 @@ async function doLogin(){
     }
     const resp=await fetch(APPS_SCRIPT_URL+'?acao=login&email='+encodeURIComponent(email)+'&senhaHash='+encodeURIComponent(h));
     const data=await resp.json();
-    if(data.status==='ok')return aplicarSessao(data.usuario);
+    if(data.status==='ok'){
+      // Conta criada pela SES-MG com senha provisória: obriga a definir uma
+      // senha pessoal antes de entrar, para que a senha que circulou por e-mail
+      // deixe de valer.
+      if(data.usuario&&data.usuario.precisa_trocar_senha){
+        _usuarioTrocaSenha=data.usuario;
+        switchLoginTab('trocarsenha');
+        return;
+      }
+      return aplicarSessao(data.usuario);
+    }
     mostrarErroLogin(data.mensagem||'E-mail ou senha incorretos.');
   }catch(e){
     mostrarErroLogin('Erro de conexão. Tente novamente.');
@@ -4256,38 +4297,103 @@ async function doLogin(){
   }
 }
 
-async function doCadastro(){
+// (doCadastro removida: contas são criadas pela SES-MG, não pelo usuário)
+
+// ── PERFIL DE LOGIN ─────────────────────────────────────────────────────────
+// A aba escolhida é só orientação visual: o perfil que vale é o que o servidor
+// devolve no login. Marcar "Administradores" sem ter a conta não dá acesso.
+let _perfilLogin='beneficiario';
+function switchPerfilLogin(perfil){
   limparMensagensLogin();
-  const nome=document.getElementById('cad-nome')?.value.trim();
-  const email=document.getElementById('cad-email')?.value.trim().toLowerCase();
-  const mun=document.getElementById('cad-municipio')?.value;
-  const cargo=document.getElementById('cad-cargo')?.value.trim();
-  const senha=document.getElementById('cad-senha')?.value;
-  const senha2=document.getElementById('cad-senha2')?.value;
+  _perfilLogin=perfil;
+  document.getElementById('tab-benef')?.classList.toggle('active',perfil==='beneficiario');
+  document.getElementById('tab-admin')?.classList.toggle('active',perfil==='admin');
+  const hint=document.getElementById('login-perfil-hint');
+  if(hint)hint.textContent=perfil==='admin'
+    ? 'Equipe SES-MG — acesso a todos os municípios e consórcios.'
+    : 'Municípios e consórcios beneficiários do Plano Rio Doce.';
+  const em=document.getElementById('login-email');
+  if(em)em.placeholder=perfil==='admin'?'nome@saude.mg.gov.br':'seu@email.com';
+}
+
+// ── SUPORTE ─────────────────────────────────────────────────────────────────
+// Abre um chamado por e-mail para a CMIR. Fica acessível sem login, porque
+// quem não consegue entrar é justamente quem mais precisa dele.
+function _popularMunicipiosSuporte(){
+  const sel=document.getElementById('sup-municipio');
+  if(!sel||sel.options.length>1)return;
+  if(typeof PLANO_DATA==='undefined'||!PLANO_DATA.all_beneficiarios){setTimeout(_popularMunicipiosSuporte,150);return;}
+  PLANO_DATA.all_beneficiarios.forEach(function(b){
+    const o=document.createElement('option');o.value=b;o.textContent=b;sel.appendChild(o);
+  });
+}
+
+async function enviarChamadoSuporte(){
+  limparMensagensLogin();
+  const nome=document.getElementById('sup-nome')?.value.trim();
+  const email=document.getElementById('sup-email')?.value.trim().toLowerCase();
+  const mun=document.getElementById('sup-municipio')?.value||'';
+  const assunto=document.getElementById('sup-assunto')?.value||'';
+  const desc=document.getElementById('sup-descricao')?.value.trim();
   const emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-  if(!emailRe.test(email)){mostrarErroLogin('E-mail inválido.');return;}
   if(!nome){mostrarErroLogin('Digite seu nome.');return;}
-  if(!mun){mostrarErroLogin('Selecione seu município.');return;}
-  if(!senha||senha.length<6){mostrarErroLogin('Senha deve ter pelo menos 6 caracteres.');return;}
-  if(senha!==senha2){mostrarErroLogin('As senhas não coincidem.');return;}
-  const btn=document.querySelector('#painel-cadastro .login-btn-primary');
-  if(btn){btn.textContent='Criando conta...';btn.disabled=true;}
-  showLoading('Criando conta...');
-  const h=await hashSenha(senha);
+  if(!emailRe.test(email)){mostrarErroLogin('Digite um e-mail válido para recebermos o retorno.');return;}
+  if(!assunto){mostrarErroLogin('Selecione o assunto.');return;}
+  if(!desc||desc.length<10){mostrarErroLogin('Descreva o problema com um pouco mais de detalhe.');return;}
+  const btn=document.querySelector('#painel-suporte .login-btn-primary');
+  if(btn){btn.textContent='Enviando...';btn.disabled=true;}
+  showLoading('Enviando chamado...');
   try{
-    const resp=await fetch(APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({acao:'cadastrar',nome,email,municipio:mun,cargo,senhaHash:h,tipo:'email'})});
+    const resp=await fetch(APPS_SCRIPT_URL,{
+      method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({acao:'abrirChamadoSuporte',nome:nome,email:email,municipio:mun,assunto:assunto,descricao:desc})
+    });
     const data=await resp.json();
     if(data.status==='ok'){
-      doLogout(); // encerra qualquer sessão anterior antes de mostrar a tela de login
-      mostrarSucessoLogin('✓ Conta criada com sucesso! Faça login para continuar.');
+      ['sup-nome','sup-email','sup-descricao'].forEach(function(id){const el=document.getElementById(id);if(el)el.value='';});
+      const sa=document.getElementById('sup-assunto');if(sa)sa.value='';
+      mostrarSucessoLogin('✓ Chamado enviado'+(data.protocolo?' — protocolo '+data.protocolo:'')+'. A CMIR responde em '+email+'.');
       switchLoginTab('login');
-    } else {
-      mostrarErroLogin(data.mensagem||'Erro ao criar conta.');
+    }else{
+      mostrarErroLogin(data.mensagem||'Não foi possível enviar o chamado. Escreva para cmir@saude.mg.gov.br.');
     }
+  }catch(e){
+    mostrarErroLogin('Erro de conexão. Escreva para cmir@saude.mg.gov.br.');
+  }finally{
+    if(btn){btn.textContent='Enviar chamado →';btn.disabled=false;}
+    hideLoading();
+  }
+}
+
+// Troca de senha obrigatória no primeiro acesso.
+let _usuarioTrocaSenha=null;
+async function doTrocarSenhaPrimeiroAcesso(){
+  limparMensagensLogin();
+  const s1=document.getElementById('ts-senha')?.value;
+  const s2=document.getElementById('ts-senha2')?.value;
+  if(!s1||s1.length<6){mostrarErroLogin('A senha deve ter pelo menos 6 caracteres.');return;}
+  if(s1!==s2){mostrarErroLogin('As senhas não coincidem.');return;}
+  if(!_usuarioTrocaSenha){switchLoginTab('login');return;}
+  const btn=document.querySelector('#painel-trocarsenha .login-btn-primary');
+  if(btn){btn.textContent='Salvando...';btn.disabled=true;}
+  showLoading('Definindo sua senha...');
+  try{
+    const h=await hashSenha(s1);
+    const url=APPS_SCRIPT_URL+'?acao=definirSenhaPrimeiroAcesso'
+      +'&email='+encodeURIComponent(_usuarioTrocaSenha.email||'')
+      +'&novaSenhaHash='+encodeURIComponent(h);
+    const resp=await fetch(url);
+    const data=await resp.json();
+    if(data.status==='ok'){
+      const u=_usuarioTrocaSenha; _usuarioTrocaSenha=null;
+      delete u.precisa_trocar_senha;
+      return aplicarSessao(u);
+    }
+    mostrarErroLogin(data.mensagem||'Não foi possível definir a senha.');
   }catch(e){
     mostrarErroLogin('Erro de conexão. Tente novamente.');
   }finally{
-    if(btn){btn.textContent='Criar conta';btn.disabled=false;}
+    if(btn){btn.textContent='Definir senha e entrar →';btn.disabled=false;}
     hideLoading();
   }
 }
