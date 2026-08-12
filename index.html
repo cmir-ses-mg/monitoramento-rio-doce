@@ -753,7 +753,7 @@ window.addEventListener('load', function(){
          auto-cadastro. A aba escolhida apenas orienta o login; o perfil real
          vem do servidor, então marcar a aba errada não dá acesso indevido. -->
     <div class="login-tabs" id="login-tabs-bar">
-      <button class="login-tab active" id="tab-benef" onclick="switchPerfilLogin('beneficiario')">Usuários</button>
+      <button class="login-tab active" id="tab-benef" onclick="switchPerfilLogin('beneficiario')">Beneficiários</button>
       <button class="login-tab" id="tab-admin" onclick="switchPerfilLogin('admin')">Administradores</button>
     </div>
     <div id="login-perfil-hint" style="font-size:11.5px;color:var(--ink3);margin:-10px 0 16px;text-align:center;line-height:1.5">Municípios e consórcios beneficiários do Plano Rio Doce.</div>
@@ -1145,7 +1145,7 @@ function renderAcqBar(){
     if(s===2)return !!(a.acao_tipo&&a.modalidade_objeto);
     if(s===3)return !!(a._status_contrat&&a._status_contrat!=='Planejamento');
     if(s===4)return isAcqObra(a)?!!(a.pct_medido_periodo||a.data_inicio_obra):!!(a.situacao_entrega);
-    if(s===5)return !!(a.problemas||a.medidas||a.meta_prevista||a.status_meta||(a.resultados_alcancados&&a.resultados_alcancados.length)||a.atendimentos_realizados);
+    if(s===5)return !!(a.problemas||a.medidas||a.meta_prevista||a.status_meta);
     return false;
   }
 
@@ -2038,13 +2038,28 @@ function contentHTML(){
   </div>`:'';
   const modeBadge=acq().modalidade_objeto?`<span class="mode-badge mode-equip">${obra?'🏗️ Obra':servico?'🛠️ Serviço':'📦 Aquisição'}</span>`:'' ;
 
-  if(phase===0) return (
-    '<div class="step-head"><h2>Selecione o município</h2><p>Escolha o município/consórcio e o período para iniciar.</p></div>'
-    +'<div class="card"><div class="card-title">Município e período</div>'
-    +fld('Município / Consórcio','municipio','select','',
-      '<option value="">Selecione...</option>'
-      +PLANO_DATA.all_beneficiarios.map(function(b){return '<option value="'+b+'"'+(municipio.municipio===b?' selected':'')+'>'+b+'</option>';}).join('')
-    )
+  if(phase===0){
+  // Mesma tela para os dois perfis. O administrador escolhe o beneficiário numa
+  // lista; o beneficiário vê o seu, já definido pelo login e não editável —
+  // assim ninguém preenche o monitoramento de outro município por engano.
+  const _admin=isAdmin(_sessaoUsuario);
+  const _campoMunicipio=_admin
+    ? fld('Município / Consórcio','municipio','select','',
+        '<option value="">Selecione...</option>'
+        +PLANO_DATA.all_beneficiarios.map(function(b){return '<option value="'+b+'"'+(municipio.municipio===b?' selected':'')+'>'+b+'</option>';}).join('')
+      )
+    : '<div class="field"><label>Município / Consórcio</label>'
+      +'<div style="display:flex;align-items:center;gap:9px;padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50)">'
+        +'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--g700)" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+        +'<span style="font-size:13.5px;font-weight:600;color:var(--ink)">'+(municipio.municipio||'—')+'</span>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Definido pelo seu acesso.</div>'
+    +'</div>';
+  return (
+    '<div class="step-head"><h2>'+(_admin?'Selecione o beneficiário':'Início do monitoramento')+'</h2>'
+    +'<p>'+(_admin?'Escolha o município/consórcio e o período para iniciar.':'Confirme o período e os dados do responsável para iniciar.')+'</p></div>'
+    +'<div class="card"><div class="card-title">'+(_admin?'Beneficiário e período':'Município e período')+'</div>'
+    +_campoMunicipio
     +'<div class="row2">'
       +'<div class="field"><label>Bimestre</label>'
         +'<select name="bimestre" data-store="municipio" onchange="sv(this);renderAll()">'
@@ -2064,6 +2079,7 @@ function contentHTML(){
     +'</div>'
     +renderCapaMunicipio()
   );
+  }
 
   if(phase===1){
     const ben=municipio.municipio||'';
@@ -2223,6 +2239,7 @@ function contentHTML(){
         +(status==='Planejamento'||status==='Processo aberto'?'<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Avance o status na etapa "Contratação" para registrar a execução.</div>':'')
       +'</div>';
     }).join('')
+    +renderNotasFiscaisCard()
     +'<div class="card">'
       +'<div class="card-title">Documentos comprobatórios</div>'
       +'<p class="hint" style="margin-bottom:12px">Clique em cada documento para marcá-lo e anexar o arquivo.</p>'
@@ -2250,7 +2267,8 @@ function contentHTML(){
       ${fld('Data da entrega ou período','data_entrega','text','Ex: 15/03/2025')}
       ${chipsHTML('Houve atraso?','houve_atraso',['Sim','Não'])}
       ${fld('Se houve atraso, justificar','justificativa_atraso','textarea','Descreva o motivo do atraso...')}
-    </div>`
+    </div>
+    ${renderNotasFiscaisCard()}`
   : lockedBanner
     +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Patrimônio')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
     +'<p>Situação da entrega por lote — notas fiscais e incorporação patrimonial.</p></div>'
@@ -2273,6 +2291,7 @@ function contentHTML(){
           : '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 0">Contrato '+(lote.num_contrato||'—')+' · Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'—')+'. Para atualizar a situação da entrega, use a etapa de Contratação.</div>')
       +'</div>';
     }).join('')
+    +renderNotasFiscaisCard()
     +'<div class="card">'
       +'<div class="card-title">Documentos comprobat\u00f3rios</div>'
       +'<p class="hint" style="margin-bottom:12px">Clique em cada documento para marc\u00e1-lo e anexar o arquivo.</p>'
@@ -2311,33 +2330,6 @@ function contentHTML(){
         +'</div>';
       })()}
       ${chipsHTML('Status da meta','status_meta',['Não iniciado','Em andamento','Em execução','Concluída'])}
-    </div>
-    <div class="card">
-      <div class="card-title">Resultados alcançados</div>
-      ${multiChipsHTML('Objetivos do Plano alcançados a partir da entrega','resultados_alcancados',[
-        'Ampliar cobertura de Atenção Primária à Saúde e qualificar estruturas físicas existentes',
-        'Garantir a manutenção adequada da infraestrutura das UBS, assegurando continuidade e qualidade da assistência',
-        'Fortalecimento da estrutura da Atenção Primária à Saúde',
-        'Ampliação do acesso aos serviços de saúde bucal a populações que enfrentam barreiras geográficas ou estruturais',
-        'Ampliação e qualificação do transporte sanitário',
-        'Ampliação da capacidade instalada da atenção especializada',
-        'Ampliação do suporte especializado para a execução qualificada dos serviços de saúde',
-        'Ampliação e fortalecimento da capacidade de atendimento hospitalar para média e alta complexidade no contexto do SUS',
-        'Garantir a manutenção adequada da infraestrutura hospitalar, contribuindo para a continuidade e qualificação da assistência à saúde',
-        'Ampliação e qualificação da rede de atenção psicossocial para garantir o acesso ao cuidado em saúde mental',
-        'Fortalecimento da vigilância e monitoramento da qualidade da água para consumo humano',
-        'Ampliação da vigilância em saúde ambiental para detecção precoce e controle de riscos ambientais à saúde',
-        'Aprimoramento da estrutura física dos serviços de saúde do trabalhador',
-        'Fortalecimento da capacidade operacional dos Consórcios Intermunicipais de Saúde para a oferta qualificada e integrada dos serviços',
-        'Fortalecer a capacidade operacional e de gestão dos Consórcios responsáveis pela execução do SAMU'
-      ])}
-      ${fld('Atendimentos realizados pela unidade do SUS contemplada','atendimentos_realizados','numonly','Nº de atendimentos (se aplicável)')}
-      <p class="hint" style="margin:10px 0 6px">Para cada resultado marcado acima, anexe uma evidência que comprove o que foi alcançado.</p>
-      <input type="file" style="display:none" id="file_evidencia_resultados" multiple accept=".pdf,.jpg,.jpeg,.png,.docx" onchange="handleFiles('evidencia_resultados',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('evidencia_resultados')">
-        <div class="upload-zone-text"><strong>Clique para anexar evidências</strong> (PDF, imagem, Word)</div>
-      </div>
-      <div class="file-list" id="files_evidencia_resultados">${renderFilePills('evidencia_resultados')}</div>
     </div>
 `;
 
@@ -2542,8 +2534,15 @@ function getMetaOficial(instrumento,acaoTexto,tipoTexto,municipioTexto){
 function nextPhase(){
   saveAllInputs();
   if(phase===0){
-    if(!municipio.municipio){showAlertModal('Selecione o município.','⚠️');return;}
+    if(!municipio.municipio){showAlertModal(isAdmin(_sessaoUsuario)?'Selecione o beneficiário.':'Município não identificado. Faça login novamente.','⚠️');return;}
+    // Trava de segurança: o beneficiário só preenche o próprio município,
+    // mesmo que o valor tenha sido alterado por outro caminho.
+    if(!isAdmin(_sessaoUsuario)&&_sessaoUsuario&&_sessaoUsuario.municipio
+       &&municipio.municipio!==_sessaoUsuario.municipio){
+      municipio.municipio=_sessaoUsuario.municipio;
+    }
     if(!municipio.bimestre||!municipio.ano){showAlertModal('Selecione o bimestre e o ano.','⚠️');return;}
+    if(!String(municipio.responsavel||'').trim()){showAlertModal('Informe o nome do responsável pelo preenchimento.','⚠️');return;}
     phase=1;renderAll();return;
   }
   // Validar seleção de modo na fase 1
@@ -2908,6 +2907,27 @@ function gerarPDFBase64(){
           y+=2;
         });
       }
+      // Notas fiscais / execuções lançadas no período
+      if(a._notas&&a._notas.filter(function(n){return n.confirmado;}).length){
+        const _ehServ=a.modalidade_objeto==='servico';
+        sec(_ehServ?'SERVIÇOS EXECUTADOS':'ITENS ADQUIRIDOS — NOTAS FISCAIS');
+        a._notas.filter(function(n){return n.confirmado;}).forEach(function(n,ni){
+          chk(12);
+          doc.setFillColor(212,245,229);doc.rect(14,y-4,186,8,'F');
+          doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(26,107,73);
+          doc.text((_ehServ?('EXECUÇÃO '+(ni+1)):('NF '+(n.num_nf||'—')+(n.serie_nf?' / série '+n.serie_nf:''))).substring(0,70),16,y+1);
+          doc.setFont('helvetica','normal');doc.setTextColor(58,84,70);
+          doc.text('R$ '+parseBRL(n.valor||'').toLocaleString('pt-BR',{minimumFractionDigits:2}),186,y+1,{align:'right'});
+          y+=10;
+          row(_ehServ?'Descrição do serviço:':'Descrição do item:',n.descricao);
+          if(_ehServ){ row('Quantidade:',n.quantidade); row('Unidade de medida:',n.unidade_medida); }
+          else { row('Data da NF:',n.data_nf?new Date(n.data_nf+'T00:00').toLocaleDateString('pt-BR'):''); }
+          row(_ehServ?'CNES:':'CNES beneficiado:',n.cnes);
+          y+=2;
+        });
+        const _tn=totalNotas(a);
+        if(_tn>0)row(_ehServ?'Total executado:':'Total em notas:','R$ '+_tn.toLocaleString('pt-BR',{minimumFractionDigits:2}));
+      }
       sec('CONTRATAÇÃO');
       row('Status da contratação:',a._status_contrat);
       if(servico){row('Contratações de pessoal previstas:',a.pessoal_previsto);row('Contratações realizadas:',a.pessoal_realizado);}
@@ -3086,6 +3106,12 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_total_recebido:(municipio._recebidoBase||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       rendimentos_acumulados:(_somaRendimentosAnteriores()+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       docs_marcados:docsOk,
+      // Notas fiscais / execuções do período, em JSON (uma coluna só na planilha).
+      notas_fiscais:JSON.stringify((a._notas||[]).filter(function(n){return n.confirmado;}).map(function(n){
+        return {descricao:n.descricao||'',num_nf:n.num_nf||'',serie_nf:n.serie_nf||'',data_nf:n.data_nf||'',
+                valor:n.valor||'',cnes:n.cnes||'',quantidade:n.quantidade||'',unidade_medida:n.unidade_medida||''};
+      })),
+      valor_notas:totalNotas(a).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
       acao_concluida:(tipoRegistro==='Conclusao'||tipoRegistro==='Correcao')?'Sim':'Nao',
@@ -3249,7 +3275,7 @@ async function mesclarSessaoDoServidor(){
       let remoto=null;
       try{remoto=JSON.parse(it.payload);}catch(e){return;}
       remoto._touchedAt=Number(it.touchedAt)||remoto._touchedAt||0;
-      limparAtividadesEmBranco(remoto);
+      limparAtividadesEmBranco(remoto);limparNotasEmBranco(remoto);
       const idxLocal=aquisicoes.findIndex(function(a){return a._key===it.acaoKey;});
       if(idxLocal===-1){
         aquisicoes.push(remoto);aplicadas++;
@@ -3329,7 +3355,7 @@ function loadSession(key){
     Object.assign(municipio,data.municipio||{});
     aquisicoes.length=0;
     (data.aquisicoes||[{}]).forEach(a=>aquisicoes.push(a));
-    aquisicoes.forEach(limparAtividadesEmBranco); // descarta cards fantasma de sessões antigas
+    aquisicoes.forEach(function(a){limparAtividadesEmBranco(a);limparNotasEmBranco(a);}); // descarta cards fantasma de sessões antigas
     // aquisicoes can be empty — getOrCreateAcq will populate on action select
     phase=data.phase||0;
     acqIdx=Math.min(data.acqIdx||0,aquisicoes.length-1);
@@ -4227,7 +4253,14 @@ function calcTotalUtilizado(){
 const ADMIN_EMAILS=['fabiana.fabid@gmail.com','fabiana.santos@saude.mg.gov.br'];
 let _sessaoUsuario=null;
 
-function isAdmin(sess){return sess&&ADMIN_EMAILS.includes((sess.email||'').toLowerCase());}
+// Administrador = perfil devolvido pelo servidor, ou e-mail na lista fixa
+// (mantida como salvaguarda para o acesso da própria equipe da CMIR).
+function isAdmin(sess){
+  if(!sess)return false;
+  if(sess.admin===true)return true;
+  if((sess.perfil||'').toString().toLowerCase()==='admin')return true;
+  return ADMIN_EMAILS.includes((sess.email||'').toLowerCase());
+}
 function mostrarErroLogin(msg){const el=document.getElementById('login-error');if(el){el.textContent=msg;el.style.display='block';}document.getElementById('login-success').style.display='none';}
 function mostrarSucessoLogin(msg){const el=document.getElementById('login-success');if(el){el.textContent=msg;el.style.display='block';}document.getElementById('login-error').style.display='none';}
 function limparMensagensLogin(){document.getElementById('login-error').style.display='none';document.getElementById('login-success').style.display='none';}
@@ -4442,9 +4475,13 @@ function aplicarSessao(sess){
     if(sess.nome)municipio.responsavel=sess.nome;
     if(sess.cargo)municipio.cargo=sess.cargo;
     if(sess.email)municipio.email=sess.email;
-    const admin=isAdmin(sess);
-    if(!admin&&sess.municipio){municipio.municipio=sess.municipio;phase=1;}
-    else phase=0;
+    // Beneficiário e administrador usam a MESMA tela de seleção. A diferença é
+    // só o campo do município: para o beneficiário ele já vem definido pelo
+    // login (não é escolha dele); para o administrador vira uma lista com todos
+    // os beneficiários. Antes o beneficiário pulava direto para phase=1 e, com
+    // isso, nunca escolhia bimestre/ano nem preenchia responsável e rendimentos.
+    if(!isAdmin(sess)&&sess.municipio)municipio.municipio=sess.municipio;
+    phase=0;
     const ls=document.getElementById('login-screen');
     if(ls)ls.style.display='none';
     renderAll();
@@ -4838,11 +4875,13 @@ async function carregarHistoricoBimestreAnterior(instrumento, tipo){
 // anteriores (já ordenados do mais antigo para o mais recente).
 function _montarResumoAnterior(registros){
   const periodos=[];
-  let totalListas=0, ultimoExecutado=0;
+  let totalListas=0, ultimoExecutado=0, totalNotasAnt=0;
   (registros||[]).forEach(function(r){
     const vLista=parseValorSheet(r.valor_lista_equipamentos||0);
+    const vNotas=parseValorSheet(r.valor_notas||0);
     const vExec =parseValorSheet(r.valor_total_utilizado||r.valor_executado||0);
     if(vLista>0)totalListas+=vLista;
+    if(vNotas>0)totalNotasAnt+=vNotas;
     if(vExec>0)ultimoExecutado=vExec; // valor_total_utilizado já é acumulado
     periodos.push({
       bimestre:r.bimestre||'', ano:r.ano||'',
@@ -4850,10 +4889,11 @@ function _montarResumoAnterior(registros){
       situacao:r.situacao_entrega||r._status_contrat||'',
       pct:r.pct_acumulado_periodo||'',
       quantidade:r.quantidade||'',
+      notas:vNotas,
       responsavel:r.editado_por||''
     });
   });
-  return {periodos:periodos, totalListas:totalListas, executadoAcumulado:ultimoExecutado};
+  return {periodos:periodos, totalListas:totalListas, totalNotas:totalNotasAnt, executadoAcumulado:ultimoExecutado};
 }
 
 // Card "O que já foi informado antes" — aparece em toda ação que tenha
@@ -4894,6 +4934,9 @@ function renderResumoAnterior(){
         +'no valor total de <strong>'+fmt(r.totalListas)+'</strong>. Não é preciso reenviar — anexe apenas listas novas deste bimestre.'
       +'</div>'
       : '')
+    +(r.totalNotas>0
+      ? '<div style="margin-top:8px;font-size:12px;color:var(--ink3)">Já lançado em notas fiscais nos bimestres anteriores: <strong style="color:var(--g800)">'+fmt(r.totalNotas)+'</strong>. Registre aqui apenas as notas deste bimestre.</div>'
+      : '')
     +(r.executadoAcumulado>0
       ? '<div style="margin-top:8px;font-size:12px;color:var(--ink3)">Valor executado acumulado até o bimestre anterior: <strong style="color:var(--g800)">'+fmt(r.executadoAcumulado)+'</strong></div>'
       : '')
@@ -4918,6 +4961,9 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
    'unidade_medida','cnes','meta_prevista'].forEach(function(campo){
     if(!acqObj[campo] && reg[campo]) acqObj[campo] = reg[campo];
   });
+
+  // As notas fiscais são do PERÍODO — não são copiadas para o bimestre novo.
+  // O que atravessa é o total já lançado antes, exibido no card de histórico.
 
   // 2. Tipo
   if(!acqObj.modalidade_objeto && reg.tipo_monitoramento) acqObj.modalidade_objeto = reg.tipo_monitoramento;
@@ -5179,6 +5225,166 @@ function _ativEmBranco(at){
 function limparAtividadesEmBranco(a){
   if(!a||!a._atividades)return;
   a._atividades=a._atividades.filter(function(at){return !_ativEmBranco(at);});
+}
+
+
+// ── NOTAS FISCAIS / ITENS EXECUTADOS ────────────────────────────────────────
+// Registro das notas na etapa de Entrega, alinhado ao sistema oficial:
+//   aquisição → Descrição do item, Nº NF, Série, Data, Valor, CNES beneficiado
+//   serviço   → Descrição do serviço, Quantidade, Unidade de medida, Valor, CNES
+// Fica em a._notas, uma entrada por nota, com carryover entre bimestres como
+// os lotes e as atividades.
+const UNID_MEDIDA=['Pessoa','Profissional','Unidade','Serviço','Mês','Hora','Dia','Diária','Km','Metro','Metro quadrado','Litro','Quilograma','Coleta','Amostra','Visita','Inspeção','Verba'];
+
+function _notaVazia(){
+  return {descricao:'',num_nf:'',serie_nf:'',data_nf:'',valor:'',cnes:'',quantidade:'',unidade_medida:'',confirmado:false};
+}
+function _notaEmBranco(n){
+  if(!n||n.confirmado)return false;
+  const vazio=function(v){return String(v==null?'':v).trim()==='';};
+  return vazio(n.descricao)&&vazio(n.num_nf)&&vazio(n.serie_nf)&&vazio(n.data_nf)
+      &&vazio(n.valor)&&vazio(n.cnes)&&vazio(n.quantidade)&&vazio(n.unidade_medida);
+}
+function limparNotasEmBranco(a){
+  if(!a||!a._notas)return;
+  a._notas=a._notas.filter(function(n){return !_notaEmBranco(n);});
+}
+function _addNota(){
+  const a=acq();
+  if(!a._notas)a._notas=[];
+  a._notas.push(_notaVazia());
+  _marcarTocado(a); saveSession(); renderAll();
+}
+function _updNota(idx,campo,valor){
+  const a=acq();
+  if(a._notas&&a._notas[idx]){ a._notas[idx][campo]=valor; _marcarTocado(a); }
+}
+function _confirmarNota(idx){
+  saveAllInputs();
+  const a=acq();
+  const n=a._notas&&a._notas[idx];
+  if(!n)return;
+  const servico=a.modalidade_objeto==='servico';
+  if(!String(n.descricao||'').trim()){
+    showAlertModal(servico?'Descreva o serviço executado.':'Descreva o item adquirido.','⚠️');return;
+  }
+  if(!servico&&!String(n.num_nf||'').trim()){
+    showAlertModal('Informe o número da nota fiscal.','⚠️');return;
+  }
+  if(!(parseBRL(n.valor||'')>0)){
+    showAlertModal('Informe o valor da nota.','⚠️');return;
+  }
+  n.confirmado=true;
+  _marcarTocado(a); saveSession(); renderAll();
+}
+function _editarNota(idx){
+  const a=acq();
+  if(a._notas&&a._notas[idx]){ a._notas[idx].confirmado=false; saveSession(); renderAll(); }
+}
+function _excluirNota(idx){
+  const a=acq();
+  if(!a._notas)return;
+  a._notas.splice(idx,1);
+  _marcarTocado(a); saveSession(); renderAll();
+}
+function totalNotas(a){
+  return ((a&&a._notas)||[]).filter(function(n){return n.confirmado;})
+    .reduce(function(s,n){return s+parseBRL(n.valor||'');},0);
+}
+
+// Card completo da etapa de Entrega.
+function renderNotasFiscaisCard(){
+  const a=acq();
+  if(!a._notas)a._notas=[];
+  const servico=a.modalidade_objeto==='servico';
+  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+  const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
+  const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+
+  let html='<div class="card" style="border-left:3px solid var(--g500)">'
+    +'<div class="card-title">'+(servico?'Serviços executados':'Itens adquiridos e notas fiscais')+'</div>'
+    +'<p class="hint" style="margin-bottom:12px">'
+      +(servico
+        ? 'Registre cada serviço executado no período, com a nota fiscal correspondente.'
+        : 'Registre cada nota fiscal dos itens adquiridos no período.')
+    +'</p>';
+
+  // Confirmadas
+  a._notas.forEach(function(n,i){
+    if(!n.confirmado)return;
+    const resumo=servico
+      ? [n.quantidade?n.quantidade+(n.unidade_medida?' '+n.unidade_medida:''):'', n.cnes?'CNES '+n.cnes:''].filter(Boolean).join(' · ')
+      : ['NF '+(n.num_nf||'—')+(n.serie_nf?'/'+n.serie_nf:''), n.data_nf?new Date(n.data_nf+'T00:00').toLocaleDateString('pt-BR'):'', n.cnes?'CNES '+n.cnes:''].filter(Boolean).join(' · ');
+    html+='<div style="border:1px solid var(--g400);background:var(--g50);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">'
+      +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u2713</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+esc(n.descricao)+'</div>'
+        +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+resumo+'</div>'
+      +'</div>'
+      +'<div style="font-size:13px;font-weight:700;color:var(--g800);white-space:nowrap">'+fmt(parseBRL(n.valor||''))+'</div>'
+      +'<button type="button" onclick="_editarNota('+i+')" style="padding:4px 12px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
+      +'<button type="button" onclick="_excluirNota('+i+')" style="padding:4px 10px;font-size:11.5px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
+    +'</div>';
+  });
+
+  // Em edição
+  a._notas.forEach(function(n,i){
+    if(n.confirmado)return;
+    html+='<div style="border:1.5px solid var(--g500);border-radius:9px;padding:14px;margin-bottom:10px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--ink)">\u270e '+(servico?'Serviço':'Nota fiscal')+' '+(i+1)+'</div>'
+        +'<button type="button" onclick="_excluirNota('+i+')" style="padding:3px 10px;font-size:11px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
+      +'</div>'
+      +'<div style="margin-bottom:8px"><label style="'+lbl+'">'+(servico?'Descrição do serviço / indicador de custeio':'Descrição do item')+' <span class="req">*</span></label>'
+        +'<input type="text" oninput="_updNota('+i+',\'descricao\',this.value)" value="'+esc(n.descricao)+'" placeholder="'+(servico?'Ex: Coleta e análise de amostras de água':'Ex: Cadeira odontológica completa')+'" style="'+inp+'"/></div>';
+
+    if(servico){
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">'
+        +'<div><label style="'+lbl+'">Quantidade</label>'
+          +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'quantidade\',this.value)" value="'+esc(n.quantidade)+'" placeholder="Ex: 10" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Unidade de medida</label>'
+          +'<input type="text" list="lst-unid-nf" oninput="_updNota('+i+',\'unidade_medida\',this.value)" value="'+esc(n.unidade_medida)+'" placeholder="Ex: Unidade" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Valor (R$) <span class="req">*</span></label>'
+          +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+      +'</div>'
+      +'<datalist id="lst-unid-nf">'+UNID_MEDIDA.map(function(u){return '<option value="'+u+'"></option>';}).join('')+'</datalist>'
+      +'<div style="max-width:240px"><label style="'+lbl+'">CNES</label>'
+        +'<input type="text" inputmode="numeric" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,\'\');_updNota('+i+',\'cnes\',this.value)" value="'+esc(n.cnes)+'" placeholder="0000000" style="'+inp+'"/>'
+        +'<div style="font-size:10.5px;color:var(--ink3);margin-top:3px">Unidade de saúde onde o serviço foi executado</div>'
+      +'</div>';
+    }else{
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">'
+        +'<div><label style="'+lbl+'">Nº da NF <span class="req">*</span></label>'
+          +'<input type="text" oninput="_updNota('+i+',\'num_nf\',this.value)" value="'+esc(n.num_nf)+'" placeholder="Ex: 000001" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Série da NF</label>'
+          +'<input type="text" oninput="_updNota('+i+',\'serie_nf\',this.value)" value="'+esc(n.serie_nf)+'" placeholder="Ex: 1" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Data da NF</label>'
+          +'<input type="date" oninput="_updNota('+i+',\'data_nf\',this.value)" value="'+esc(n.data_nf)+'" style="'+inp+'"/></div>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+        +'<div><label style="'+lbl+'">Valor (R$) <span class="req">*</span></label>'
+          +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">CNES beneficiado</label>'
+          +'<input type="text" inputmode="numeric" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,\'\');_updNota('+i+',\'cnes\',this.value)" value="'+esc(n.cnes)+'" placeholder="0000000" style="'+inp+'"/></div>'
+      +'</div>';
+    }
+
+    html+='<div style="margin-top:12px;text-align:right">'
+      +'<button type="button" onclick="_confirmarNota('+i+')" style="padding:8px 18px;font-size:12.5px;font-weight:700;background:var(--g800);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar</button>'
+    +'</div></div>';
+  });
+
+  const vazio=a._notas.length===0;
+  html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma '+(servico?'execução':'nota fiscal')+' registrada ainda.</div>':'')
+    +'<button type="button" onclick="_addNota()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar '+(vazio?(servico?'execução':'nota fiscal'):'outra')+'</button>';
+
+  const tot=totalNotas(a);
+  if(tot>0){
+    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);text-align:right;font-size:12.5px;color:var(--ink3)">'
+      +'Total '+(servico?'executado':'em notas')+': <strong style="color:var(--g800);font-size:14px">'+fmt(tot)+'</strong></div>';
+  }
+  return html+'</div>';
 }
 
 function _resumoServicoAtiv(at){
@@ -5574,7 +5780,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   if(!inst||!tipo) return false;
   if(!acqObj._atividades) acqObj._atividades=[];
 
-  limparAtividadesEmBranco(acqObj);
+  limparAtividadesEmBranco(acqObj);limparNotasEmBranco(acqObj);
   const remotas=await buscarAtividadesCusteioServidor(municipio.municipio, inst, tipo);
   if(!remotas.length) return false;
 
