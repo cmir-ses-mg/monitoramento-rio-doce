@@ -1570,6 +1570,14 @@ function _ordemPeriodoAtual(){
   return a*10+b;
 }
 
+// Soma dos rendimentos de todos os bimestres ANTERIORES ao que está aberto.
+function _somaRendimentosAnteriores(){
+  if(!_rendHistorico)return 0;
+  const ordemAtual=_ordemPeriodoAtual();
+  return _rendHistorico.filter(function(p){return p.ordem<ordemAtual;})
+                       .reduce(function(s,p){return s+(p.valor||0);},0);
+}
+
 function renderRendimentosHistorico(){
   if(_rendHistorico===null)return '<div style="font-size:11px;color:var(--ink3)">Carregando bimestres anteriores…</div>';
   // Só os períodos ANTERIORES ao que está aberto — o atual está sendo digitado.
@@ -1894,23 +1902,33 @@ function calcResumoExecucaoMunicipio(){
 function renderCapaMunicipio(modoResumo){
   if(!municipio.municipio)return'';
   _dispararBuscaValorRecebidoSeNecessario(municipio.municipio);
+  // VALOR RECEBIDO = repasse do Estado ao município. É um dado do PLANO, fixo,
+  // e não tem relação com o quanto o município executou.
+  //
+  // Antes o total era lido do último registro gravado e somado ao executado do
+  // bimestre — mas o valor lido JÁ CONTINHA a soma dos bimestres anteriores, e
+  // gravava-se o resultado de volta. Cada envio realimentava o próprio total, o
+  // que fazia o "recebido" crescer sem limite (chegou a R$ 16,8 mi num plano de
+  // R$ 13,4 mi, gerando saldo negativo e 100% de progresso).
   if(municipio._recebidoBaseMunicipio!==municipio.municipio){
-    const _vrCache=(_valorRecebidoCache.municipio===municipio.municipio)?parseBRL(_valorRecebidoCache.valor||''):0;
-    const _vrPlano=(PLANO_DATA&&PLANO_DATA.valor_recebido&&PLANO_DATA.valor_recebido[municipio.municipio])||0;
-    const _rendCache=(_valorRecebidoCache.municipio===municipio.municipio)?parseBRL(_valorRecebidoCache.rendimentos||''):0;
-    municipio._recebidoBase=_vrCache>0?_vrCache:_vrPlano;
-    municipio._rendimentosBase=_rendCache;
+    municipio._recebidoBase=(PLANO_DATA&&PLANO_DATA.valor_recebido&&PLANO_DATA.valor_recebido[municipio.municipio])||0;
     municipio._recebidoBaseMunicipio=municipio.municipio;
   }
   const _r=calcResumoExecucaoMunicipio();
   const _base=municipio._recebidoBase||0;
-  const _bimestreVal=calcValorRecebidoBimestre();
-  const _capaRecebido=_base+_bimestreVal;
+  const _bimestreVal=calcValorRecebidoBimestre(); // executado no bimestre (≠ recebido)
+  const _capaRecebido=_base;
   const _capaSaldo=_r.valorGlobal-_capaRecebido;
   const _pctRecebido=_r.valorGlobal>0?Math.max(0,Math.min(100,Math.round((_capaRecebido/_r.valorGlobal)*100))):0;
-  const _aindaCarregando=_valorRecebidoCache.municipio!==municipio.municipio;
-  const _rendimentosBase=municipio._rendimentosBase||0;
+  // O recebido vem do plano (local), então não há mais espera de rede aqui.
+  const _aindaCarregando=false;
+  // Acumulado = soma dos bimestres ANTERIORES + o que está sendo digitado agora.
+  // Vem de buscarRendimentosPorBimestre, que deduplica por período — antes o
+  // valor era lido do último registro (já acumulado) e somado de novo, então
+  // R$ 10.000 + R$ 11.000 virava R$ 135.000.
+  const _rendimentosBase=_somaRendimentosAnteriores();
   const _rendimentosAcumulados=_rendimentosBase+parseBRL(municipio.rendimentos_periodo||'');
+  municipio._rendimentosBase=_rendimentosBase;
   const _temExtrato=extratosRegistrados();
   const _extratoJaEnviado=((municipio.extratos_nomes||[]).length>0||!!municipio.extrato_ja_enviado)&&(arquivos['mun_extratos_municipio']||[]).length===0;
   // Fora da Revisão final (modoResumo), não exibimos mais a identificação do
@@ -2079,6 +2097,7 @@ function contentHTML(){
           })()}
         </div>
     </div>`:''}
+    ${a.acao_tipo?renderResumoAnterior():''}
     ${servico&&acq().acao_tipo?renderAtividadesCard():''}
     ${obra&&acq().acao_tipo?`
     <div class="card">
@@ -2100,6 +2119,15 @@ function contentHTML(){
       </div>
       <div class="file-list" id="files_lista_equipamentos">${renderFilePills('lista_equipamentos')}</div>
       ${fld('Valor da lista (R$)','valor_lista_equipamentos','money')}
+      ${(()=>{
+        const r=acq()._resumoAnterior;
+        if(!r||!(r.totalListas>0))return '';
+        const n=r.periodos.filter(function(p){return p.lista>0;}).length;
+        return '<div style="font-size:11.5px;color:var(--g800);background:var(--g50);border:1px solid var(--g400);border-radius:7px;padding:8px 10px;margin-top:-4px">'
+          +n+' lista(s) já enviada(s) em bimestre(s) anterior(es), somando <strong>R$ '
+          +Number(r.totalListas).toLocaleString('pt-BR',{minimumFractionDigits:2})
+          +'</strong>. Informe aqui apenas a lista deste bimestre.</div>';
+      })()}
     </div>`:''}`;  
   }
 
@@ -2734,15 +2762,32 @@ function gerarPDFBase64(){
       else{doc.setFillColor(...GL);doc.rect(10,y-4,190,9,'F');doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...GM);}
       doc.text(t,14,y+1);y+=10;
     }
+    // Coluna onde COMEÇAM todos os valores. Fixa, para a coluna sair alinhada.
+    const VX_ROW=72, VX_DEST=78;
+    // Desenha o rótulo em x=14; se for largo demais para a coluna, reduz o
+    // corpo da fonte em vez de invadir o espaço do valor.
+    function _desenharRotulo(l,limite){
+      const lim=limite||VX_ROW;
+      const w=doc.getTextWidth(l);
+      if(14+w>lim-2){
+        const f=8.5*Math.max(0.72,(lim-16)/w);
+        doc.setFontSize(f);doc.text(l,14,y);doc.setFontSize(8.5);
+      }else{
+        doc.text(l,14,y);
+      }
+    }
     function row(l,v){
       if(!v||String(v).trim()===''||v==='undefined')return;
-      chk(7);doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GR);doc.text(l,14,y);
+      chk(7);doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GR);
+      // (o rótulo é desenhado logo abaixo, já ajustado à largura da coluna)
+      _desenharRotulo(l);
       doc.setFont('helvetica','normal');doc.setTextColor(...BK);
-      // O valor ficava fixo em x=62 e rótulos longos ("Rendimentos no Período
-      // (Município):") passavam por baixo dele, sobrepondo os textos. Agora a
-      // coluna do valor recua conforme a largura real do rótulo.
-      const vx=Math.max(62,14+doc.getTextWidth(l)+3);
-      const lines=doc.splitTextToSize(String(v),196-vx);doc.text(lines,vx,y);y+=Math.max(6,lines.length*5.2);
+      // Coluna do valor FIXA em x=VX_ROW para todas as linhas — assim a coluna
+      // inteira fica alinhada. Antes o x era fixo em 62, estreito demais: o
+      // rótulo mais longo ("Rendimentos no Período (Município):") passava por
+      // baixo do valor e os textos se sobrepunham. Se algum rótulo futuro
+      // exceder a coluna, ele é reduzido de corpo em vez de invadir o valor.
+      const lines=doc.splitTextToSize(String(v),196-VX_ROW);doc.text(lines,VX_ROW,y);y+=Math.max(6,lines.length*5.2);
     }
     // Linha destacada com fundo colorido — usada para chamar atenção pra quem
     // foi responsável por preencher/editar cada ação especificamente.
@@ -2750,10 +2795,10 @@ function gerarPDFBase64(){
       if(!v||String(v).trim()===''||v==='undefined')return;
       chk(9);
       doc.setFillColor(232,245,233);doc.rect(12,y-4.5,184,8,'F');
-      doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GD);doc.text(l,14,y);
+      doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(...GD);
+      _desenharRotulo(l,VX_DEST);
       doc.setTextColor(...BK);
-      const vx2=Math.max(72,14+doc.getTextWidth(l)+3);
-      const lines=doc.splitTextToSize(String(v),192-vx2);doc.text(lines,vx2,y);y+=Math.max(8,lines.length*5.2+2);
+      const lines=doc.splitTextToSize(String(v),192-VX_DEST);doc.text(lines,VX_DEST,y);y+=Math.max(8,lines.length*5.2+2);
     }
     doc.setFillColor(...GD);doc.rect(0,0,210,28,'F');
     doc.setFontSize(13);doc.setFont('helvetica','bold');doc.setTextColor(...WH);
@@ -2766,7 +2811,7 @@ function gerarPDFBase64(){
     sec('IDENTIFICAÇÃO DO MUNICÍPIO');
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
     row('Valor Total do Plano:',(function(){const t=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
-    row('Valor Total Já Recebido:',(function(){const t=((municipio._recebidoBase||0)+calcValorRecebidoBimestre());return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
+    row('Valor Total Já Recebido:',(function(){const t=(municipio._recebidoBase||0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
     row('Rendimentos no Período (Município):',municipio.rendimentos_periodo?'R$ '+municipio.rendimentos_periodo:'');
     const _acqsValidas=aquisicoes.filter(function(a){return a.acao_tipo;});
     _acqsValidas.forEach(function(a,i){
@@ -3008,8 +3053,8 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_total_utilizado:valorTotalUtilizadoFinal,
       editado_por:a._editadoPor||municipio.responsavel||'',
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
-      valor_total_recebido:((municipio._recebidoBase||0)+calcValorRecebidoBimestre()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-      rendimentos_acumulados:((municipio._rendimentosBase||0)+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      valor_total_recebido:(municipio._recebidoBase||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      rendimentos_acumulados:(_somaRendimentosAnteriores()+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       docs_marcados:docsOk,
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
@@ -4683,9 +4728,81 @@ async function carregarHistoricoBimestreAnterior(instrumento, tipo){
   }catch(e){ return null; }
 }
 
+// Monta o histórico resumido de uma ação a partir dos registros de bimestres
+// anteriores (já ordenados do mais antigo para o mais recente).
+function _montarResumoAnterior(registros){
+  const periodos=[];
+  let totalListas=0, ultimoExecutado=0;
+  (registros||[]).forEach(function(r){
+    const vLista=parseValorSheet(r.valor_lista_equipamentos||0);
+    const vExec =parseValorSheet(r.valor_total_utilizado||r.valor_executado||0);
+    if(vLista>0)totalListas+=vLista;
+    if(vExec>0)ultimoExecutado=vExec; // valor_total_utilizado já é acumulado
+    periodos.push({
+      bimestre:r.bimestre||'', ano:r.ano||'',
+      executado:vExec, lista:vLista,
+      situacao:r.situacao_entrega||r._status_contrat||'',
+      pct:r.pct_acumulado_periodo||'',
+      quantidade:r.quantidade||'',
+      responsavel:r.editado_por||''
+    });
+  });
+  return {periodos:periodos, totalListas:totalListas, executadoAcumulado:ultimoExecutado};
+}
+
+// Card "O que já foi informado antes" — aparece em toda ação que tenha
+// histórico, para situar quem está preenchendo agora.
+function renderResumoAnterior(){
+  const a=acq();
+  const r=a&&a._resumoAnterior;
+  if(!r||!r.periodos||!r.periodos.length)return '';
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  const cel='padding:5px 8px;font-size:11.5px;border-bottom:1px solid var(--border2);color:var(--ink2)';
+  const th='padding:5px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);text-align:left';
+  const temLista=r.totalListas>0;
+
+  return '<div class="card" style="border-left:3px solid var(--g400);background:var(--g50)">'
+    +'<div class="card-title">O que já foi informado em bimestres anteriores</div>'
+    +'<p class="hint" style="margin:0 0 10px">Somente leitura — serve para situar quem está preenchendo agora.</p>'
+    +'<div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;background:#fff">'
+      +'<table style="width:100%;border-collapse:collapse">'
+        +'<tr style="background:var(--g50)">'
+          +'<th style="'+th+'">Bimestre</th>'
+          +'<th style="'+th+';text-align:right">Executado</th>'
+          +(temLista?'<th style="'+th+';text-align:right">Lista enviada</th>':'')
+          +'<th style="'+th+'">Situação</th>'
+        +'</tr>'
+        +r.periodos.map(function(p){
+          return '<tr>'
+            +'<td style="'+cel+'">'+(p.bimestre||'—')+(p.ano?' / '+p.ano:'')+'</td>'
+            +'<td style="'+cel+';text-align:right">'+(p.executado>0?fmt(p.executado):'—')+'</td>'
+            +(temLista?'<td style="'+cel+';text-align:right">'+(p.lista>0?fmt(p.lista):'—')+'</td>':'')
+            +'<td style="'+cel+'">'+(p.situacao||'—')+(p.pct?' · '+p.pct+'%':'')+'</td>'
+          +'</tr>';
+        }).join('')
+      +'</table>'
+    +'</div>'
+    +(temLista
+      ? '<div style="margin-top:10px;padding:8px 10px;background:#fff;border:1px solid var(--g400);border-radius:7px;font-size:12px;color:var(--ink2)">'
+        +'<strong>'+r.periodos.filter(function(p){return p.lista>0;}).length+' lista(s) de equipamentos</strong> já enviada(s) em bimestre(s) anterior(es), '
+        +'no valor total de <strong>'+fmt(r.totalListas)+'</strong>. Não é preciso reenviar — anexe apenas listas novas deste bimestre.'
+      +'</div>'
+      : '')
+    +(r.executadoAcumulado>0
+      ? '<div style="margin-top:8px;font-size:12px;color:var(--ink3)">Valor executado acumulado até o bimestre anterior: <strong style="color:var(--g800)">'+fmt(r.executadoAcumulado)+'</strong></div>'
+      : '')
+  +'</div>';
+}
+
 async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!registros || !registros.length) return;
   const reg = registros[registros.length-1];
+
+  // 0. RESUMO DOS BIMESTRES ANTERIORES — quem preenche o bimestre atual pode
+  // ser outra pessoa, então precisa ver o que já foi informado antes: valor
+  // executado, listas de equipamentos enviadas e situação de cada período.
+  // Guardado na própria ação para o card "O que já foi informado antes".
+  acqObj._resumoAnterior = _montarResumoAnterior(registros);
 
   // 1. Dados FIXOS da obra: endereço, empresa, fiscal e data de início não
   // mudam de um bimestre para o outro — pedir de novo a cada período só gera
@@ -5025,8 +5142,10 @@ function _buildAtividadeEditCard(editIdx){
       +'<select onchange="_onSelecionarAtividade('+editIdx+',this)" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);color:var(--ink);background:#fff">'
         +'<option value="">— selecione uma atividade —</option>'
         +disponiveis.map(function(it){return '<option value="'+it.num+'" '+(at.item_num==it.num?'selected':'')+'>'+it.num+'. '+it.descricao.substring(0,90)+'</option>';}).join('')
+        // A lista não é taxativa: "Outra" libera a descrição livre.
+        +'<option value="outra" '+(at.item_num==='outra'?'selected':'')+'>Outra atividade (descrever abaixo)</option>'
       +'</select>'
-      +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Ou preencha livremente os campos abaixo</div>'
+      +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'+(at.item_num==='outra'?'Descreva a atividade no campo abaixo — obrigatório.':'Ou preencha livremente os campos abaixo')+'</div>'
     +'</div>')
     :'';
 
@@ -5095,23 +5214,50 @@ function _onSelecionarAtividade(idx, sel){
   const a=acq();
   if(!a._atividades||!a._atividades[idx]) return;
   const num=parseInt(sel.value);
-  if(!num){ a._atividades[idx].item_num=''; a._atividades[idx].descricao=''; _renderAtividadesCardDOM(); return; }
+  // "Outra": mantém a marcação e libera a descrição livre (obrigatória).
+  if(sel.value==='outra'){
+    const at=a._atividades[idx];
+    at.item_num='outra';
+    if(at._descAuto){ at.descricao=''; delete at._descAuto; }
+    if(at._unidadeAuto){ at.unidade_medida=''; delete at._unidadeAuto; }
+    _renderAtividadesCardDOM();
+    return;
+  }
+  if(!num){
+    const at=a._atividades[idx];
+    at.item_num=''; at.descricao='';
+    if(at._unidadeAuto){ at.unidade_medida=''; delete at._unidadeAuto; }
+    _renderAtividadesCardDOM(); return;
+  }
   const lista=_getListaCusteioAtual();
   const item=lista.find(function(it){return it.num===num;});
   if(item){
-    a._atividades[idx].item_num=item.num;
-    a._atividades[idx].descricao=item.descricao;
-    // Itens de contratação de equipe já sugerem a unidade "Pessoa" — é onde o
+    const at=a._atividades[idx];
+    at.item_num=item.num;
+    at.descricao=item.descricao;
+    // Itens de contratação de equipe sugerem a unidade "Pessoa" — é onde o
     // número de contratações passa a ser registrado, no lugar do antigo card
     // separado de contratação de pessoal.
-    if(!String(a._atividades[idx].unidade_medida||'').trim()&&_ehContratacaoDePessoal(item.descricao)){
-      a._atividades[idx].unidade_medida='Pessoa';
+    // A sugestão é marcada com _unidadeAuto: se a pessoa trocar para um item
+    // que não é de pessoal, a sugestão antiga é retirada em vez de ficar
+    // grudada no campo. O que foi digitado à mão nunca é mexido.
+    const ehPessoal=_ehContratacaoDePessoal(item.descricao);
+    if(ehPessoal){
+      if(!String(at.unidade_medida||'').trim()){ at.unidade_medida='Pessoa'; at._unidadeAuto=true; }
+    }else if(at._unidadeAuto){
+      at.unidade_medida=''; delete at._unidadeAuto;
     }
     _renderAtividadesCardDOM();
   }
 }
 
-function _updAtiv(idx,f,v){const a=acq();if(a._atividades&&a._atividades[idx])a._atividades[idx][f]=v;}
+function _updAtiv(idx,f,v){
+  const a=acq();
+  if(!a._atividades||!a._atividades[idx])return;
+  a._atividades[idx][f]=v;
+  // Digitar na unidade de medida tira a marca de "sugerido pelo sistema".
+  if(f==='unidade_medida')delete a._atividades[idx]._unidadeAuto;
+}
 function _updEmpresaAtiv(idx,ei,f,v){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas[ei])a._atividades[idx].empresas[ei][f]=v;}
 function _addEmpresaAtiv(idx){const a=acq();if(a._atividades&&a._atividades[idx]){a._atividades[idx].empresas.push({nome:'',cnpj:'',valor:'',homologacao:'',prazo:''});_renderAtividadesCardDOM();}}
 function _removeEmpresaAtiv(idx,ei){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas.length>1){a._atividades[idx].empresas.splice(ei,1);_renderAtividadesCardDOM();}}
@@ -5187,7 +5333,16 @@ function excluirAtividade(idx){
 function confirmarAtividade(idx){
   const a=acq();if(!a._atividades||!a._atividades[idx])return;
   const at=a._atividades[idx];
-  if(!at.descricao&&!at.item_num){showAlertModal('Selecione ou descreva a atividade antes de confirmar.','⚠️');return;}
+  // A descrição é o que realmente identifica a atividade. Ações sem lista
+  // pré-definida (ex: "Custeio para o Hospital Vital Brazil") só têm o campo
+  // livre — exigir item da lista ali travava a confirmação para sempre.
+  // Com "Outra" selecionada, a descrição é obrigatória por definição.
+  if(!String(at.descricao||'').trim()){
+    showAlertModal(at.item_num==='outra'
+      ? 'Descreva a atividade no campo "Detalhamento / Descrição" antes de confirmar.'
+      : 'Descreva a atividade antes de confirmar.','⚠️');
+    return;
+  }
   const STATUS_EXIGE_VALOR=['Contratado','Em execução','Concluído'];
   // O card de atividade não pede dados de empresa — só descrição, status e
   // valor. Exigir razão social aqui travava a confirmação para sempre, já que
