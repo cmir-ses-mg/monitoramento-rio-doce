@@ -1447,8 +1447,29 @@ function _sincronizarEnderecoObra(a){
 function _marcarTocado(a){
   if(!a)return;
   a._touchedAt=Date.now();
-  a._editadoPor=(_sessaoUsuario&&(_sessaoUsuario.nome||_sessaoUsuario.email))||municipio.responsavel||'';
+  // "Editado por" registra QUEM mexeu — não cai no responsável, senão as duas
+  // colunas ficariam sempre iguais e a informação perderia utilidade. Fica
+  // vazio quando não há sessão identificada.
+  const quem=_sessaoUsuario&&(_sessaoUsuario.nome||_sessaoUsuario.email);
+  if(quem){
+    a._editadoPor=quem;
+    a._editadoEm=new Date().toISOString();
+  }
 }
+// Trocar bimestre/ano invalida o que estava carregado do período anterior.
+function onTrocarPeriodo(el){
+  sv(el);
+  _rendHistorico=null;          // a tabela de rendimentos é por período
+  _ultimoCapaEnviado='';
+  if(municipio.bimestre&&municipio.ano){
+    showLoading('Verificando preenchimentos deste período...');
+    carregarRendimentosHistorico();
+    setTimeout(function(){renderAll();hideLoading();},250);
+  }else{
+    renderAll();
+  }
+}
+
 function sv(el){
   if(!el.name)return;
   if(el.dataset.store==='mun')municipio[el.name]=el.value;
@@ -2071,12 +2092,12 @@ function contentHTML(){
     +_campoMunicipio
     +'<div class="row2">'
       +'<div class="field"><label>Bimestre</label>'
-        +'<select name="bimestre" data-store="mun" onchange="sv(this);renderAll()">'
+        +'<select name="bimestre" data-store="mun" onchange="onTrocarPeriodo(this)">'
           +'<option value="">Selecione...</option>'
           +['1º Bimestre','2º Bimestre','3º Bimestre','4º Bimestre','5º Bimestre','6º Bimestre'].map(function(b){return '<option value="'+b+'"'+(municipio.bimestre===b?' selected':'')+'>'+b+'</option>';}).join('')
         +'</select></div>'
       +'<div class="field"><label>Ano</label>'
-        +'<select name="ano" data-store="mun" onchange="sv(this);renderAll()">'
+        +'<select name="ano" data-store="mun" onchange="onTrocarPeriodo(this)">'
           +'<option value="">Selecione...</option>'
           +[2026,2027,2028,2029,2030,2031,2032].map(function(a){return '<option value="'+a+'"'+(municipio.ano==a?' selected':'')+'>'+a+'</option>';}).join('')
         +'</select></div>'
@@ -2589,7 +2610,19 @@ function nextPhase(){
     if(!municipio.municipio){showAlertModal(_adm?'Selecione o beneficiário.':'Município não identificado. Faça login novamente.','⚠️');return;}
     if(!municipio.bimestre||!municipio.ano){showAlertModal('Selecione o bimestre e o ano.','⚠️');return;}
     if(!_adm&&!String(municipio.responsavel||'').trim()){showAlertModal('Informe o nome do responsável pelo preenchimento.','⚠️');return;}
-    phase=1;renderAll();return;
+    // Abrir o período dispara buscas no servidor (sessão parcial de colegas,
+    // histórico de bimestres anteriores, endereços, rendimentos). Sem o
+    // loading, a tela ficava parada e depois se preenchia sozinha.
+    showLoading('Carregando o período...');
+    phase=1;renderAll();
+    (async function(){
+      try{
+        const aplicadas=await mesclarSessaoDoServidor();
+        if(aplicadas>0){migrarAquisicoesAgregadas();renderAll();}
+      }catch(e){ console.warn('abertura do período:',e); }
+      setTimeout(function(){restoreInputs();applyConditionals();hideLoading();},120);
+    })();
+    return;
   }
   // Validar seleção de modo na fase 1
   if(phase===1&&(!municipio.bimestre||!municipio.ano)){
@@ -2998,7 +3031,10 @@ function gerarPDFBase64(){
       row('Meta prevista:',a.meta_prevista);row('Status da meta:',a.status_meta);
       row('Resultados alcançados:',(a.resultados_alcancados||[]).join('; '));
       row('Atendimentos realizados:',a.atendimentos_realizados);
-      rowDestacado('Preenchido/editado por:',a._editadoPor||municipio.responsavel||'');
+      rowDestacado('Responsável:',municipio.responsavel||'');
+      if(a._editadoPor&&a._editadoPor!==municipio.responsavel){
+        rowDestacado('Editado por:',a._editadoPor+(a._editadoEm?' · '+(typeof a._editadoEm==='string'&&a._editadoEm.indexOf('T')>0?new Date(a._editadoEm).toLocaleString('pt-BR'):a._editadoEm):''));
+      }
     });
     y+=8;chk(20);
     doc.setDrawColor(...GM);doc.setLineWidth(0.3);doc.line(14,y,196,y);
@@ -3147,7 +3183,11 @@ async function enviarAcaoSheet(a, tipoRegistro){
     const payload=Object.assign({},municipio,a,{
       _docs:undefined,_key:undefined,_locked:undefined,_sent:undefined,_sentAt:undefined,_corrections:undefined,
       valor_total_utilizado:valorTotalUtilizadoFinal,
-      editado_por:a._editadoPor||municipio.responsavel||'',
+      // Criado por = responsável indicado pelo município (não muda).
+      // Editado por = quem alterou depois; vazio se ninguém alterou.
+      criado_por:municipio.responsavel||'',
+      editado_por:a._editadoPor||'',
+      editado_em:a._editadoEm?new Date(a._editadoEm).toLocaleString('pt-BR'):'',
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
       valor_total_recebido:(municipio._recebidoBase||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       rendimentos_acumulados:(_somaRendimentosAnteriores()+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
@@ -3440,10 +3480,12 @@ function listSessions(){
 
 
 // ── FUNÇÕES DE SESSÃO ────────────────────────────────────────────────────────
-function resumeSession(){
+async function resumeSession(){
   const key=sessionKey();
+  showLoading('Retomando preenchimento...');
   const savedAt=loadSession(key);
-  if(savedAt){
+  if(!savedAt){ hideLoading(); return; }
+  {
     aquisicoes.forEach(function(a){
       if(a.acao_instrumento||a.acao_tipo){
         a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
@@ -3460,10 +3502,14 @@ function resumeSession(){
       restoreInputs();
       applyConditionals();
     },100);
-    // Buscar em paralelo o que colegas preencheram em outras máquinas
-    mesclarSessaoDoServidor().then(function(aplicadas){
-      if(aplicadas>0){migrarAquisicoesAgregadas();renderAll();setTimeout(function(){restoreInputs();applyConditionals();},100);}
-    });
+    // Esperar o que colegas preencheram em outras máquinas antes de liberar a
+    // tela: antes isso vinha depois, e a página aparecia estática e só então se
+    // preenchia sozinha, dando a impressão de travamento.
+    try{
+      const aplicadas=await mesclarSessaoDoServidor();
+      if(aplicadas>0){migrarAquisicoesAgregadas();renderAll();}
+    }catch(e){ console.warn('mesclarSessaoDoServidor:',e); }
+    setTimeout(function(){restoreInputs();applyConditionals();hideLoading();},100);
   }
 }
 
@@ -3763,6 +3809,7 @@ function registroParaAcq(reg){
   const _meta=buscarMetadadosPlano(municipio.municipio,reg.acao_instrumento,reg.acao_tipo);
   const a = {
     _editadoPor:           reg.editado_por      || '',
+    _editadoEm:            reg.editado_em       || '',
     endereco_obra:         reg.endereco_obra    || '',
     valor_lista_equipamentos: reg.valor_lista_equipamentos || '',
     acao_instrumento:      reg.acao_instrumento || '',
@@ -4296,7 +4343,7 @@ function calcTotalUtilizado(){
 }
 
 // ══ LOGIN ════════════════════════════════════════════════════════════════════
-const ADMIN_EMAILS=['fabiana.fabid@gmail.com','fabiana.santos@saude.mg.gov.br'];
+const ADMIN_EMAILS=['fabiana.fabid@gmail.com','cmir.ses@gmail.com'];
 let _sessaoUsuario=null;
 
 // Administrador = perfil devolvido pelo servidor, ou e-mail na lista fixa
