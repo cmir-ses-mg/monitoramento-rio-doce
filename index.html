@@ -2204,13 +2204,39 @@ function contentHTML(){
         ${fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
         ${fld('Data de Início','data_inicio_obra','date')}
       </div>
+      ${(()=>{
+        // A data de início é da obra, não do bimestre: se veio de um período
+        // anterior, deixamos isso explícito para ninguém achar que precisa
+        // redigitar (ou pior, informar outra data).
+        const r=acq()._resumoAnterior;
+        const pAnt=r&&r.periodos&&r.periodos.length?r.periodos[r.periodos.length-1]:null;
+        return (acq().data_inicio_obra&&pAnt)
+          ? '<div style="font-size:11px;color:var(--ink3);margin:-6px 0 12px">Data informada em bimestre anterior — altere apenas se estiver incorreta.</div>'
+          : '';
+      })()}
       <div class="row2">
         ${fld('Fiscal Responsável','fiscal_responsavel','text','Exemplo de nome e registro')}
         <div></div>
       </div>
       <div class="row2">
         ${fld('% Medido no Período','pct_medido_periodo','text','Ex: 15')}
-        ${fld('% Acumulado até o Período','pct_acumulado_periodo','text','Ex: 45')}
+        ${(()=>{
+          // O acumulado é a soma do que já foi medido nos bimestres anteriores
+          // com o medido agora — calcular evita divergência entre os dois campos.
+          const a=acq();
+          const ant=_pctAcumuladoAnterior(a);
+          const atual=parseFloat(String(a.pct_medido_periodo||'').replace(',','.'))||0;
+          const tot=Math.min(100,ant+atual);
+          a.pct_acumulado_periodo=tot?String(tot.toFixed(2)).replace('.',','):'';
+          return '<div class="field"><label>% Acumulado até o Período</label>'
+            +'<div style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13.5px;font-weight:700;color:var(--g800)">'
+              +(tot?tot.toFixed(2).replace('.',',')+'%':'—')
+            +'</div>'
+            +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'
+              +(ant?'Calculado: '+ant.toFixed(2).replace('.',',')+'% de bimestres anteriores + '+atual.toFixed(2).replace('.',',')+'% deste período.'
+                  :'Calculado automaticamente a partir do % medido no período.')
+            +'</div></div>';
+        })()}
       </div>
       ${fld('Observações','observacoes_oficial','textarea','Exemplo de observações adicionais')}
     </div>
@@ -2245,10 +2271,11 @@ function contentHTML(){
           +'</div>'
           +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;color:'+statusBadgeColor+'">'+status+'</span>'
         +'</div>'
-        +(status==='Planejamento'||status==='Processo aberto'?'<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Avance o status na etapa "Contratação" para registrar a execução.</div>':'')
+        +(status==='Planejamento'||status==='Processo aberto'
+          ? '<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Avance o status na etapa "Contratação" para registrar a execução.</div>'
+          : renderNotasFiscaisCard('ativ_'+realIdx,{embutido:true}))
       +'</div>';
     }).join('')
-    +renderNotasFiscaisCard()
     +'<div class="card">'
       +'<div class="card-title">Documentos comprobatórios</div>'
       +'<p class="hint" style="margin-bottom:12px">Clique em cada documento para marcá-lo e anexar o arquivo.</p>'
@@ -2277,7 +2304,9 @@ function contentHTML(){
       ${chipsHTML('Houve atraso?','houve_atraso',['Sim','Não'])}
       ${fld('Se houve atraso, justificar','justificativa_atraso','textarea','Descreva o motivo do atraso...')}
     </div>
-    ${renderNotasFiscaisCard()}`
+    ${(municipio.situacao_entrega||acq().situacao_entrega||'')==='Não iniciada'||!(acq().situacao_entrega||'')
+      ? ''
+      : renderNotasFiscaisCard('',{embutido:false})}`
   : lockedBanner
     +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Patrimônio')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
     +'<p>Situação da entrega por lote — notas fiscais e incorporação patrimonial.</p></div>'
@@ -2298,9 +2327,11 @@ function contentHTML(){
         +(status==='Planejamento'||status==='Processo aberto'
           ? '<div style="font-size:12.5px;color:var(--ink3);font-style:italic;padding:10px 0 0">Este lote ainda não foi contratado. Atualize o status na etapa de Contratação.</div>'
           : '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 0">Contrato '+(lote.num_contrato||'—')+' · Previsto: '+(lote.data_prev_entrega?new Date(lote.data_prev_entrega+'T00:00').toLocaleDateString('pt-BR'):'—')+'. Para atualizar a situação da entrega, use a etapa de Contratação.</div>')
+        +(status==='Planejamento'||status==='Processo aberto'||status==='Contratado'
+          ? ''
+          : renderNotasFiscaisCard('lote_'+li,{embutido:true}))
       +'</div>';
     }).join('')
-    +renderNotasFiscaisCard()
     +'<div class="card">'
       +'<div class="card-title">Documentos comprobat\u00f3rios</div>'
       +'<p class="hint" style="margin-bottom:12px">Clique em cada documento para marc\u00e1-lo e anexar o arquivo.</p>'
@@ -4265,7 +4296,7 @@ function calcTotalUtilizado(){
 }
 
 // ══ LOGIN ════════════════════════════════════════════════════════════════════
-const ADMIN_EMAILS=['fabiana.fabid@gmail.com','cmir.ses@gmail.com'];
+const ADMIN_EMAILS=['fabiana.fabid@gmail.com','fabiana.santos@saude.mg.gov.br'];
 let _sessaoUsuario=null;
 
 // Administrador = perfil devolvido pelo servidor, ou e-mail na lista fixa
@@ -5252,7 +5283,7 @@ function limparAtividadesEmBranco(a){
 const UNID_MEDIDA=['Pessoa','Profissional','Unidade','Serviço','Mês','Hora','Dia','Diária','Km','Metro','Metro quadrado','Litro','Quilograma','Coleta','Amostra','Visita','Inspeção','Verba'];
 
 function _notaVazia(){
-  return {descricao:'',num_nf:'',serie_nf:'',data_nf:'',valor:'',cnes:'',quantidade:'',unidade_medida:'',confirmado:false};
+  return {ref:'',descricao:'',num_nf:'',serie_nf:'',data_nf:'',valor:'',cnes:'',quantidade:'',unidade_medida:'',confirmado:false};
 }
 function _notaEmBranco(n){
   if(!n||n.confirmado)return false;
@@ -5264,10 +5295,22 @@ function limparNotasEmBranco(a){
   if(!a||!a._notas)return;
   a._notas=a._notas.filter(function(n){return !_notaEmBranco(n);});
 }
-function _addNota(){
+function _addNota(ref){
   const a=acq();
   if(!a._notas)a._notas=[];
-  a._notas.push(_notaVazia());
+  const n=_notaVazia();
+  n.ref=ref||'';
+  // Nota criada dentro de uma atividade herda o que já foi descrito nela.
+  if(n.ref.indexOf('ativ_')===0){
+    const at=(a._atividades||[])[parseInt(n.ref.slice(5))];
+    if(at){
+      n.descricao=at.descricao||'';
+      n.quantidade=at.quantidade||'';
+      n.unidade_medida=at.unidade_medida||'';
+      n.cnes=at.cnes||'';
+    }
+  }
+  a._notas.push(n);
   _marcarTocado(a); saveSession(); renderAll();
 }
 function _updNota(idx,campo,valor){
@@ -5280,10 +5323,13 @@ function _confirmarNota(idx){
   const n=a._notas&&a._notas[idx];
   if(!n)return;
   const servico=a.modalidade_objeto==='servico';
+  const _daAtiv=(n.ref||'').indexOf('ativ_')===0;
   if(!String(n.descricao||'').trim()){
     showAlertModal(servico?'Descreva o serviço executado.':'Descreva o item adquirido.','⚠️');return;
   }
-  if(!servico&&!String(n.num_nf||'').trim()){
+  // Nº da NF só é exigido na aquisição: nem toda execução de custeio gera nota
+  // numerada (diárias, verbas), e travar aí impediria o registro do que existe.
+  if(!servico&&!_daAtiv&&!String(n.num_nf||'').trim()){
     showAlertModal('Informe o número da nota fiscal.','⚠️');return;
   }
   if(!(parseBRL(n.valor||'')>0)){
@@ -5302,32 +5348,63 @@ function _excluirNota(idx){
   a._notas.splice(idx,1);
   _marcarTocado(a); saveSession(); renderAll();
 }
-function totalNotas(a){
-  return ((a&&a._notas)||[]).filter(function(n){return n.confirmado;})
+function totalNotas(a,ref){
+  return ((a&&a._notas)||[])
+    .filter(function(n){return n.confirmado&&(ref===undefined||(n.ref||'')===ref);})
     .reduce(function(s,n){return s+parseBRL(n.valor||'');},0);
 }
 
 // Card completo da etapa de Entrega.
-function renderNotasFiscaisCard(){
+// Soma dos percentuais medidos nos bimestres já enviados desta ação.
+function _pctAcumuladoAnterior(a){
+  const r=a&&a._resumoAnterior;
+  if(!r||!r.periodos||!r.periodos.length)return 0;
+  // O último acumulado registrado já embute os anteriores.
+  for(let i=r.periodos.length-1;i>=0;i--){
+    const p=parseFloat(String(r.periodos[i].pct||'').replace(',','.'));
+    if(p>0)return p;
+  }
+  return 0;
+}
+
+// `ref` amarra as notas ao item que as gerou (atividade A1, lote L2...), para
+// que a nota apareça dentro do item em vez de solta no fim da página. Sem ref,
+// o bloco vale para a ação inteira (aquisição sem lotes).
+function renderNotasFiscaisCard(ref,opts){
+  opts=opts||{};
   const a=acq();
   if(!a._notas)a._notas=[];
   const servico=a.modalidade_objeto==='servico';
+  const _ref=ref||'';
+  const _daqui=function(n){return (n.ref||'')===_ref;};
+  const embutido=!!opts.embutido;
+  // Numa atividade de custeio, descrição, quantidade, unidade e CNES já foram
+  // informados no próprio card da atividade — repetir aqui só duplicaria
+  // digitação e abriria espaço para divergência. Herdamos esses dados e
+  // pedimos apenas o que é da nota.
+  const _ativRef=(_ref.indexOf('ativ_')===0)?(a._atividades||[])[parseInt(_ref.slice(5))]:null;
+  const herdaDescricao=!!_ativRef;
   const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
   const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
   const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
   const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
 
-  let html='<div class="card" style="border-left:3px solid var(--g500)">'
-    +'<div class="card-title">'+(servico?'Serviços executados':'Itens adquiridos e notas fiscais')+'</div>'
-    +'<p class="hint" style="margin-bottom:12px">'
-      +(servico
-        ? 'Registre cada serviço executado no período, com a nota fiscal correspondente.'
-        : 'Registre cada nota fiscal dos itens adquiridos no período.')
-    +'</p>';
+  let html = embutido
+    ? '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border2)">'
+      +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">'
+        +(servico?'Execução e nota fiscal':'Notas fiscais deste lote')
+      +'</div>'
+    : '<div class="card" style="border-left:3px solid var(--g500)">'
+      +'<div class="card-title">'+(servico?'Serviços executados':'Itens adquiridos e notas fiscais')+'</div>'
+      +'<p class="hint" style="margin-bottom:12px">'
+        +(servico
+          ? 'Registre cada serviço executado no período, com a nota fiscal correspondente.'
+          : 'Registre cada nota fiscal dos itens adquiridos no período.')
+        +'</p>';
 
   // Confirmadas
   a._notas.forEach(function(n,i){
-    if(!n.confirmado)return;
+    if(!n.confirmado||!_daqui(n))return;
     const resumo=servico
       ? [n.quantidade?n.quantidade+(n.unidade_medida?' '+n.unidade_medida:''):'', n.cnes?'CNES '+n.cnes:''].filter(Boolean).join(' · ')
       : ['NF '+(n.num_nf||'—')+(n.serie_nf?'/'+n.serie_nf:''), n.data_nf?new Date(n.data_nf+'T00:00').toLocaleDateString('pt-BR'):'', n.cnes?'CNES '+n.cnes:''].filter(Boolean).join(' · ');
@@ -5345,16 +5422,33 @@ function renderNotasFiscaisCard(){
 
   // Em edição
   a._notas.forEach(function(n,i){
-    if(n.confirmado)return;
+    if(n.confirmado||!_daqui(n))return;
     html+='<div style="border:1.5px solid var(--g500);border-radius:9px;padding:14px;margin-bottom:10px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
         +'<div style="font-size:13px;font-weight:700;color:var(--ink)">\u270e '+(servico?'Serviço':'Nota fiscal')+' '+(i+1)+'</div>'
         +'<button type="button" onclick="_excluirNota('+i+')" style="padding:3px 10px;font-size:11px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
       +'</div>'
-      +'<div style="margin-bottom:8px"><label style="'+lbl+'">'+(servico?'Descrição do serviço / indicador de custeio':'Descrição do item')+' <span class="req">*</span></label>'
-        +'<input type="text" oninput="_updNota('+i+',\'descricao\',this.value)" value="'+esc(n.descricao)+'" placeholder="'+(servico?'Ex: Coleta e análise de amostras de água':'Ex: Cadeira odontológica completa')+'" style="'+inp+'"/></div>';
+      +(herdaDescricao
+        ? ''
+        : '<div style="margin-bottom:8px"><label style="'+lbl+'">'+(servico?'Descrição do serviço / indicador de custeio':'Descrição do item')+' <span class="req">*</span></label>'
+          +'<input type="text" oninput="_updNota('+i+',\'descricao\',this.value)" value="'+esc(n.descricao)+'" placeholder="'+(servico?'Ex: Coleta e análise de amostras de água':'Ex: Cadeira odontológica completa')+'" style="'+inp+'"/></div>');
 
-    if(servico){
+    if(servico&&herdaDescricao){
+      // Herdou os dados da atividade: aqui só o que é da nota fiscal.
+      html+='<div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px;padding:8px 10px;background:var(--g50);border-radius:6px">'
+          +esc(n.descricao)
+          +(n.quantidade?' · '+esc(n.quantidade)+(n.unidade_medida?' '+esc(n.unidade_medida):''):'')
+          +(n.cnes?' · CNES '+esc(n.cnes):'')
+        +'</div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+          +'<div><label style="'+lbl+'">Nº da NF</label>'
+            +'<input type="text" oninput="_updNota('+i+',\'num_nf\',this.value)" value="'+esc(n.num_nf)+'" placeholder="Se houver" style="'+inp+'"/></div>'
+          +'<div><label style="'+lbl+'">Data da NF</label>'
+            +'<input type="date" oninput="_updNota('+i+',\'data_nf\',this.value)" value="'+esc(n.data_nf)+'" style="'+inp+'"/></div>'
+          +'<div><label style="'+lbl+'">Valor (R$) <span class="req">*</span></label>'
+            +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+        +'</div>';
+    }else if(servico){
       html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">'
         +'<div><label style="'+lbl+'">Quantidade</label>'
           +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'quantidade\',this.value)" value="'+esc(n.quantidade)+'" placeholder="Ex: 10" style="'+inp+'"/></div>'
@@ -5390,11 +5484,11 @@ function renderNotasFiscaisCard(){
     +'</div></div>';
   });
 
-  const vazio=a._notas.length===0;
+  const vazio=a._notas.filter(_daqui).length===0;
   html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma '+(servico?'execução':'nota fiscal')+' registrada ainda.</div>':'')
-    +'<button type="button" onclick="_addNota()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar '+(vazio?(servico?'execução':'nota fiscal'):'outra')+'</button>';
+    +'<button type="button" onclick="_addNota(\''+_ref+'\')" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar '+(vazio?(servico?'execução':'nota fiscal'):'outra')+'</button>';
 
-  const tot=totalNotas(a);
+  const tot=totalNotas(a,_ref);
   if(tot>0){
     html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);text-align:right;font-size:12.5px;color:var(--ink3)">'
       +'Total '+(servico?'executado':'em notas')+': <strong style="color:var(--g800);font-size:14px">'+fmt(tot)+'</strong></div>';
