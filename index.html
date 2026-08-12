@@ -1613,6 +1613,19 @@ async function carregarRendimentosHistorico(){
     const resp=await fetch(url);
     const data=await resp.json();
     _rendHistorico=(data&&data.status==='ok')?(data.periodos||[]):[];
+    // Se ESTE período já foi enviado, o rendimento está gravado na planilha —
+    // restaurar aqui evita que, ao reabrir um bimestre já enviado, o campo
+    // apareça vazio e marcado como obrigatório.
+    if(String(municipio.rendimentos_periodo||'').trim()===''){
+      const ordemAtual=_ordemPeriodoAtual();
+      const meu=_rendHistorico.filter(function(p){return p.ordem===ordemAtual;})[0];
+      if(meu&&meu.valor>0){
+        municipio.rendimentos_periodo=meu.valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+        municipio.extrato_ja_enviado=true; // enviado junto com o bimestre
+        saveSession();
+        renderAll();
+      }
+    }
     const el=document.getElementById('rend-historico');
     if(el)el.innerHTML=renderRendimentosHistorico();
   }catch(e){ _rendHistorico=[]; }
@@ -2185,26 +2198,7 @@ function contentHTML(){
       ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
       <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
     </div>`:''}
-    ${!obra&&!servico&&acq().acao_tipo?`
-    <div class="card" id="card-financeiro-equip">
-      <div class="card-title">Lista de equipamentos adquiridos</div>
-      <p class="hint" style="margin-bottom:12px">Anexe a lista/planilha dos equipamentos adquiridos nesta ação.</p>
-      <input type="file" style="display:none" id="file_lista_equipamentos" multiple accept=".pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png" onchange="handleFiles('lista_equipamentos',this.files)"/>
-      <div class="upload-zone" onclick="triggerUpload('lista_equipamentos')">
-        <div class="upload-zone-text"><strong>Clique para anexar a lista de equipamentos</strong> (Excel, PDF, imagem)</div>
-      </div>
-      <div class="file-list" id="files_lista_equipamentos">${renderFilePills('lista_equipamentos')}</div>
-      ${fld('Valor da lista (R$)','valor_lista_equipamentos','money')}
-      ${(()=>{
-        const r=acq()._resumoAnterior;
-        if(!r||!(r.totalListas>0))return '';
-        const n=r.periodos.filter(function(p){return p.lista>0;}).length;
-        return '<div style="font-size:11.5px;color:var(--g800);background:var(--g50);border:1px solid var(--g400);border-radius:7px;padding:8px 10px;margin-top:-4px">'
-          +n+' lista(s) já enviada(s) em bimestre(s) anterior(es), somando <strong>R$ '
-          +Number(r.totalListas).toLocaleString('pt-BR',{minimumFractionDigits:2})
-          +'</strong>. Informe aqui apenas a lista deste bimestre.</div>';
-      })()}
-    </div>`:''}`;  
+    ${!obra&&!servico&&acq().acao_tipo?renderListasEquipCard():''}`;  
   }
 
   if(phase===2){
@@ -2766,6 +2760,15 @@ async function enviarAnexosDrive(a){
     files.forEach(function(f){ arquivosAcao.push({file:f, subpasta:subpasta}); });
   });
 
+  // As listas de equipamentos guardam seus arquivos dentro do próprio registro
+  // (a._listasEquip[i].arquivos), não em `arquivos` — precisam entrar aqui para
+  // chegarem ao Drive junto com o resto da ação.
+  (a._listasEquip||[]).forEach(function(l,li){
+    (l.arquivos||[]).forEach(function(f){
+      arquivosAcao.push({file:f, subpasta:'lista_equipamentos_'+(li+1)});
+    });
+  });
+
   if(!arquivosAcao.length)return;
 
   // Enviar em lote
@@ -3007,6 +3010,27 @@ function gerarPDFBase64(){
         const _tn=totalNotas(a);
         if(_tn>0)row(_ehServ?'Total executado:':'Total em notas:','R$ '+_tn.toLocaleString('pt-BR',{minimumFractionDigits:2}));
       }
+      // Listas de equipamentos, uma faixa por lista confirmada
+      if(!ob&&a._listasEquip&&a._listasEquip.filter(function(l){return l.confirmado;}).length){
+        sec('LISTAS DE EQUIPAMENTOS');
+        a._listasEquip.filter(function(l){return l.confirmado;}).forEach(function(l,li){
+          const nomes=(l.arquivos&&l.arquivos.length)?l.arquivos.map(function(f){return f.name;}):(l._nomes||[]);
+          chk(12);
+          doc.setFillColor(212,245,229);doc.rect(14,y-4,186,8,'F');
+          doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(26,107,73);
+          doc.text(('LISTA '+(li+1)+' — '+(l.bimestre||'')+(l.ano?' / '+l.ano:'')).substring(0,70),16,y+1);
+          doc.setFont('helvetica','normal');doc.setTextColor(58,84,70);
+          doc.text('R$ '+parseBRL(l.valor||'').toLocaleString('pt-BR',{minimumFractionDigits:2}),186,y+1,{align:'right'});
+          y+=10;
+          row('Arquivo(s):',nomes.join(', '));
+          row('Situação:',l.status);
+          row('Data do recebimento:',l.data_recebimento?new Date(l.data_recebimento+'T00:00').toLocaleDateString('pt-BR'):'');
+          row('Observações:',l.obs);
+          y+=2;
+        });
+        const _tl=totalListasEquip(a);
+        if(_tl>0)row('Total em listas:','R$ '+_tl.toLocaleString('pt-BR',{minimumFractionDigits:2}));
+      }
       sec('CONTRATAÇÃO');
       row('Status da contratação:',a._status_contrat);
       if(servico){row('Contratações de pessoal previstas:',a.pessoal_previsto);row('Contratações realizadas:',a.pessoal_realizado);}
@@ -3198,6 +3222,18 @@ async function enviarAcaoSheet(a, tipoRegistro){
                 valor:n.valor||'',cnes:n.cnes||'',quantidade:n.quantidade||'',unidade_medida:n.unidade_medida||''};
       })),
       valor_notas:totalNotas(a).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      // Só as listas ANEXADAS NESTE bimestre contam no valor do período — as
+      // anteriores já foram somadas nos seus próprios registros.
+      valor_lista_equipamentos:(a._listasEquip||[])
+        .filter(function(l){return l.confirmado&&(l.bimestre||'')===(municipio.bimestre||'')&&String(l.ano||'')===String(municipio.ano||'');})
+        .reduce(function(s,l){return s+parseBRL(l.valor||'');},0)
+        .toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      // Listas de equipamentos: uma entrada por lista, com bimestre e situação.
+      listas_equipamentos:JSON.stringify((a._listasEquip||[]).filter(function(l){return l.confirmado;}).map(function(l){
+        return {id:l.id,nomes:(l.arquivos&&l.arquivos.length?l.arquivos.map(function(f){return f.name;}):(l._nomes||[])),
+                valor:l.valor||'',status:l.status||'',bimestre:l.bimestre||'',ano:l.ano||'',
+                data_recebimento:l.data_recebimento||'',obs:l.obs||''};
+      })),
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
       acao_concluida:(tipoRegistro==='Conclusao'||tipoRegistro==='Correcao')?'Sim':'Nao',
@@ -3441,7 +3477,7 @@ function loadSession(key){
     Object.assign(municipio,data.municipio||{});
     aquisicoes.length=0;
     (data.aquisicoes||[{}]).forEach(a=>aquisicoes.push(a));
-    aquisicoes.forEach(function(a){limparAtividadesEmBranco(a);limparNotasEmBranco(a);}); // descarta cards fantasma de sessões antigas
+    aquisicoes.forEach(function(a){limparAtividadesEmBranco(a);limparNotasEmBranco(a);limparListasEmBranco(a);}); // descarta cards fantasma de sessões antigas
     // aquisicoes can be empty — getOrCreateAcq will populate on action select
     phase=data.phase||0;
     acqIdx=Math.min(data.acqIdx||0,aquisicoes.length-1);
@@ -3812,6 +3848,13 @@ function registroParaAcq(reg){
     _editadoEm:            reg.editado_em       || '',
     endereco_obra:         reg.endereco_obra    || '',
     valor_lista_equipamentos: reg.valor_lista_equipamentos || '',
+    _listasEquip: (function(){
+      try{ return JSON.parse(reg.listas_equipamentos||'[]').map(function(l){
+        return {id:l.id||('le_'+Math.random()),_nomes:l.nomes||[],arquivos:[],valor:l.valor||'',
+                status:l.status||'',bimestre:l.bimestre||'',ano:l.ano||'',
+                data_recebimento:l.data_recebimento||'',obs:l.obs||'',confirmado:true};
+      }); }catch(e){ return []; }
+    })(),
     acao_instrumento:      reg.acao_instrumento || '',
     acao_descricao:        (_meta&&_meta.acao)  || reg.acao_descricao || '',
     acao_tipo:             reg.acao_tipo        || '',
@@ -5169,6 +5212,18 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     acqObj._listas = [{id:'lista_'+Date.now(), nome:'Lista 1', itens:poolAnterior.slice()}];
   }
 
+  // Listas de equipamentos de bimestres anteriores continuam aparecendo, com o
+  // bimestre em que entraram e a situação onde pararam — só a situação pode ser
+  // atualizada. Cada bimestre novo pode acrescentar a sua própria lista.
+  if(reg._listasEquip && reg._listasEquip.length && !(acqObj._listasEquip||[]).length){
+    acqObj._listasEquip = reg._listasEquip.map(function(l){
+      const novo=Object.assign({},l);
+      novo.arquivos=[];        // o File não sobrevive; fica o nome registrado
+      novo.confirmado=true;
+      return novo;
+    });
+  }
+
   if(lotesAnteriores && (!acqObj._lotes || !acqObj._lotes.length)){
     // Copiar lotes do bimestre anterior, resetando o status de entrega
     acqObj._lotes = lotesAnteriores.map(function(l){
@@ -5417,6 +5472,158 @@ function _pctAcumuladoAnterior(a){
 // `ref` amarra as notas ao item que as gerou (atividade A1, lote L2...), para
 // que a nota apareça dentro do item em vez de solta no fim da página. Sem ref,
 // o bloco vale para a ação inteira (aquisição sem lotes).
+// ── LISTAS DE EQUIPAMENTOS ──────────────────────────────────────────────────
+// Cada lista anexada é um registro próprio, com o bimestre em que entrou, seu
+// valor e seu próprio status de execução. Antes havia um único campo "Valor da
+// lista" por ação: ao anexar uma segunda lista num bimestre seguinte, ela
+// sobrescrevia a primeira e as duas dividiam o mesmo status — mas listas
+// diferentes estão em fases diferentes.
+// Os campos aparecem conforme a lista avança: enquanto ela não é confirmada,
+// só se pede arquivo e valor.
+const STATUS_LISTA=['Aguardando aquisição','Processo aberto','Contratado','Em entrega','Recebido'];
+
+function _listaVazia(){
+  return {id:'le_'+Date.now(), arquivos:[], valor:'', status:'Aguardando aquisição',
+          bimestre:municipio.bimestre||'', ano:municipio.ano||'',
+          data_recebimento:'', obs:'', confirmado:false};
+}
+function _listasEquip(a){ if(!a._listasEquip)a._listasEquip=[]; return a._listasEquip; }
+function _listaEmBranco(l){
+  if(!l||l.confirmado)return false;
+  return !(l.arquivos&&l.arquivos.length)&&String(l.valor||'').trim()==='';
+}
+function limparListasEmBranco(a){
+  if(!a||!a._listasEquip)return;
+  a._listasEquip=a._listasEquip.filter(function(l){return !_listaEmBranco(l);});
+}
+function _addListaEquip(){
+  const a=acq(); _listasEquip(a).push(_listaVazia());
+  _marcarTocado(a); saveSession(); renderAll();
+}
+function _updLista(i,campo,valor){
+  const a=acq(); const l=_listasEquip(a)[i];
+  if(l){ l[campo]=valor; _marcarTocado(a); }
+}
+function _confirmarLista(i){
+  saveAllInputs();
+  const a=acq(); const l=_listasEquip(a)[i];
+  if(!l)return;
+  if(!(l.arquivos&&l.arquivos.length)){ showAlertModal('Anexe o arquivo da lista de equipamentos.','⚠️'); return; }
+  if(!(parseBRL(l.valor||'')>0)){ showAlertModal('Informe o valor da lista.','⚠️'); return; }
+  l.confirmado=true; _marcarTocado(a); saveSession(); renderAll();
+}
+function _editarLista(i){
+  const a=acq(); const l=_listasEquip(a)[i];
+  if(l){ l.confirmado=false; saveSession(); renderAll(); }
+}
+function _excluirLista(i){
+  const a=acq(); _listasEquip(a).splice(i,1);
+  _marcarTocado(a); saveSession(); renderAll();
+}
+function handleFilesLista(i,files){
+  const a=acq(); const l=_listasEquip(a)[i];
+  if(!l)return;
+  if(!l.arquivos)l.arquivos=[];
+  Array.from(files).forEach(function(f){ l.arquivos.push(f); l._nomes=(l._nomes||[]).concat(f.name); });
+  _marcarTocado(a); saveSession(); renderAll();
+}
+function _removerArquivoLista(i,ai){
+  const a=acq(); const l=_listasEquip(a)[i];
+  if(!l)return;
+  if(l.arquivos)l.arquivos.splice(ai,1);
+  if(l._nomes)l._nomes.splice(ai,1);
+  saveSession(); renderAll();
+}
+function totalListasEquip(a){
+  return (_listasEquip(a)).filter(function(l){return l.confirmado;})
+    .reduce(function(s,l){return s+parseBRL(l.valor||'');},0);
+}
+
+function renderListasEquipCard(){
+  const a=acq();
+  const listas=_listasEquip(a);
+  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+  const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
+  const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  const doBimestreAtual=function(l){return (l.bimestre||'')===(municipio.bimestre||'')&&String(l.ano||'')===String(municipio.ano||'');};
+
+  let html='<div class="card" id="card-financeiro-equip">'
+    +'<div class="card-title">Listas de equipamentos adquiridos</div>'
+    +'<p class="hint" style="margin-bottom:12px">Cada lista tem seu próprio valor e situação. Listas de bimestres anteriores continuam aqui, somente com a situação atualizável.</p>';
+
+  listas.forEach(function(l,i){
+    const anterior=!doBimestreAtual(l);
+    const nomes=(l.arquivos&&l.arquivos.length)?l.arquivos.map(function(f){return f.name;}):(l._nomes||[]);
+
+    if(l.confirmado){
+      html+='<div style="border:1px solid var(--g400);background:'+(anterior?'#fff':'var(--g50)')+';border-radius:8px;padding:12px;margin-bottom:10px">'
+        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+          +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+(nomes.length?esc(nomes[0]):'Lista '+(i+1))+(nomes.length>1?' +'+(nomes.length-1):'')+'</div>'
+            +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+(l.bimestre||'—')+(l.ano?' / '+l.ano:'')+(anterior?' · bimestre anterior':'')+'</div>'
+          +'</div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--g800);white-space:nowrap">'+fmt(parseBRL(l.valor||''))+'</div>'
+          +(anterior?'':'<button type="button" onclick="_editarLista('+i+')" style="padding:4px 12px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
+            +'<button type="button" onclick="_excluirLista('+i+')" style="padding:4px 10px;font-size:11.5px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>')
+        +'</div>'
+        // Confirmada: aí sim faz sentido perguntar em que pé está a execução.
+        +'<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border2)">'
+          +'<label style="'+lbl+'">Situação desta lista</label>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
+            +STATUS_LISTA.map(function(s){
+              const on=(l.status||'')===s;
+              return '<button type="button" onclick="_updLista('+i+',\'status\',\''+s+'\');saveSession();renderAll()" style="padding:5px 12px;font-size:11.5px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
+            }).join('')
+          +'</div>'
+          // Só quando recebida é que a data de recebimento faz sentido.
+          +((l.status==='Recebido')
+            ? '<div style="margin-top:10px;max-width:240px"><label style="'+lbl+'">Data do recebimento</label>'
+              +'<input type="date" oninput="_updLista('+i+',\'data_recebimento\',this.value)" value="'+esc(l.data_recebimento)+'" style="'+inp+'"/></div>'
+            : '')
+          +((l.status==='Em entrega'||l.status==='Contratado')
+            ? '<div style="margin-top:10px"><label style="'+lbl+'">Observações sobre a entrega</label>'
+              +'<input type="text" oninput="_updLista('+i+',\'obs\',this.value)" value="'+esc(l.obs)+'" placeholder="Prazo, pendências, entrega parcial..." style="'+inp+'"/></div>'
+            : '')
+        +'</div>'
+      +'</div>';
+      return;
+    }
+
+    // Em edição: só arquivo e valor. O resto aparece depois de confirmar.
+    html+='<div style="border:1.5px solid var(--g500);border-radius:9px;padding:14px;margin-bottom:10px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--ink)">\u270e Lista '+(i+1)+'</div>'
+        +'<button type="button" onclick="_excluirLista('+i+')" style="padding:3px 10px;font-size:11px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
+      +'</div>'
+      +'<input type="file" style="display:none" id="file_lista_'+i+'" multiple accept=".pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png" onchange="handleFilesLista('+i+',this.files)"/>'
+      +'<div class="upload-zone" onclick="document.getElementById(\'file_lista_'+i+'\').click()">'
+        +'<div class="upload-zone-text"><strong>Clique para anexar a lista</strong> (Excel, PDF, imagem)</div>'
+      +'</div>'
+      +'<div class="file-list">'+nomes.map(function(n,ai){
+          return '<div class="file-pill">'+esc(n)+'<span class="rem" onclick="_removerArquivoLista('+i+','+ai+')">×</span></div>';
+        }).join('')+'</div>'
+      +'<div style="max-width:260px;margin-top:10px"><label style="'+lbl+'">Valor da lista (R$)</label>'
+        +'<input type="text" inputmode="decimal" oninput="_updLista('+i+',\'valor\',this.value)" value="'+esc(l.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+      +'<div style="margin-top:12px;text-align:right">'
+        +'<button type="button" onclick="_confirmarLista('+i+')" style="padding:8px 18px;font-size:12.5px;font-weight:700;background:var(--g800);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar lista</button>'
+      +'</div>'
+    +'</div>';
+  });
+
+  const vazio=listas.length===0;
+  html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma lista anexada ainda.</div>':'')
+    +'<button type="button" onclick="_addListaEquip()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar '+(vazio?'lista':'outra lista')+'</button>';
+
+  const tot=totalListasEquip(a);
+  if(tot>0){
+    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);text-align:right;font-size:12.5px;color:var(--ink3)">'
+      +'Total em listas: <strong style="color:var(--g800);font-size:14px">'+fmt(tot)+'</strong></div>';
+  }
+  return html+'</div>';
+}
+
 function renderNotasFiscaisCard(ref,opts){
   opts=opts||{};
   const a=acq();
