@@ -2309,19 +2309,18 @@ function contentHTML(){
   // Phase 3 — EQUIPAMENTO
   if(phase===3&&!obra) return (acq()._lotes||[]).filter(l=>l.confirmado).length===0 ? `
     ${lockedBanner}<div class="step-head"><h2>${servico?'Execução do Serviço':'Entrega e Patrimônio'} <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>${servico?'Situação do serviço prestado, comprovações e relatórios.':'Situação da entrega, notas fiscais e incorporação patrimonial.'}</p></div>
-    <div class="card">
-      <div class="card-title">Execução da entrega</div>
-      ${chipsHTML('Situação da entrega','situacao_entrega',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'])}
-    </div>
-    <div class="card" id="card-data-entrega" style="display:none">
-      <div class="card-title">Data(s) da entrega / prestação de serviço</div>
-      ${fld('Data da entrega ou período','data_entrega','text','Ex: 15/03/2025')}
-      ${chipsHTML('Houve atraso?','houve_atraso',['Sim','Não'])}
-      ${fld('Se houve atraso, justificar','justificativa_atraso','textarea','Descreva o motivo do atraso...')}
-    </div>
-    ${(municipio.situacao_entrega||acq().situacao_entrega||'')==='Não iniciada'||!(acq().situacao_entrega||'')
-      ? ''
-      : renderNotasFiscaisCard('',{embutido:false})}`
+    ${servico
+      ? `<div class="card">
+          <div class="card-title">Execução da entrega</div>
+          ${chipsHTML('Situação da entrega','situacao_entrega',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'])}
+        </div>
+        <div class="card" id="card-data-entrega" style="display:none">
+          <div class="card-title">Data(s) da entrega / prestação de serviço</div>
+          ${fld('Data da entrega ou período','data_entrega','text','Ex: 15/03/2025')}
+          ${chipsHTML('Houve atraso?','houve_atraso',['Sim','Não'])}
+          ${fld('Se houve atraso, justificar','justificativa_atraso','textarea','Descreva o motivo do atraso...')}
+        </div>`
+      : renderListasStatusCards(3)}`
   : lockedBanner
     +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Patrimônio')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
     +'<p>Situação da entrega por lote — notas fiscais e incorporação patrimonial.</p></div>'
@@ -3024,7 +3023,11 @@ function gerarPDFBase64(){
           y+=10;
           row('Arquivo(s):',nomes.join(', '));
           row('Situação:',l.status);
-          row('Data do recebimento:',l.data_recebimento?new Date(l.data_recebimento+'T00:00').toLocaleDateString('pt-BR'):'');
+          row('Nº do contrato:',l.num_contrato);
+          row('Previsão de entrega:',l.data_prev?new Date(l.data_prev+'T00:00').toLocaleDateString('pt-BR'):'');
+          row('Situação da entrega:',l.situacao_entrega);
+          row('Data da entrega:',l.data_recebimento?new Date(l.data_recebimento+'T00:00').toLocaleDateString('pt-BR'):'');
+          row('Justificativa do atraso:',l.justificativa);
           row('Observações:',l.obs);
           y+=2;
         });
@@ -3232,6 +3235,8 @@ async function enviarAcaoSheet(a, tipoRegistro){
       listas_equipamentos:JSON.stringify((a._listasEquip||[]).filter(function(l){return l.confirmado;}).map(function(l){
         return {id:l.id,nomes:(l.arquivos&&l.arquivos.length?l.arquivos.map(function(f){return f.name;}):(l._nomes||[])),
                 valor:l.valor||'',status:l.status||'',bimestre:l.bimestre||'',ano:l.ano||'',
+                num_contrato:l.num_contrato||'',data_prev:l.data_prev||'',
+                situacao_entrega:l.situacao_entrega||'',justificativa:l.justificativa||'',
                 data_recebimento:l.data_recebimento||'',obs:l.obs||''};
       })),
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
@@ -3852,6 +3857,8 @@ function registroParaAcq(reg){
       try{ return JSON.parse(reg.listas_equipamentos||'[]').map(function(l){
         return {id:l.id||('le_'+Math.random()),_nomes:l.nomes||[],arquivos:[],valor:l.valor||'',
                 status:l.status||'',bimestre:l.bimestre||'',ano:l.ano||'',
+                num_contrato:l.num_contrato||'',data_prev:l.data_prev||'',
+                situacao_entrega:l.situacao_entrega||'',justificativa:l.justificativa||'',
                 data_recebimento:l.data_recebimento||'',obs:l.obs||'',confirmado:true};
       }); }catch(e){ return []; }
     })(),
@@ -4072,6 +4079,20 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'setStatusContrat')+'</div>'
     +_camposContrato(a,isContr,undefined)
     +'</div>';
+
+  // Aquisição sem lotes: a contratação passou a ser acompanhada POR LISTA de
+  // equipamentos, no lugar do status único da ação. Listas anexadas em
+  // bimestres diferentes estão em fases diferentes — um status só não dava
+  // conta, e ainda duplicava o que já se informava na etapa 1.
+  const _acqAtual=acq();
+  const _ehAquisicao=_acqAtual.modalidade_objeto==='equipamento';
+  const _semLotes=!(_acqAtual._lotes||[]).filter(function(l){return l.confirmado;}).length;
+  if(_ehAquisicao&&_semLotes){
+    return ''+lockedBanner
+      +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
+      +'<p>Situação de cada lista de equipamentos.</p></div>'
+      +renderListasStatusCards(2);
+  }
 
   return ''+
     lockedBanner+
@@ -5485,6 +5506,7 @@ const STATUS_LISTA=['Aguardando aquisição','Processo aberto','Contratado','Em 
 function _listaVazia(){
   return {id:'le_'+Date.now(), arquivos:[], valor:'', status:'Aguardando aquisição',
           bimestre:municipio.bimestre||'', ano:municipio.ano||'',
+          num_contrato:'', data_prev:'', situacao_entrega:'', justificativa:'',
           data_recebimento:'', obs:'', confirmado:false};
 }
 function _listasEquip(a){ if(!a._listasEquip)a._listasEquip=[]; return a._listasEquip; }
@@ -5539,6 +5561,86 @@ function totalListasEquip(a){
     .reduce(function(s,l){return s+parseBRL(l.valor||'');},0);
 }
 
+// Card por lista nas etapas de Contratação e Entrega. A situação de cada lista
+// vive aqui — não na etapa 1, onde só se anexa o arquivo e informa o valor.
+// Substitui os campos genéricos de status, que eram únicos para a ação inteira
+// e não davam conta de listas em fases diferentes.
+function renderListasStatusCards(fase){
+  const a=acq();
+  const listas=(a._listasEquip||[]).filter(function(l){return l.confirmado;});
+  if(!listas.length){
+    return '<div class="card"><div class="card-title">'+(fase===2?'Contratação':'Entrega')+'</div>'
+      +'<p class="hint" style="margin:0">Anexe ao menos uma lista de equipamentos na etapa <strong>Instrumento</strong> para acompanhar '+(fase===2?'a contratação':'a entrega')+'.</p></div>';
+  }
+  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+  const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
+  const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+
+  let html='';
+  (a._listasEquip||[]).forEach(function(l,i){
+    if(!l.confirmado)return;
+    const nomes=(l.arquivos&&l.arquivos.length)?l.arquivos.map(function(f){return f.name;}):(l._nomes||[]);
+    const entregaLiberada=(l.status==='Em entrega'||l.status==='Recebido');
+
+    html+='<div class="card">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'
+        +'<div style="width:26px;height:26px;border-radius:50%;background:var(--g700);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:13.5px;font-weight:700;color:var(--ink)">'+(nomes.length?esc(nomes[0]):'Lista '+(i+1))+(nomes.length>1?' +'+(nomes.length-1):'')+'</div>'
+          +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+(l.bimestre||'—')+(l.ano?' / '+l.ano:'')+'</div>'
+        +'</div>'
+        +'<div style="font-size:13.5px;font-weight:700;color:var(--g800);white-space:nowrap">'+fmt(parseBRL(l.valor||''))+'</div>'
+      +'</div>';
+
+    if(fase===2){
+      html+='<label style="'+lbl+'">Situação desta lista</label>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
+          +STATUS_LISTA.map(function(s){
+            const on=(l.status||'')===s;
+            return '<button type="button" onclick="_updLista('+i+',\'status\',\''+s+'\');saveSession();renderAll()" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
+          }).join('')
+        +'</div>'
+        // Dados do processo só fazem sentido depois de contratado.
+        +((l.status==='Contratado'||entregaLiberada)
+          ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">'
+            +'<div><label style="'+lbl+'">Nº do contrato / processo</label>'
+              +'<input type="text" oninput="_updLista('+i+',\'num_contrato\',this.value)" value="'+esc(l.num_contrato)+'" placeholder="Ex: 001/2026" style="'+inp+'"/></div>'
+            +'<div><label style="'+lbl+'">Previsão de entrega</label>'
+              +'<input type="date" oninput="_updLista('+i+',\'data_prev\',this.value)" value="'+esc(l.data_prev)+'" style="'+inp+'"/></div>'
+          +'</div>'
+          : '<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Marque "Contratado" para registrar contrato e previsão de entrega.</div>');
+    }else{
+      if(!entregaLiberada){
+        html+='<div style="font-size:12px;color:var(--ink3);font-style:italic">Avance a situação para "Em entrega" na etapa de Contratação para registrar a entrega desta lista.</div>';
+      }else{
+        html+='<label style="'+lbl+'">Situação da entrega</label>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'
+            +['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'].map(function(s){
+              const on=(l.situacao_entrega||'')===s;
+              return '<button type="button" onclick="_updLista('+i+',\'situacao_entrega\',\''+s+'\');saveSession();renderAll()" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
+            }).join('')
+          +'</div>'
+          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            +'<div><label style="'+lbl+'">Data da entrega</label>'
+              +'<input type="date" oninput="_updLista('+i+',\'data_recebimento\',this.value)" value="'+esc(l.data_recebimento)+'" style="'+inp+'"/></div>'
+            +'<div><label style="'+lbl+'">Observações</label>'
+              +'<input type="text" oninput="_updLista('+i+',\'obs\',this.value)" value="'+esc(l.obs)+'" placeholder="Pendências, entrega parcial..." style="'+inp+'"/></div>'
+          +'</div>'
+          // Atraso só é pergunta relevante quando a entrega está atrasada.
+          +((l.situacao_entrega==='Parcial — atrasado')
+            ? '<div style="margin-top:10px"><label style="'+lbl+'">Justificativa do atraso</label>'
+              +'<input type="text" oninput="_updLista('+i+',\'justificativa\',this.value)" value="'+esc(l.justificativa)+'" placeholder="Motivo do atraso" style="'+inp+'"/></div>'
+            : '')
+          // Nota fiscal desta lista, no mesmo lugar da entrega.
+          +renderNotasFiscaisCard('lista_'+i,{embutido:true});
+      }
+    }
+    html+='</div>';
+  });
+  return html;
+}
+
 function renderListasEquipCard(){
   const a=acq();
   const listas=_listasEquip(a);
@@ -5568,25 +5670,6 @@ function renderListasEquipCard(){
           +(anterior?'':'<button type="button" onclick="_editarLista('+i+')" style="padding:4px 12px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
             +'<button type="button" onclick="_excluirLista('+i+')" style="padding:4px 10px;font-size:11.5px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>')
         +'</div>'
-        // Confirmada: aí sim faz sentido perguntar em que pé está a execução.
-        +'<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border2)">'
-          +'<label style="'+lbl+'">Situação desta lista</label>'
-          +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
-            +STATUS_LISTA.map(function(s){
-              const on=(l.status||'')===s;
-              return '<button type="button" onclick="_updLista('+i+',\'status\',\''+s+'\');saveSession();renderAll()" style="padding:5px 12px;font-size:11.5px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
-            }).join('')
-          +'</div>'
-          // Só quando recebida é que a data de recebimento faz sentido.
-          +((l.status==='Recebido')
-            ? '<div style="margin-top:10px;max-width:240px"><label style="'+lbl+'">Data do recebimento</label>'
-              +'<input type="date" oninput="_updLista('+i+',\'data_recebimento\',this.value)" value="'+esc(l.data_recebimento)+'" style="'+inp+'"/></div>'
-            : '')
-          +((l.status==='Em entrega'||l.status==='Contratado')
-            ? '<div style="margin-top:10px"><label style="'+lbl+'">Observações sobre a entrega</label>'
-              +'<input type="text" oninput="_updLista('+i+',\'obs\',this.value)" value="'+esc(l.obs)+'" placeholder="Prazo, pendências, entrega parcial..." style="'+inp+'"/></div>'
-            : '')
-        +'</div>'
       +'</div>';
       return;
     }
@@ -5605,7 +5688,7 @@ function renderListasEquipCard(){
           return '<div class="file-pill">'+esc(n)+'<span class="rem" onclick="_removerArquivoLista('+i+','+ai+')">×</span></div>';
         }).join('')+'</div>'
       +'<div style="max-width:260px;margin-top:10px"><label style="'+lbl+'">Valor da lista (R$)</label>'
-        +'<input type="text" inputmode="decimal" oninput="_updLista('+i+',\'valor\',this.value)" value="'+esc(l.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+        +'<input type="text" inputmode="decimal" oninput="onMoneyInput(this);_updLista('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updLista('+i+',\'valor\',this.value)" value="'+esc(l.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
       +'<div style="margin-top:12px;text-align:right">'
         +'<button type="button" onclick="_confirmarLista('+i+')" style="padding:8px 18px;font-size:12.5px;font-weight:700;background:var(--g800);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar lista</button>'
       +'</div>'
@@ -5700,7 +5783,7 @@ function renderNotasFiscaisCard(ref,opts){
           +'<div><label style="'+lbl+'">Data da NF</label>'
             +'<input type="date" oninput="_updNota('+i+',\'data_nf\',this.value)" value="'+esc(n.data_nf)+'" style="'+inp+'"/></div>'
           +'<div><label style="'+lbl+'">Valor (R$) <span class="req">*</span></label>'
-            +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+            +'<input type="text" inputmode="decimal" oninput="onMoneyInput(this);_updNota('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
         +'</div>';
     }else if(servico){
       html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">'
@@ -5709,7 +5792,7 @@ function renderNotasFiscaisCard(ref,opts){
         +'<div><label style="'+lbl+'">Unidade de medida</label>'
           +'<input type="text" list="lst-unid-nf" oninput="_updNota('+i+',\'unidade_medida\',this.value)" value="'+esc(n.unidade_medida)+'" placeholder="Ex: Unidade" style="'+inp+'"/></div>'
         +'<div><label style="'+lbl+'">Valor (R$) <span class="req">*</span></label>'
-          +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+          +'<input type="text" inputmode="decimal" oninput="onMoneyInput(this);_updNota('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
       +'</div>'
       +'<datalist id="lst-unid-nf">'+UNID_MEDIDA.map(function(u){return '<option value="'+u+'"></option>';}).join('')+'</datalist>'
       +'<div style="max-width:240px"><label style="'+lbl+'">CNES</label>'
@@ -5727,7 +5810,7 @@ function renderNotasFiscaisCard(ref,opts){
       +'</div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
         +'<div><label style="'+lbl+'">Valor (R$) <span class="req">*</span></label>'
-          +'<input type="text" inputmode="decimal" oninput="_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
+          +'<input type="text" inputmode="decimal" oninput="onMoneyInput(this);_updNota('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updNota('+i+',\'valor\',this.value)" value="'+esc(n.valor)+'" placeholder="0,00" style="'+inp+'"/></div>'
         +'<div><label style="'+lbl+'">CNES beneficiado</label>'
           +'<input type="text" inputmode="numeric" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,\'\');_updNota('+i+',\'cnes\',this.value)" value="'+esc(n.cnes)+'" placeholder="0000000" style="'+inp+'"/></div>'
       +'</div>';
