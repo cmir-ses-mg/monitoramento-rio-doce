@@ -4125,13 +4125,23 @@ function deduplicarAquisicoes(){
     resultado.forEach(function(a){aquisicoes.push(a);});
   }
 }
-function renderAll(){
+// Rolar ao topo faz sentido ao TROCAR de etapa ou de ação — não ao mexer num
+// item da tela atual. Adicionar ou confirmar uma lista, nota ou atividade
+// re-renderiza tudo, e o salto ao topo tirava a pessoa do lugar onde estava
+// trabalhando. `manterScroll` preserva a posição nesses casos.
+function renderAll(manterScroll){
+  const _y=window.scrollY;
   deduplicarAquisicoes();
   if(aquisicoes.length&&acqIdx>=aquisicoes.length)acqIdx=aquisicoes.length-1;
   renderPhaseBar();renderAcqBar();renderBadge();renderMain();renderNav();
   const pbw=document.getElementById('phaseBarWrap');
   if(pbw)pbw.style.display=phase===0?'none':'';
-  window.scrollTo({top:0,behavior:'smooth'});
+  if(manterScroll){
+    // Sem 'smooth': a rolagem precisa ser instantânea para não piscar.
+    window.scrollTo(0,_y);
+  }else{
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
   if(municipio.municipio&&municipio.bimestre&&municipio.ano){saveSession();iniciarPollingSessao();}
 }
 function renderMain(){
@@ -5434,7 +5444,7 @@ function _addNota(ref){
     }
   }
   a._notas.push(n);
-  _marcarTocado(a); saveSession(); renderAll();
+  _marcarTocado(a); saveSession(); renderAll(true);
 }
 function _updNota(idx,campo,valor){
   const a=acq();
@@ -5459,17 +5469,17 @@ function _confirmarNota(idx){
     showAlertModal('Informe o valor da nota.','⚠️');return;
   }
   n.confirmado=true;
-  _marcarTocado(a); saveSession(); renderAll();
+  _marcarTocado(a); saveSession(); renderAll(true);
 }
 function _editarNota(idx){
   const a=acq();
-  if(a._notas&&a._notas[idx]){ a._notas[idx].confirmado=false; saveSession(); renderAll(); }
+  if(a._notas&&a._notas[idx]){ a._notas[idx].confirmado=false; saveSession(); renderAll(true); }
 }
 function _excluirNota(idx){
   const a=acq();
   if(!a._notas)return;
   a._notas.splice(idx,1);
-  _marcarTocado(a); saveSession(); renderAll();
+  _marcarTocado(a); saveSession(); renderAll(true);
 }
 function totalNotas(a,ref){
   return ((a&&a._notas)||[])
@@ -5520,7 +5530,7 @@ function limparListasEmBranco(a){
 }
 function _addListaEquip(){
   const a=acq(); _listasEquip(a).push(_listaVazia());
-  _marcarTocado(a); saveSession(); renderAll();
+  _marcarTocado(a); saveSession(); renderAll(true);
 }
 function _updLista(i,campo,valor){
   const a=acq(); const l=_listasEquip(a)[i];
@@ -5532,29 +5542,29 @@ function _confirmarLista(i){
   if(!l)return;
   if(!(l.arquivos&&l.arquivos.length)){ showAlertModal('Anexe o arquivo da lista de equipamentos.','⚠️'); return; }
   if(!(parseBRL(l.valor||'')>0)){ showAlertModal('Informe o valor da lista.','⚠️'); return; }
-  l.confirmado=true; _marcarTocado(a); saveSession(); renderAll();
+  l.confirmado=true; _marcarTocado(a); saveSession(); renderAll(true);
 }
 function _editarLista(i){
   const a=acq(); const l=_listasEquip(a)[i];
-  if(l){ l.confirmado=false; saveSession(); renderAll(); }
+  if(l){ l.confirmado=false; saveSession(); renderAll(true); }
 }
 function _excluirLista(i){
   const a=acq(); _listasEquip(a).splice(i,1);
-  _marcarTocado(a); saveSession(); renderAll();
+  _marcarTocado(a); saveSession(); renderAll(true);
 }
 function handleFilesLista(i,files){
   const a=acq(); const l=_listasEquip(a)[i];
   if(!l)return;
   if(!l.arquivos)l.arquivos=[];
   Array.from(files).forEach(function(f){ l.arquivos.push(f); l._nomes=(l._nomes||[]).concat(f.name); });
-  _marcarTocado(a); saveSession(); renderAll();
+  _marcarTocado(a); saveSession(); renderAll(true);
 }
 function _removerArquivoLista(i,ai){
   const a=acq(); const l=_listasEquip(a)[i];
   if(!l)return;
   if(l.arquivos)l.arquivos.splice(ai,1);
   if(l._nomes)l._nomes.splice(ai,1);
-  saveSession(); renderAll();
+  saveSession(); renderAll(true);
 }
 function totalListasEquip(a){
   return (_listasEquip(a)).filter(function(l){return l.confirmado;})
@@ -5598,7 +5608,7 @@ function renderListasStatusCards(fase){
         +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
           +STATUS_LISTA.map(function(s){
             const on=(l.status||'')===s;
-            return '<button type="button" onclick="_updLista('+i+',\'status\',\''+s+'\');saveSession();renderAll()" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
+            return '<button type="button" onclick="_updLista('+i+',\'status\',\''+s+'\');saveSession();renderAll(true)" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
           }).join('')
         +'</div>'
         // Dados do processo só fazem sentido depois de contratado.
@@ -5618,7 +5628,7 @@ function renderListasStatusCards(fase){
           +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'
             +['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'].map(function(s){
               const on=(l.situacao_entrega||'')===s;
-              return '<button type="button" onclick="_updLista('+i+',\'situacao_entrega\',\''+s+'\');saveSession();renderAll()" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
+              return '<button type="button" onclick="_updLista('+i+',\'situacao_entrega\',\''+s+'\');saveSession();renderAll(true)" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
             }).join('')
           +'</div>'
           +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
