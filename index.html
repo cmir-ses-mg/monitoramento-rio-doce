@@ -5243,16 +5243,35 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     acqObj._listas = [{id:'lista_'+Date.now(), nome:'Lista 1', itens:poolAnterior.slice()}];
   }
 
-  // Listas de equipamentos de bimestres anteriores continuam aparecendo, com o
-  // bimestre em que entraram e a situação onde pararam — só a situação pode ser
-  // atualizada. Cada bimestre novo pode acrescentar a sua própria lista.
-  if(reg._listasEquip && reg._listasEquip.length && !(acqObj._listasEquip||[]).length){
-    acqObj._listasEquip = reg._listasEquip.map(function(l){
-      const novo=Object.assign({},l);
-      novo.arquivos=[];        // o File não sobrevive; fica o nome registrado
-      novo.confirmado=true;
-      return novo;
+  // Listas de equipamentos: percorrer TODOS os registros anteriores, não só o
+  // último. Uma lista anexada no 1º bimestre pode não constar do registro do
+  // 3º — pegar só o último a faria desaparecer. Como os registros vêm em ordem
+  // cronológica, a última ocorrência de cada id é a situação mais recente.
+  if(!(acqObj._listasEquip||[]).length){
+    const porId={}; const ordem=[];
+    registros.forEach(function(r){
+      (r._listasEquip||[]).forEach(function(l){
+        const id=l.id||('le_'+(l.nomes||[]).join('_'));
+        if(!porId[id])ordem.push(id);
+        const anterior=porId[id];
+        const novo=Object.assign({},l);
+        novo.arquivos=[];      // o File não sobrevive ao recarregamento
+        novo.confirmado=true;
+        // Guardar a evolução do status período a período: é o que permite ver
+        // que a lista saiu de "Contratado" no 1º bimestre para "Recebido" no 2º.
+        novo.historico_status=(anterior&&anterior.historico_status)||[];
+        const ultimo=novo.historico_status[novo.historico_status.length-1];
+        if(l.status&&(!ultimo||ultimo.status!==l.status||ultimo.bimestre!==(r.bimestre||''))){
+          novo.historico_status=novo.historico_status.concat([{
+            bimestre:r.bimestre||'', ano:r.ano||'', status:l.status
+          }]);
+        }
+        porId[id]=novo;
+      });
     });
+    if(ordem.length){
+      acqObj._listasEquip=ordem.map(function(id){return porId[id];});
+    }
   }
 
   if(lotesAnteriores && (!acqObj._lotes || !acqObj._lotes.length)){
@@ -5532,9 +5551,38 @@ function _addListaEquip(){
   const a=acq(); _listasEquip(a).push(_listaVazia());
   _marcarTocado(a); saveSession(); renderAll(true);
 }
+// Registra a situação com o bimestre em que ela vale. Sem isso só se sabe o
+// status atual, e perde-se a evolução: "estava Contratado no 1º, virou Recebido
+// no 2º" é justamente o que o monitoramento bimestral precisa mostrar.
+function _registrarStatusPeriodo(obj,campo,valor){
+  if(!valor)return;
+  if(!obj.historico_status)obj.historico_status=[];
+  const bim=municipio.bimestre||'', ano=String(municipio.ano||'');
+  const idx=obj.historico_status.findIndex(function(h){
+    return h.bimestre===bim&&String(h.ano)===ano&&h.campo===campo;
+  });
+  if(idx>=0)obj.historico_status[idx].status=valor;
+  else obj.historico_status.push({bimestre:bim,ano:ano,campo:campo,status:valor});
+}
+// Última situação registrada em bimestre ANTERIOR ao aberto.
+function _statusAnterior(obj,campo){
+  if(!obj||!obj.historico_status)return null;
+  const bim=municipio.bimestre||'', ano=String(municipio.ano||'');
+  const ant=obj.historico_status.filter(function(h){
+    return h.campo===campo&&!(h.bimestre===bim&&String(h.ano)===ano);
+  });
+  return ant.length?ant[ant.length-1]:null;
+}
+
 function _updLista(i,campo,valor){
   const a=acq(); const l=_listasEquip(a)[i];
-  if(l){ l[campo]=valor; _marcarTocado(a); }
+  if(!l)return;
+  l[campo]=valor;
+  if(campo==='status'||campo==='situacao_entrega')_registrarStatusPeriodo(l,campo,valor);
+  _marcarTocado(a);
+  // Campos de acompanhamento vão ao servidor na hora — é o que precisa
+  // atravessar para os próximos bimestres.
+  if(l.confirmado)salvarListaServidor(l);
 }
 function _confirmarLista(i){
   saveAllInputs();
@@ -5542,14 +5590,17 @@ function _confirmarLista(i){
   if(!l)return;
   if(!(l.arquivos&&l.arquivos.length)){ showAlertModal('Anexe o arquivo da lista de equipamentos.','⚠️'); return; }
   if(!(parseBRL(l.valor||'')>0)){ showAlertModal('Informe o valor da lista.','⚠️'); return; }
-  l.confirmado=true; _marcarTocado(a); saveSession(); renderAll(true);
+  l.confirmado=true; _marcarTocado(a); salvarListaServidor(l); saveSession(); renderAll(true);
 }
 function _editarLista(i){
   const a=acq(); const l=_listasEquip(a)[i];
   if(l){ l.confirmado=false; saveSession(); renderAll(true); }
 }
 function _excluirLista(i){
-  const a=acq(); _listasEquip(a).splice(i,1);
+  const a=acq();
+  const l=_listasEquip(a)[i];
+  if(l&&l.confirmado)excluirListaServidor(l);
+  _listasEquip(a).splice(i,1);
   _marcarTocado(a); saveSession(); renderAll(true);
 }
 function handleFilesLista(i,files){
@@ -5575,6 +5626,109 @@ function totalListasEquip(a){
 // vive aqui — não na etapa 1, onde só se anexa o arquivo e informa o valor.
 // Substitui os campos genéricos de status, que eram únicos para a ação inteira
 // e não davam conta de listas em fases diferentes.
+// ── LISTAS: PERSISTÊNCIA NO SERVIDOR ────────────────────────────────────────
+// A situação de uma lista muda de um bimestre para o outro. Guardar só na
+// sessão do bimestre em que ela foi anexada faria o acompanhamento se perder:
+// quem abrisse o período seguinte não veria a lista, ou veria um estado velho.
+// A planilha é a fonte de verdade — igual às atividades de custeio.
+function _listaParaServidor(l){
+  return {
+    id:l.id, nomes:(l.arquivos&&l.arquivos.length?l.arquivos.map(function(f){return f.name;}):(l._nomes||[])),
+    valor:l.valor||'', status:l.status||'', bimestre:l.bimestre||'', ano:l.ano||'',
+    num_contrato:l.num_contrato||'', data_prev:l.data_prev||'',
+    situacao_entrega:l.situacao_entrega||'', data_recebimento:l.data_recebimento||'',
+    justificativa:l.justificativa||'', obs:l.obs||'',
+    historico_status:JSON.stringify(l.historico_status||[])
+  };
+}
+
+function salvarListaServidor(l){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  const a=acq();
+  if(!a.acao_instrumento||!a.acao_tipo||!l||!l.id)return;
+  try{
+    fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({
+      acao:'salvarListaEquipamento',
+      municipio:municipio.municipio||'',
+      acao_instrumento:a.acao_instrumento||'',
+      acao_tipo:a.acao_tipo||'',
+      lista:_listaParaServidor(l)
+    })}).catch(function(){});
+  }catch(e){}
+}
+
+function excluirListaServidor(l){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  const a=acq();
+  if(!a.acao_instrumento||!a.acao_tipo||!l||!l.id)return;
+  try{
+    fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({
+      acao:'excluirListaEquipamento',
+      municipio:municipio.municipio||'',
+      acao_instrumento:a.acao_instrumento||'',
+      acao_tipo:a.acao_tipo||'',
+      lista_id:l.id
+    })}).catch(function(){});
+  }catch(e){}
+}
+
+// Traz do servidor todas as listas desta ação (de qualquer bimestre) e mescla
+// com o que está em tela. O servidor manda no que é acompanhamento (situação,
+// contrato, datas); o que está sendo digitado agora não é sobrescrito.
+async function carregarListasHistorico(acqObj){
+  if(!acqObj)return false;
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return false;
+  const inst=acqObj.acao_instrumento||'', tipo=acqObj.acao_tipo||'';
+  if(!inst||!tipo)return false;
+  let remotas=[];
+  try{
+    const url=APPS_SCRIPT_URL+'?acao=buscarListasEquipamentos'
+      +'&municipio='+encodeURIComponent(municipio.municipio||'')
+      +'&instrumento='+encodeURIComponent(inst)
+      +'&tipo='+encodeURIComponent(tipo);
+    const resp=await fetch(url);
+    const j=await resp.json();
+    if(j&&j.status==='ok')remotas=j.listas||[];
+  }catch(e){ return false; }
+  if(!remotas.length)return false;
+
+  if(!acqObj._listasEquip)acqObj._listasEquip=[];
+  let mudou=false;
+  remotas.forEach(function(r){
+    const local=acqObj._listasEquip.filter(function(l){return l.id===r.id;})[0];
+    if(local){
+      // Campos de acompanhamento vêm do servidor; arquivo e valor originais
+      // ficam como estão (podem estar sendo editados agora).
+      ['status','num_contrato','data_prev','situacao_entrega','data_recebimento','justificativa','obs'].forEach(function(k){
+        if(r[k]&&local[k]!==r[k]){local[k]=r[k];mudou=true;}
+      });
+      if(!local._nomes||!local._nomes.length){local._nomes=r.nomes||[];}
+      // O histórico é cumulativo: o servidor tem a versão mais completa,
+      // exceto pelo que acabou de ser marcado nesta tela.
+      if(r.historico_status){
+        try{
+          const hRemoto=JSON.parse(r.historico_status)||[];
+          const hLocal=local.historico_status||[];
+          if(hRemoto.length>hLocal.length){local.historico_status=hRemoto;mudou=true;}
+        }catch(e){}
+      }
+      if(!String(local.valor||'').trim()&&r.valor){local.valor=r.valor;mudou=true;}
+    }else{
+      acqObj._listasEquip.push({
+        id:r.id,_nomes:r.nomes||[],arquivos:[],valor:r.valor||'',status:r.status||'',
+        bimestre:r.bimestre||'',ano:r.ano||'',num_contrato:r.num_contrato||'',
+        data_prev:r.data_prev||'',situacao_entrega:r.situacao_entrega||'',
+        data_recebimento:r.data_recebimento||'',justificativa:r.justificativa||'',
+        obs:r.obs||'',confirmado:true,
+        historico_status:(function(){try{return JSON.parse(r.historico_status||'[]');}catch(e){return [];}})()
+      });
+      mudou=true;
+    }
+  });
+  if(mudou)saveSession();
+  return mudou;
+}
+
 function renderListasStatusCards(fase){
   const a=acq();
   const listas=(a._listasEquip||[]).filter(function(l){return l.confirmado;});
@@ -5604,7 +5758,13 @@ function renderListasStatusCards(fase){
       +'</div>';
 
     if(fase===2){
-      html+='<label style="'+lbl+'">Situação desta lista</label>'
+      const _ant=_statusAnterior(l,'status');
+      html+=(_ant
+        ? '<div style="font-size:11.5px;color:var(--ink3);background:var(--g50);border-radius:6px;padding:7px 10px;margin-bottom:10px">'
+          +'No '+_ant.bimestre+(_ant.ano?' / '+_ant.ano:'')+' esta lista estava como <strong style="color:var(--g800)">'+_ant.status+'</strong>. Atualize abaixo se mudou neste bimestre.'
+        +'</div>'
+        : '')
+        +'<label style="'+lbl+'">Situação desta lista</label>'
         +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
           +STATUS_LISTA.map(function(s){
             const on=(l.status||'')===s;
@@ -5624,7 +5784,13 @@ function renderListasStatusCards(fase){
       if(!entregaLiberada){
         html+='<div style="font-size:12px;color:var(--ink3);font-style:italic">Avance a situação para "Em entrega" na etapa de Contratação para registrar a entrega desta lista.</div>';
       }else{
-        html+='<label style="'+lbl+'">Situação da entrega</label>'
+        const _antE=_statusAnterior(l,'situacao_entrega');
+        html+=(_antE
+          ? '<div style="font-size:11.5px;color:var(--ink3);background:var(--g50);border-radius:6px;padding:7px 10px;margin-bottom:10px">'
+            +'No '+_antE.bimestre+(_antE.ano?' / '+_antE.ano:'')+' a entrega estava como <strong style="color:var(--g800)">'+_antE.status+'</strong>.'
+          +'</div>'
+          : '')
+          +'<label style="'+lbl+'">Situação da entrega</label>'
           +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'
             +['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'].map(function(s){
               const on=(l.situacao_entrega||'')===s;
@@ -5938,6 +6104,7 @@ function _buildAtividadeEditCard(editIdx){
       +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'descricao',this.value)\" placeholder=\"Descreva a atividade contratada...\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+(at.descricao||'')+'</textarea>'
     +'</div>'
     +'<div style="margin-bottom:12px">'
+      +avisoAnterior
       +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Status de execu\u00e7\u00e3o</label>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+pillsHTML+'</div>'
     +'</div>'
