@@ -1085,12 +1085,41 @@ function navToPhase(i){saveAllInputs();phase=i;renderAll();}
 function calcAcqStatus(a){
   if(!a||!a._key)return'empty';
   if(a._locked)return'locked';
-  const temValor=!!(parseBRL(a.valor_executado||'')||(a._ativs||[]).some(function(at){return at.empresas&&at.empresas[0]&&parseBRL(at.empresas[0].valor||'');}));
+
+  // O cálculo precisa reconhecer os três modelos de preenchimento. Antes só
+  // olhava campos do modelo antigo (valor_executado, _status_contrat,
+  // situacao_entrega): uma ação toda preenchida por listas ou atividades nunca
+  // chegava a "complete", e por isso o aviso "parcialmente preenchida"
+  // aparecia mesmo com tudo respondido.
+  const obra=isAcqObra(a);
+  const servico=a.modalidade_objeto==='servico';
+  const listas=(a._listasEquip||[]).filter(function(l){return l.confirmado;});
+  const ativs=(a._atividades||[]).filter(function(at){return at.confirmado;});
+  const temValor=!!(parseBRL(a.valor_executado||'')
+    || listas.some(function(l){return parseBRL(l.valor||'')>0;})
+    || ativs.some(function(at){return (at.empresas||[]).some(function(e){return parseBRL(e.valor||'')>0;});})
+    || (a._notas||[]).some(function(n){return n.confirmado&&parseBRL(n.valor||'')>0;}));
+
+  let contratado, executado;
+  if(servico){
+    // Serviço: o andamento vive no status de cada atividade.
+    contratado = ativs.length>0;
+    executado  = ativs.some(function(at){return at._status&&at._status!=='Planejamento'&&at._status!=='Processo aberto';});
+  }else if(obra){
+    contratado = !!(a._status_contrat&&a._status_contrat!=='Planejamento');
+    executado  = !!(a.pct_medido_periodo||a.data_inicio_obra);
+  }else{
+    // Aquisição: por lista (modelo atual) ou pelos campos antigos.
+    contratado = listas.length>0 || !!(a._status_contrat&&a._status_contrat!=='Planejamento');
+    executado  = listas.some(function(l){return (l.status||'')&&l.status!=='Aguardando aquisição';})
+              || !!a.situacao_entrega;
+  }
+
   const steps=[
-    !!(a.modalidade_objeto),                                          // tipo monitoramento
-    !!(a._status_contrat&&a._status_contrat!=='Planejamento'),        // contratação
-    !!(isAcqObra(a)?(a.pct_medido_periodo||a.data_inicio_obra):a.situacao_entrega), // entrega/execução
-    temValor,                                                         // financeiro
+    !!(a.modalidade_objeto),   // tipo de monitoramento
+    contratado,                // contratação / atividades / listas
+    executado,                 // execução ou entrega
+    temValor,                  // financeiro
   ];
   const done=steps.filter(Boolean).length;
   if(done===0)return'empty';
@@ -1146,9 +1175,15 @@ function renderAcqBar(){
 
   function stepDone(a,s){
     if(!a)return false;
+    const _listas=(a._listasEquip||[]).filter(function(l){return l.confirmado;});
+    const _ativs=(a._atividades||[]).filter(function(at){return at.confirmado;});
     if(s===2)return !!(a.acao_tipo&&a.modalidade_objeto);
-    if(s===3)return !!(a._status_contrat&&a._status_contrat!=='Planejamento');
-    if(s===4)return isAcqObra(a)?!!(a.pct_medido_periodo||a.data_inicio_obra):!!(a.situacao_entrega);
+    if(s===3)return !!(a._status_contrat&&a._status_contrat!=='Planejamento')||_listas.length>0||_ativs.length>0;
+    if(s===4){
+      if(isAcqObra(a))return !!(a.pct_medido_periodo||a.data_inicio_obra);
+      if(a.modalidade_objeto==='servico')return _ativs.some(function(at){return at._status&&at._status!=='Planejamento'&&at._status!=='Processo aberto';});
+      return !!a.situacao_entrega||_listas.some(function(l){return (l.status||'')&&l.status!=='Aguardando aquisição';});
+    }
     if(s===5)return !!(a.problemas||a.medidas||a.meta_prevista||a.status_meta);
     return false;
   }
@@ -1621,6 +1656,11 @@ async function carregarRendimentosHistorico(){
       const meu=_rendHistorico.filter(function(p){return p.ordem===ordemAtual;})[0];
       if(meu&&meu.valor>0){
         municipio.rendimentos_periodo=meu.valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+        // Registros antigos não têm a divisão custeio/investimento; o total
+        // entra como custeio para não se perder, e pode ser reclassificado.
+        if(String(municipio.rendimentos_custeio||'').trim()===''&&String(municipio.rendimentos_investimento||'').trim()===''){
+          municipio.rendimentos_custeio=municipio.rendimentos_periodo;
+        }
         municipio.extrato_ja_enviado=true; // enviado junto com o bimestre
         saveSession();
         renderAll();
@@ -2008,7 +2048,7 @@ function renderCapaMunicipio(modoResumo){
   // Como a etapa 1 é revisitada a cada ação, o card reaparecia toda vez e o
   // campo obrigatório travava o avanço. Depois de preenchido, ele colapsa
   // num resumo de uma linha, com "Editar" para quem precisar corrigir.
-  const _capaCompleta=String(municipio.rendimentos_periodo||'').trim()!==''&&_temExtrato;
+  const _capaCompleta=(String(municipio.rendimentos_custeio||'').trim()!==''||String(municipio.rendimentos_investimento||'').trim()!=='')&&_temExtrato;
   if(!modoResumo&&_capaCompleta&&!_capaEditando){
     return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
       +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u2713</div>'
@@ -2028,7 +2068,27 @@ function renderCapaMunicipio(modoResumo){
   if(!modoResumo){
     return '<div class="card" id="card-capa-municipio" style="border-left:3px solid var(--g500)">'
       +'<div class="card-title">Rendimentos no período</div>'
-      +fldMun('Rendimentos no período (R$)','rendimentos_periodo','money','',null,true)
+      // Custeio (Res. SES/MG 10.962) e investimento (Res. 10.963) são
+      // repassados em CONTAS ESPECÍFICAS distintas, cada uma com seu extrato.
+      // Somar os rendimentos num campo só impediria a prestação de contas
+      // separada que as duas resoluções exigem.
+      +'<div class="row2">'
+        +fldMun('Rendimentos — Custeio (R$)','rendimentos_custeio','money','0,00')
+        +fldMun('Rendimentos — Investimento (R$)','rendimentos_investimento','money','0,00')
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--ink3);margin:-6px 0 10px">Custeio: Resolução SES/MG nº 10.962/2026 · Investimento: Resolução SES/MG nº 10.963/2026. Informe o rendimento de cada conta específica.</div>'
+      +(function(){
+        // O total continua alimentando `rendimentos_periodo`, que é o campo
+        // usado no restante do sistema (planilha, PDF, acumulado).
+        const c=parseBRL(municipio.rendimentos_custeio||'');
+        const iv=parseBRL(municipio.rendimentos_investimento||'');
+        const t=c+iv;
+        municipio.rendimentos_periodo=t?t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:var(--g50);border-radius:7px;margin-bottom:10px">'
+          +'<span style="font-size:12px;color:var(--ink2);font-weight:600">Total no período</span>'
+          +'<strong style="font-size:14px;color:var(--g800)">R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong>'
+        +'</div>';
+      })()
       +'<div id="rend-historico" style="margin:8px 0 12px">'+renderRendimentosHistorico()+'</div>'
       +'<p class="hint" style="margin:6px 0 6px">Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</p>'
       +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
@@ -2365,11 +2425,6 @@ function contentHTML(){
     ${lockedBanner}<div class="step-head"><h2>Execução finalística <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Metas, resultados, pendências e comprovações sobre esta ação.</p></div>
 
     <div class="card">
-      <div class="card-title">Pendências e riscos</div>
-      ${fld('Dificuldades, riscos ou pendências','problemas','textarea','Descreva os principais problemas...')}
-      ${fld('Medidas saneadoras já adotadas','medidas','textarea','Descreva as ações já tomadas para resolver os problemas identificados...')}
-    </div>
-    <div class="card">
       <div class="card-title">Meta e status</div>
       ${(()=>{
         const a=acq();
@@ -2384,7 +2439,12 @@ function contentHTML(){
         +'</div>';
       })()}
       ${chipsHTML('Status da meta','status_meta',['Não iniciado','Em andamento','Em execução','Concluída'])}
+    </div>    <div class="card">
+      <div class="card-title">Pendências e riscos</div>
+      ${fld('Dificuldades, riscos ou pendências','problemas','textarea','Descreva os principais problemas...')}
+      ${fld('Medidas saneadoras já adotadas','medidas','textarea','Descreva as ações já tomadas para resolver os problemas identificados...')}
     </div>
+
 `;
 
   if(phase===5){
@@ -2774,6 +2834,9 @@ async function enviarAnexosDrive(a){
     (l.arquivos||[]).forEach(function(f){
       arquivosAcao.push({file:f, subpasta:'lista_equipamentos_'+(li+1)});
     });
+    (l.arquivos_nf||[]).forEach(function(f){
+      arquivosAcao.push({file:f, subpasta:'lista_'+(li+1)+'_nota_fiscal'});
+    });
   });
 
   if(!arquivosAcao.length)return;
@@ -3148,6 +3211,17 @@ async function concludeAction(){
   if(!a)return;
   const status=calcAcqStatus(a);
 
+  // Lista marcada como recebida sem a nota anexada não pode ser concluída — a
+  // comprovação documental é exigida pelas resoluções.
+  const semNF=(a._listasEquip||[]).filter(function(l){
+    return l.confirmado&&l.status==='Recebido'
+      &&!((l.arquivos_nf&&l.arquivos_nf.length)||(l._nomesNF&&l._nomesNF.length));
+  });
+  if(semNF.length){
+    showAlertModal('Anexe a nota fiscal da(s) lista(s) marcada(s) como "Recebido" antes de concluir.','⚠️');
+    return;
+  }
+
   if(status==='empty'){
     showAlertModal('Preencha pelo menos o tipo de monitoramento e o status da contratação antes de concluir.','⚠️');
     return;
@@ -3226,6 +3300,8 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
       valor_total_recebido:(municipio._recebidoBase||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       rendimentos_acumulados:(_somaRendimentosAnteriores()+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      rendimentos_custeio:municipio.rendimentos_custeio||'',
+      rendimentos_investimento:municipio.rendimentos_investimento||'',
       docs_marcados:docsOk,
       // Notas fiscais / execuções do período, em JSON (uma coluna só na planilha).
       notas_fiscais:JSON.stringify((a._notas||[]).filter(function(n){return n.confirmado;}).map(function(n){
@@ -3245,6 +3321,8 @@ async function enviarAcaoSheet(a, tipoRegistro){
                 valor:l.valor||'',status:l.status||'',bimestre:l.bimestre||'',ano:l.ano||'',
                 num_contrato:l.num_contrato||'',data_prev:l.data_prev||'',
                 situacao_entrega:l.situacao_entrega||'',justificativa:l.justificativa||'',
+                num_nf:l.num_nf||'',data_nf:l.data_nf||'',valor_nf:l.valor_nf||'',
+                nomes_nf:(l.arquivos_nf&&l.arquivos_nf.length?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[])),
                 data_recebimento:l.data_recebimento||'',obs:l.obs||''};
       })),
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
@@ -3341,6 +3419,8 @@ async function enviarSessaoServidor(){
   // reanexar. Enviado sempre que o conteúdo mudar de fato.
   const _capaPayload=JSON.stringify({
     rendimentos_periodo:municipio.rendimentos_periodo||'',
+    rendimentos_custeio:municipio.rendimentos_custeio||'',
+    rendimentos_investimento:municipio.rendimentos_investimento||'',
     extratos_nomes:municipio.extratos_nomes||[],
     extrato_ja_enviado:!!municipio.extrato_ja_enviado
   });
@@ -3397,6 +3477,10 @@ async function mesclarSessaoDoServidor(){
         if(String(municipio.rendimentos_periodo||'').trim()===''&&_capa.rendimentos_periodo){
           municipio.rendimentos_periodo=_capa.rendimentos_periodo;
         }
+        ['rendimentos_custeio','rendimentos_investimento'].forEach(function(k){
+          if(String(municipio[k]||'').trim()===''&&_capa[k])municipio[k]=_capa[k];
+        });
+
         municipio._capaTouchedAt=_ts;
         _ultimoCapaEnviado=JSON.stringify({
           rendimentos_periodo:municipio.rendimentos_periodo||'',
@@ -3867,6 +3951,8 @@ function registroParaAcq(reg){
                 status:l.status||'',bimestre:l.bimestre||'',ano:l.ano||'',
                 num_contrato:l.num_contrato||'',data_prev:l.data_prev||'',
                 situacao_entrega:l.situacao_entrega||'',justificativa:l.justificativa||'',
+                num_nf:l.num_nf||'',data_nf:l.data_nf||'',valor_nf:l.valor_nf||'',
+                arquivos_nf:[],_nomesNF:l.nomes_nf||[],
                 data_recebimento:l.data_recebimento||'',obs:l.obs||'',confirmado:true};
       }); }catch(e){ return []; }
     })(),
@@ -5538,12 +5624,15 @@ function _pctAcumuladoAnterior(a){
 // diferentes estão em fases diferentes.
 // Os campos aparecem conforme a lista avança: enquanto ela não é confirmada,
 // só se pede arquivo e valor.
-const STATUS_LISTA=['Aguardando aquisição','Processo aberto','Contratado','Em entrega','Recebido'];
+// "Em entrega" saiu: para a lista o que importa é se o equipamento chegou.
+// O detalhe do andamento fica nas observações, sem virar mais um estado.
+const STATUS_LISTA=['Aguardando aquisição','Processo aberto','Contratado','Recebido'];
 
 function _listaVazia(){
   return {id:'le_'+Date.now(), arquivos:[], valor:'', status:'Aguardando aquisição',
           bimestre:municipio.bimestre||'', ano:municipio.ano||'',
           num_contrato:'', data_prev:'', situacao_entrega:'', justificativa:'',
+          num_nf:'', data_nf:'', valor_nf:'', arquivos_nf:[], _nomesNF:[],
           data_recebimento:'', obs:'', confirmado:false};
 }
 function _listasEquip(a){ if(!a._listasEquip)a._listasEquip=[]; return a._listasEquip; }
@@ -5618,6 +5707,20 @@ function handleFilesLista(i,files){
   Array.from(files).forEach(function(f){ l.arquivos.push(f); l._nomes=(l._nomes||[]).concat(f.name); });
   _marcarTocado(a); saveSession(); renderAll(true);
 }
+function handleFilesNFLista(i,files){
+  const a=acq(); const l=_listasEquip(a)[i];
+  if(!l)return;
+  if(!l.arquivos_nf)l.arquivos_nf=[];
+  Array.from(files).forEach(function(f){ l.arquivos_nf.push(f); l._nomesNF=(l._nomesNF||[]).concat(f.name); });
+  _marcarTocado(a); salvarListaServidor(l); saveSession(); renderAll(true);
+}
+function _removerNFLista(i,ni){
+  const a=acq(); const l=_listasEquip(a)[i];
+  if(!l)return;
+  if(l.arquivos_nf)l.arquivos_nf.splice(ni,1);
+  if(l._nomesNF)l._nomesNF.splice(ni,1);
+  _marcarTocado(a); salvarListaServidor(l); saveSession(); renderAll(true);
+}
 function _removerArquivoLista(i,ai){
   const a=acq(); const l=_listasEquip(a)[i];
   if(!l)return;
@@ -5646,6 +5749,8 @@ function _listaParaServidor(l){
     num_contrato:l.num_contrato||'', data_prev:l.data_prev||'',
     situacao_entrega:l.situacao_entrega||'', data_recebimento:l.data_recebimento||'',
     justificativa:l.justificativa||'', obs:l.obs||'',
+    num_nf:l.num_nf||'', data_nf:l.data_nf||'', valor_nf:l.valor_nf||'',
+    nomes_nf:(l.arquivos_nf&&l.arquivos_nf.length?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[])),
     historico_status:JSON.stringify(l.historico_status||[])
   };
 }
@@ -5707,10 +5812,11 @@ async function carregarListasHistorico(acqObj){
     if(local){
       // Campos de acompanhamento vêm do servidor; arquivo e valor originais
       // ficam como estão (podem estar sendo editados agora).
-      ['status','num_contrato','data_prev','situacao_entrega','data_recebimento','justificativa','obs'].forEach(function(k){
+      ['status','num_contrato','data_prev','situacao_entrega','data_recebimento','justificativa','obs','num_nf','data_nf','valor_nf'].forEach(function(k){
         if(r[k]&&local[k]!==r[k]){local[k]=r[k];mudou=true;}
       });
       if(!local._nomes||!local._nomes.length){local._nomes=r.nomes||[];}
+      if(!local._nomesNF||!local._nomesNF.length){local._nomesNF=r.nomes_nf||[];}
       // O histórico é cumulativo: o servidor tem a versão mais completa,
       // exceto pelo que acabou de ser marcado nesta tela.
       if(r.historico_status){
@@ -5728,6 +5834,8 @@ async function carregarListasHistorico(acqObj){
         data_prev:r.data_prev||'',situacao_entrega:r.situacao_entrega||'',
         data_recebimento:r.data_recebimento||'',justificativa:r.justificativa||'',
         obs:r.obs||'',confirmado:true,
+        num_nf:r.num_nf||'',data_nf:r.data_nf||'',valor_nf:r.valor_nf||'',
+        arquivos_nf:[],_nomesNF:r.nomes_nf||[],
         historico_status:(function(){try{return JSON.parse(r.historico_status||'[]');}catch(e){return [];}})()
       });
       mudou=true;
@@ -5779,45 +5887,56 @@ function renderListasStatusCards(fase){
             return '<button type="button" onclick="_updLista('+i+',\'status\',\''+s+'\');saveSession();renderAll(true)" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
           }).join('')
         +'</div>'
-        // Dados do processo só fazem sentido depois de contratado.
-        +((l.status==='Contratado'||entregaLiberada)
-          ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">'
-            +'<div><label style="'+lbl+'">Nº do contrato / processo</label>'
-              +'<input type="text" oninput="_updLista('+i+',\'num_contrato\',this.value)" value="'+esc(l.num_contrato)+'" placeholder="Ex: 001/2026" style="'+inp+'"/></div>'
-            +'<div><label style="'+lbl+'">Previsão de entrega</label>'
-              +'<input type="date" oninput="_updLista('+i+',\'data_prev\',this.value)" value="'+esc(l.data_prev)+'" style="'+inp+'"/></div>'
-          +'</div>'
-          : '<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Marque "Contratado" para registrar contrato e previsão de entrega.</div>');
-    }else{
-      if(!entregaLiberada){
-        html+='<div style="font-size:12px;color:var(--ink3);font-style:italic">Avance a situação para "Em entrega" na etapa de Contratação para registrar a entrega desta lista.</div>';
-      }else{
-        const _antE=_statusAnterior(l,'situacao_entrega');
-        html+=(_antE
-          ? '<div style="font-size:11.5px;color:var(--ink3);background:var(--g50);border-radius:6px;padding:7px 10px;margin-bottom:10px">'
-            +'No '+_antE.bimestre+(_antE.ano?' / '+_antE.ano:'')+' a entrega estava como <strong style="color:var(--g800)">'+_antE.status+'</strong>.'
+        // Contratado: só a previsão de entrega. O nº do contrato saiu — já é
+        // informado no processo SEI e não era usado em nenhum relatório.
+        +((l.status==='Contratado')
+          ? '<div style="margin-top:12px;max-width:240px"><label style="'+lbl+'">Previsão de entrega</label>'
+            +'<input type="date" oninput="_updLista('+i+',\'data_prev\',this.value)" value="'+esc(l.data_prev)+'" style="'+inp+'"/></div>'
+          : '')
+        // Recebido: a comprovação é obrigatória — nota fiscal com anexo.
+        +((l.status==='Recebido')
+          ? '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border2)">'
+            +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px">Comprovação do recebimento</div>'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+              +'<div><label style="'+lbl+'">Nº da NF <span class="req">*</span></label>'
+                +'<input type="text" oninput="_updLista('+i+',\'num_nf\',this.value)" value="'+esc(l.num_nf)+'" placeholder="Ex: 000123" style="'+inp+'"/></div>'
+              +'<div><label style="'+lbl+'">Data da NF <span class="req">*</span></label>'
+                +'<input type="date" oninput="_updLista('+i+',\'data_nf\',this.value)" value="'+esc(l.data_nf)+'" style="'+inp+'"/></div>'
+              +'<div><label style="'+lbl+'">Valor da NF (R$) <span class="req">*</span></label>'
+                +'<input type="text" inputmode="decimal" oninput="onMoneyInput(this);_updLista('+i+',\'valor_nf\',this.value)" onblur="this.value=fmtBRL(this.value);_updLista('+i+',\'valor_nf\',this.value)" value="'+esc(l.valor_nf)+'" placeholder="0,00" style="'+inp+'"/></div>'
+            +'</div>'
+            +'<div style="margin-top:10px"><label style="'+lbl+'">Data do recebimento</label>'
+              +'<input type="date" oninput="_updLista('+i+',\'data_recebimento\',this.value)" value="'+esc(l.data_recebimento)+'" style="'+inp+';max-width:240px"/></div>'
+            +'<div style="margin-top:12px">'
+              +'<label style="'+lbl+'">Anexo da nota fiscal <span class="req">*</span></label>'
+              +'<input type="file" style="display:none" id="file_nf_lista_'+i+'" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesNFLista('+i+',this.files)"/>'
+              +'<div class="upload-zone" onclick="document.getElementById(\'file_nf_lista_'+i+'\').click()" style="'+((l.arquivos_nf&&l.arquivos_nf.length)||(l._nomesNF&&l._nomesNF.length)?'':'border-color:#C0392B')+'">'
+                +'<div class="upload-zone-text"><strong>Clique para anexar a nota fiscal</strong> (PDF, imagem)</div>'
+              +'</div>'
+              +'<div class="file-list">'+((l.arquivos_nf&&l.arquivos_nf.length)?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[])).map(function(nm,ni){
+                  return '<div class="file-pill">'+esc(nm)+'<span class="rem" onclick="_removerNFLista('+i+','+ni+')">×</span></div>';
+                }).join('')+'</div>'
+              +(((l.arquivos_nf&&l.arquivos_nf.length)||(l._nomesNF&&l._nomesNF.length))?'':'<div style="font-size:11px;color:#C0392B;margin-top:4px">A nota fiscal precisa ser anexada para comprovar o recebimento.</div>')
+            +'</div>'
           +'</div>'
           : '')
-          +'<label style="'+lbl+'">Situação da entrega</label>'
-          +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'
-            +['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'].map(function(s){
-              const on=(l.situacao_entrega||'')===s;
-              return '<button type="button" onclick="_updLista('+i+',\'situacao_entrega\',\''+s+'\');saveSession();renderAll(true)" style="padding:6px 14px;font-size:12px;font-family:var(--font);border-radius:20px;cursor:pointer;border:1px solid '+(on?'var(--g700)':'var(--border)')+';background:'+(on?'var(--g700)':'#fff')+';color:'+(on?'#fff':'var(--ink2)')+'">'+s+'</button>';
-            }).join('')
-          +'</div>'
-          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
-            +'<div><label style="'+lbl+'">Data da entrega</label>'
-              +'<input type="date" oninput="_updLista('+i+',\'data_recebimento\',this.value)" value="'+esc(l.data_recebimento)+'" style="'+inp+'"/></div>'
-            +'<div><label style="'+lbl+'">Observações</label>'
-              +'<input type="text" oninput="_updLista('+i+',\'obs\',this.value)" value="'+esc(l.obs)+'" placeholder="Pendências, entrega parcial..." style="'+inp+'"/></div>'
-          +'</div>'
-          // Atraso só é pergunta relevante quando a entrega está atrasada.
-          +((l.situacao_entrega==='Parcial — atrasado')
-            ? '<div style="margin-top:10px"><label style="'+lbl+'">Justificativa do atraso</label>'
-              +'<input type="text" oninput="_updLista('+i+',\'justificativa\',this.value)" value="'+esc(l.justificativa)+'" placeholder="Motivo do atraso" style="'+inp+'"/></div>'
-            : '')
-          // Nota fiscal desta lista, no mesmo lugar da entrega.
-          +renderNotasFiscaisCard('lista_'+i,{embutido:true});
+        +((l.status==='Contratado'||l.status==='Recebido')
+          ? '<div style="margin-top:10px"><label style="'+lbl+'">Observações</label>'
+            +'<input type="text" oninput="_updLista('+i+',\'obs\',this.value)" value="'+esc(l.obs)+'" placeholder="Entrega parcial, pendências, prazos..." style="'+inp+'"/></div>'
+          : '');
+    }else{
+      // A entrega da lista é comprovada na etapa de Contratação, junto com o
+      // status "Recebido". Aqui fica só a leitura, para não pedir duas vezes.
+      if(l.status!=='Recebido'){
+        html+='<div style="font-size:12px;color:var(--ink3);font-style:italic">Marque esta lista como <strong>Recebido</strong> na etapa de Contratação, anexando a nota fiscal.</div>';
+      }else{
+        const nfNomes=(l.arquivos_nf&&l.arquivos_nf.length)?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[]);
+        html+='<div style="font-size:12.5px;color:var(--ink2);line-height:1.7">'
+          +'<div>Recebida'+(l.data_recebimento?' em '+new Date(l.data_recebimento+'T00:00').toLocaleDateString('pt-BR'):'')+'.</div>'
+          +(l.num_nf?'<div>NF '+esc(l.num_nf)+(l.data_nf?' · '+new Date(l.data_nf+'T00:00').toLocaleDateString('pt-BR'):'')+(l.valor_nf?' · R$ '+esc(l.valor_nf):'')+'</div>':'')
+          +(nfNomes.length?'<div style="color:var(--ink3)">Anexo: '+esc(nfNomes.join(', '))+'</div>':'')
+          +(l.obs?'<div style="color:var(--ink3)">'+esc(l.obs)+'</div>':'')
+        +'</div>';
       }
     }
     html+='</div>';
@@ -5833,13 +5952,19 @@ function renderListasEquipCard(){
   const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
   const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
   const doBimestreAtual=function(l){return (l.bimestre||'')===(municipio.bimestre||'')&&String(l.ano||'')===String(municipio.ano||'');};
+  // Uma lista só "encerra" quando é recebida. Enquanto isso, ela segue em
+  // acompanhamento nos bimestres seguintes — é justamente o que muda de um
+  // período para o outro. Depois de recebida, vira histórico.
+  const encerrada=function(l){return (l.status||'')==='Recebido';};
 
   let html='<div class="card" id="card-financeiro-equip">'
     +'<div class="card-title">Listas de equipamentos adquiridos</div>'
     +'<p class="hint" style="margin-bottom:12px">Cada lista tem seu próprio valor e situação. Listas de bimestres anteriores continuam aqui, somente com a situação atualizável.</p>';
 
   listas.forEach(function(l,i){
-    const anterior=!doBimestreAtual(l);
+    // Só é tratada como "de outro bimestre" (sem edição) depois de recebida.
+    const anterior=!doBimestreAtual(l)&&encerrada(l);
+    const pendenteDeAntes=!doBimestreAtual(l)&&!encerrada(l);
     const nomes=(l.arquivos&&l.arquivos.length)?l.arquivos.map(function(f){return f.name;}):(l._nomes||[]);
 
     if(l.confirmado){
@@ -5848,7 +5973,10 @@ function renderListasEquipCard(){
           +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
           +'<div style="flex:1;min-width:0">'
             +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+(nomes.length?esc(nomes[0]):'Lista '+(i+1))+(nomes.length>1?' +'+(nomes.length-1):'')+'</div>'
-            +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+(l.bimestre||'—')+(l.ano?' / '+l.ano:'')+(anterior?' · bimestre anterior':'')+'</div>'
+            +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+(l.bimestre||'—')+(l.ano?' / '+l.ano:'')
+              +(anterior?' · concluída':'')
+              +(pendenteDeAntes?' · <span style="color:var(--g700);font-weight:600">em acompanhamento</span> · '+(l.status||'sem situação'):'')
+            +'</div>'
           +'</div>'
           +'<div style="font-size:13px;font-weight:700;color:var(--g800);white-space:nowrap">'+fmt(parseBRL(l.valor||''))+'</div>'
           +(anterior?'':'<button type="button" onclick="_editarLista('+i+')" style="padding:4px 12px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
@@ -6090,6 +6218,14 @@ function _buildAtividadeEditCard(editIdx){
       +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'+(at.item_num==='outra'?'Descreva a atividade no campo abaixo — obrigatório.':'Ou preencha livremente os campos abaixo')+'</div>'
     +'</div>')
     :'';
+
+  // Situação registrada em bimestre anterior — mostra a evolução da atividade.
+  const _antAtiv=(typeof _statusAnterior==='function')?_statusAnterior(at,'_status'):null;
+  const avisoAnterior=_antAtiv
+    ? '<div style="font-size:11.5px;color:var(--ink3);background:var(--g50);border-radius:6px;padding:7px 10px;margin-bottom:8px">'
+      +'No '+_antAtiv.bimestre+(_antAtiv.ano?' / '+_antAtiv.ano:'')+' esta atividade estava como <strong style="color:var(--g800)">'+_antAtiv.status+'</strong>. Atualize se mudou neste bimestre.'
+    +'</div>'
+    : '';
 
   const pillsHTML=_STAT_ATIV.map(function(s){
     const sel=at._status===s;
