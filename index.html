@@ -1692,24 +1692,39 @@ function renderRendimentosHistorico(){
   const ordemAtual=_ordemPeriodoAtual();
   const antes=_rendHistorico.filter(function(p){return p.ordem<ordemAtual;});
   if(!antes.length)return '<div style="font-size:11px;color:var(--ink3)">Nenhum rendimento registrado em bimestres anteriores.</div>';
-  const somaAnterior=antes.reduce(function(s,p){return s+(p.valor||0);},0);
-  const atual=parseBRL(municipio.rendimentos_periodo||'')||0;
-  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+
+  // Duas colunas, nunca uma soma só: o rendimento de investimento não pode
+  // custear despesa de custeio, nem o contrário. Um total único daria a
+  // impressão de caixa único e induziria a erro na aplicação do recurso.
+  const fmt=function(v){return v?('R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})):'—';};
   const cel='padding:5px 8px;font-size:11.5px;border-bottom:1px solid var(--border2)';
+  const th='padding:5px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)';
+  // Registros antigos não têm a divisão — o total entra como custeio.
+  const cust=function(p){return (p.custeio||p.investimento)?(p.custeio||0):(p.valor||0);};
+  const inv=function(p){return p.investimento||0;};
+  const somaC=antes.reduce(function(s,p){return s+cust(p);},0);
+  const somaI=antes.reduce(function(s,p){return s+inv(p);},0);
+  const atualC=parseBRL(municipio.rendimentos_custeio||'')||0;
+  const atualI=parseBRL(municipio.rendimentos_investimento||'')||0;
+
   return '<div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-top:4px">'
     +'<table style="width:100%;border-collapse:collapse">'
       +'<tr style="background:var(--g50)">'
-        +'<th style="'+cel+';text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Bimestre</th>'
-        +'<th style="'+cel+';text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Rendimento</th>'
+        +'<th style="'+th+';text-align:left">Bimestre</th>'
+        +'<th style="'+th+';text-align:right">Custeio</th>'
+        +'<th style="'+th+';text-align:right">Investimento</th>'
       +'</tr>'
       +antes.map(function(p){
         return '<tr><td style="'+cel+';color:var(--ink2)">'+p.bimestre+' / '+p.ano+'</td>'
-          +'<td style="'+cel+';text-align:right;color:var(--ink2)">'+fmt(p.valor)+'</td></tr>';
+          +'<td style="'+cel+';text-align:right;color:var(--ink2)">'+fmt(cust(p))+'</td>'
+          +'<td style="'+cel+';text-align:right;color:var(--ink2)">'+fmt(inv(p))+'</td></tr>';
       }).join('')
       +'<tr><td style="'+cel+';color:var(--ink3);font-style:italic">'+(municipio.bimestre||'Este bimestre')+' / '+(municipio.ano||'')+' (em preenchimento)</td>'
-        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atual)+'</td></tr>'
-      +'<tr style="background:var(--g50)"><td style="'+cel+';font-weight:700;color:var(--g800);border-bottom:none">Acumulado</td>'
-        +'<td style="'+cel+';text-align:right;font-weight:700;color:var(--g800);border-bottom:none">'+fmt(somaAnterior+atual)+'</td></tr>'
+        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualC)+'</td>'
+        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualI)+'</td></tr>'
+      +'<tr style="background:var(--g50)"><td style="'+cel+';font-weight:700;color:var(--g800);border-bottom:none">Acumulado por conta</td>'
+        +'<td style="'+cel+';text-align:right;font-weight:700;color:var(--g800);border-bottom:none">'+fmt(somaC+atualC)+'</td>'
+        +'<td style="'+cel+';text-align:right;font-weight:700;color:var(--g800);border-bottom:none">'+fmt(somaI+atualI)+'</td></tr>'
     +'</table>'
   +'</div>';
 }
@@ -2054,13 +2069,13 @@ function renderCapaMunicipio(modoResumo){
       +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u2713</div>'
       +'<div style="flex:1;min-width:180px">'
         +'<div style="font-size:12.5px;font-weight:700;color:var(--g800)">Rendimentos do bimestre registrados</div>'
-        +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">R$ '+parseBRL(municipio.rendimentos_periodo||'').toLocaleString('pt-BR',{minimumFractionDigits:2})+' neste bimestre'+(function(){
-            const ordemAtual=_ordemPeriodoAtual();
-            const antes=(_rendHistorico||[]).filter(function(p){return p.ordem<ordemAtual;});
-            if(!antes.length)return '';
-            const acum=antes.reduce(function(s,p){return s+(p.valor||0);},0)+parseBRL(municipio.rendimentos_periodo||'');
-            return ' \u00b7 acumulado R$ '+acum.toLocaleString('pt-BR',{minimumFractionDigits:2});
-          })()+' \u00b7 extrato anexado</div>'
+        +'<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:4px">'
+          +'<div><span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Custeio</span>'
+            +'<div style="font-size:12.5px;font-weight:700;color:var(--ink)">R$ '+parseBRL(municipio.rendimentos_custeio||'').toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
+          +'<div><span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Investimento</span>'
+            +'<div style="font-size:12.5px;font-weight:700;color:var(--ink)">R$ '+parseBRL(municipio.rendimentos_investimento||'').toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>'
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Contas específicas separadas · extrato anexado</div>'
       +'</div>'
       +'<button type="button" onclick="toggleCapaEdicao(true)" style="padding:5px 14px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
     +'</div>';
@@ -2073,10 +2088,10 @@ function renderCapaMunicipio(modoResumo){
       // Somar os rendimentos num campo só impediria a prestação de contas
       // separada que as duas resoluções exigem.
       +'<div class="row2">'
-        +fldMun('Resolução SES/MG nº 10.962/2026 <br> Custeio (R$)','rendimentos_custeio','money','0,00')
-        +fldMun('Resolução SES/MG nº 10.963/2026 <br> Investimento (R$)','rendimentos_investimento','money','0,00')
+        +fldMun('Rendimentos — Custeio (R$)','rendimentos_custeio','money','0,00')
+        +fldMun('Rendimentos — Investimento (R$)','rendimentos_investimento','money','0,00')
       +'</div>'
-      +'<div style="font-size:11px;color:var(--ink3);margin:-6px 0 10px">Para cada resolução foi criada uma conta. Informe o rendimento nos campos específicos .</div>'
+      +'<div style="font-size:11px;color:var(--ink3);margin:-6px 0 10px">Custeio: Resolução SES/MG nº 10.962/2026 · Investimento: Resolução SES/MG nº 10.963/2026. Informe o rendimento de cada conta específica.</div>'
       +(function(){
         // Sem exibir total: as duas contas são específicas e prestam contas
         // separadamente. O campo `rendimentos_periodo` segue sendo alimentado
@@ -2117,10 +2132,26 @@ function renderCapaMunicipio(modoResumo){
       +'<div class="r-lbl">Valor recebido neste bimestre <span style="font-weight:400">(somado automaticamente do que já foi preenchido em cada ação)</span></div>'
       +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_bimestreVal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
     +'</div>'
-    +'<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
-      +'<div class="r-lbl">Rendimentos acumulados (todos os bimestres)</div>'
-      +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_rendimentosAcumulados.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
-    +'</div>'
+    +(function(){
+      // Acumulado por conta, nunca somado: o rendimento de investimento não
+      // pode ser aplicado em custeio, nem o contrário.
+      const ordemAtual=_ordemPeriodoAtual();
+      const antes=(_rendHistorico||[]).filter(function(p){return p.ordem<ordemAtual;});
+      const cust=function(p){return (p.custeio||p.investimento)?(p.custeio||0):(p.valor||0);};
+      const accC=antes.reduce(function(s,p){return s+cust(p);},0)+parseBRL(municipio.rendimentos_custeio||'');
+      const accI=antes.reduce(function(s,p){return s+(p.investimento||0);},0)+parseBRL(municipio.rendimentos_investimento||'');
+      const box=function(t,v){
+        return '<div style="flex:1;min-width:150px">'
+          +'<div class="r-lbl">'+t+'</div>'
+          +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
+        +'</div>';
+      };
+      return '<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
+        +'<div class="r-lbl" style="margin-bottom:8px">Rendimentos acumulados (todos os bimestres)</div>'
+        +'<div style="display:flex;gap:18px;flex-wrap:wrap">'+box('Custeio',accC)+box('Investimento',accI)+'</div>'
+        +'<div style="font-size:11px;color:var(--ink3);margin-top:8px">Contas específicas: Res. SES/MG 10.962 (custeio) e 10.963 (investimento). Os saldos não podem ser usados entre si.</div>'
+      +'</div>';
+    })()
   +'</div>';
 }
 function contentHTML(){
@@ -2989,7 +3020,10 @@ function gerarPDFBase64(){
     row('Município:',municipio.municipio);row('Bimestre:',`${municipio.bimestre||''} / ${municipio.ano||''}`);
     row('Valor Total do Plano:',(function(){const t=(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
     row('Valor Total Já Recebido:',(function(){const t=(municipio._recebidoBase||0);return t?'R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';})());
-    row('Rendimentos no Período (Município):',municipio.rendimentos_periodo?'R$ '+municipio.rendimentos_periodo:'');
+    // Separados por conta: o rendimento de investimento não pode ser usado em
+    // custeio, nem o contrário — somar num valor só induziria a erro.
+    row('Rendimentos — Custeio:',municipio.rendimentos_custeio?'R$ '+municipio.rendimentos_custeio:'');
+    row('Rendimentos — Investimento:',municipio.rendimentos_investimento?'R$ '+municipio.rendimentos_investimento:'');
     const _acqsValidas=aquisicoes.filter(function(a){return a.acao_tipo;});
     _acqsValidas.forEach(function(a,i){
       const _tipoAuto=typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||''):(a.modalidade_objeto||'equipamento');
