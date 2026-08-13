@@ -2073,10 +2073,10 @@ function renderCapaMunicipio(modoResumo){
       // Somar os rendimentos num campo só impediria a prestação de contas
       // separada que as duas resoluções exigem.
       +'<div class="row2">'
-        +fldMun('Resolução SES/MG nº 10.962/2026 — Custeio (R$)','rendimentos_custeio','money','0,00')
-        +fldMun('Resolução SES/MG nº 10.963/2026 — Investimento (R$)','rendimentos_investimento','money','0,00')
+        +fldMun('Resolução SES/MG nº 10.962/2026 <br> Custeio (R$)','rendimentos_custeio','money','0,00')
+        +fldMun('Resolução SES/MG nº 10.963/2026 <br> Investimento (R$)','rendimentos_investimento','money','0,00')
       +'</div>'
-      +'<div style="font-size:11px;color:var(--ink3);margin:-6px 0 10px">Informe o rendimento de cada conta específica.</div>'
+      +'<div style="font-size:11px;color:var(--ink3);margin:-6px 0 10px">Para cada resolução foi criada uma conta. Informe o rendimento nos campos específicos .</div>'
       +(function(){
         // Sem exibir total: as duas contas são específicas e prestam contas
         // separadamente. O campo `rendimentos_periodo` segue sendo alimentado
