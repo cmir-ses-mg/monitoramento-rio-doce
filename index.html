@@ -2078,16 +2078,12 @@ function renderCapaMunicipio(modoResumo){
       +'</div>'
       +'<div style="font-size:11px;color:var(--ink3);margin:-6px 0 10px">Custeio: Resolução SES/MG nº 10.962/2026 · Investimento: Resolução SES/MG nº 10.963/2026. Informe o rendimento de cada conta específica.</div>'
       +(function(){
-        // O total continua alimentando `rendimentos_periodo`, que é o campo
-        // usado no restante do sistema (planilha, PDF, acumulado).
-        const c=parseBRL(municipio.rendimentos_custeio||'');
-        const iv=parseBRL(municipio.rendimentos_investimento||'');
-        const t=c+iv;
+        // Sem exibir total: as duas contas são específicas e prestam contas
+        // separadamente. O campo `rendimentos_periodo` segue sendo alimentado
+        // porque a planilha, o PDF e o acumulado dependem dele.
+        const t=parseBRL(municipio.rendimentos_custeio||'')+parseBRL(municipio.rendimentos_investimento||'');
         municipio.rendimentos_periodo=t?t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
-        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:var(--g50);border-radius:7px;margin-bottom:10px">'
-          +'<span style="font-size:12px;color:var(--ink2);font-weight:600">Total no período</span>'
-          +'<strong style="font-size:14px;color:var(--g800)">R$ '+t.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong>'
-        +'</div>';
+        return '';
       })()
       +'<div id="rend-historico" style="margin:8px 0 12px">'+renderRendimentosHistorico()+'</div>'
       +'<p class="hint" style="margin:6px 0 6px">Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</p>'
