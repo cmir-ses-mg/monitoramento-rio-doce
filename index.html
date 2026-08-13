@@ -2491,6 +2491,14 @@ function renderNav(){
   }
   if(phase>=1&&phase<=4){
     info.innerHTML=`<strong>${filled}/${planTotal||'?'}</strong> ações · Etapa <strong>${phase}</strong>/5`;
+    // Na etapa 1 sem ação selecionada não há o que avançar: o preenchimento só
+    // começa quando se escolhe uma ação no menu lateral. O botão "Próxima" ali
+    // não levava a lugar nenhum.
+    if(phase===1&&!(aquisicoes[acqIdx]&&aquisicoes[acqIdx].acao_tipo)){
+      info.innerHTML=`<strong>${filled}/${planTotal||'?'}</strong> ações · Selecione uma ação no menu lateral`;
+      btns.innerHTML='';
+      return;
+    }
     const isLast=phase===4;
     const curStatus=calcAcqStatus(aquisicoes[acqIdx]);
     const isLocked=curStatus==='locked';
