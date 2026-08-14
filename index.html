@@ -3398,9 +3398,8 @@ async function enviarAcaoSheet(a, tipoRegistro){
       empresas_contratadas:JSON.stringify((a._empresas||[])
         .filter(function(e){return (e.nome||'').trim();})
         .map(function(e){
-          return {nome:e.nome||'',cnpj:e.cnpj||'',num_contrato:e.num_contrato||'',
-                  valor:e.valor||'',data_assinatura:e.data_assinatura||'',
-                  vigencia:e.vigencia||'',obs:e.obs||''};
+          return {nome:e.nome||'',cnpj:e.cnpj||'',valor:e.valor||'',
+                  data_assinatura:e.data_assinatura||'',obs:e.obs||''};
         })),
       valor_contratado_empresas:(a._empresas||[])
         .reduce(function(s,e){return s+parseBRL(e.valor||'');},0)
@@ -4084,9 +4083,8 @@ function registroParaAcq(reg){
       try{
         const arr=JSON.parse(reg.empresas_contratadas||'[]');
         return (Array.isArray(arr)?arr:[]).map(function(e){
-          return {nome:e.nome||'',cnpj:e.cnpj||'',num_contrato:e.num_contrato||'',
-                  valor:e.valor||'',data_assinatura:e.data_assinatura||'',
-                  vigencia:e.vigencia||'',obs:e.obs||'',confirmado:true};
+          return {nome:e.nome||'',cnpj:e.cnpj||'',valor:e.valor||'',
+                  data_assinatura:e.data_assinatura||'',obs:e.obs||'',confirmado:true};
         });
       }catch(e){ return []; }
     })(),
@@ -4273,24 +4271,33 @@ function _migrarEmpresaExecutora(a){
   if(_empresasObra(a).length)return;
   const nome=(a.empresa_executora||'').trim();
   if(!nome)return;
-  a._empresas.push({nome:nome,cnpj:'',num_contrato:'',valor:'',
-                    data_assinatura:'',vigencia:'',obs:'',confirmado:true});
+  a._empresas.push({nome:nome,cnpj:'',valor:'',
+                    data_assinatura:'',obs:'',confirmado:true});
 }
 // A planilha, a tela de revisão e os boletins ainda leem "empresa_executora"
-// como texto único. O campo segue espelhando as empresas cadastradas para não
-// quebrar nada que já consome esse dado.
+// como texto único. Com várias empresas na mesma obra, o campo guarda a que
+// está selecionada na Execução Física — as demais continuam inteiras no JSON
+// de empresas contratadas. Só reescreve quando o valor atual deixou de existir,
+// para não desfazer a escolha de quem preencheu.
+function _nomesEmpresasObra(a){
+  return _empresasObra(a).map(function(e){return (e.nome||'').trim();}).filter(Boolean);
+}
 function _sincEmpresaExecutora(){
   const a=acq();
-  const nomes=_empresasObra(a).filter(function(e){return (e.nome||'').trim();})
-                              .map(function(e){return e.nome.trim();});
-  if(nomes.length)a.empresa_executora=nomes.join(' / ');
+  const nomes=_nomesEmpresasObra(a);
+  if(!nomes.length)return;
+  if(nomes.indexOf((a.empresa_executora||'').trim())===-1)a.empresa_executora=nomes[0];
+}
+function _setEmpresaExecutora(v){
+  acq().empresa_executora=v;
+  _marcarTocado(acq()); saveSession();
 }
 function totalEmpresasObra(a){
   return _empresasObra(a).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
 }
 function _addEmpresaObra(){
-  _empresasObra(acq()).push({nome:'',cnpj:'',num_contrato:'',valor:'',
-                             data_assinatura:'',vigencia:'',obs:'',confirmado:false});
+  _empresasObra(acq()).push({nome:'',cnpj:'',valor:'',
+                             data_assinatura:'',obs:'',confirmado:false});
   renderMain();
 }
 function _updEmpresaObra(i,campo,valor){
@@ -4329,16 +4336,32 @@ async function _excluirEmpresaObra(i){
 // Campo somente-leitura na Execução Física: a empresa passou a ser cadastrada
 // na Contratação, então aqui ela só é exibida — evita duas fontes para o mesmo
 // dado divergindo entre as etapas.
+// Na Execução Física a empresa não é digitada: ela vem da Contratação. Com uma
+// só, aparece como texto fixo; com várias, vira lista suspensa, porque a
+// medição do período costuma ser de uma delas — e o campo único da planilha
+// precisa saber de qual.
 function _campoEmpresaResumo(){
-  const emps=_empresasObra(acq()).filter(function(e){return (e.nome||'').trim();});
-  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');};
+  const a=acq();
+  const nomes=_nomesEmpresasObra(a);
+  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');};
+  const nota='<div style="font-size:11px;color:var(--ink3);margin-top:4px">Cadastrada na etapa Contratação — altere por lá se precisar corrigir.</div>';
+
+  if(nomes.length>1){
+    const sel=(a.empresa_executora||'').trim();
+    return '<div class="field"><label>Empresa Executora</label>'
+      +'<select onchange="_setEmpresaExecutora(this.value)" style="width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:#fff;box-sizing:border-box">'
+        +nomes.map(function(n){
+          return '<option value="'+esc(n)+'"'+(n===sel?' selected':'')+'>'+esc(n)+'</option>';
+        }).join('')
+      +'</select>'
+      +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'+nomes.length+' empresas contratadas — selecione a que executou a medição deste período.</div>'
+    +'</div>';
+  }
+
   return '<div class="field"><label>Empresa Executora</label>'
     +'<div style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13px;color:var(--ink);line-height:1.5">'
-      +emps.map(function(e){
-        return esc(e.nome)+(e.num_contrato?' <span style="color:var(--ink3);font-size:11.5px">· contrato '+esc(e.num_contrato)+'</span>':'');
-      }).join('<br/>')
-    +'</div>'
-    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Cadastrada na etapa Contratação — altere por lá se precisar corrigir.</div>'
+      +esc(nomes[0]||'—')
+    +'</div>'+nota
   +'</div>';
 }
 
@@ -4358,8 +4381,8 @@ function renderEmpresasObraCard(){
   emps.forEach(function(e,i){
     if(e.confirmado){
       const linha2=[e.cnpj?'CNPJ '+esc(e.cnpj):'',
-                    e.num_contrato?'Contrato '+esc(e.num_contrato):'',
-                    e.vigencia?'Vigência até '+esc(e.vigencia.split('-').reverse().join('/')):'']
+                    e.data_assinatura?'Assinado em '+esc(e.data_assinatura.split('-').reverse().join('/')):'',
+                    e.obs?esc(e.obs):'']
                    .filter(Boolean).join(' · ');
       html+='<div style="border:1px solid var(--g400);background:var(--g50);border-radius:8px;padding:12px;margin-bottom:10px">'
         +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
@@ -4386,18 +4409,12 @@ function renderEmpresasObraCard(){
       +'<div class="row2" style="gap:10px;margin-bottom:10px">'
         +'<div><label style="'+lbl+'">CNPJ</label>'
           +'<input type="text" value="'+esc(e.cnpj)+'" placeholder="00.000.000/0000-00" inputmode="numeric" oninput="maskCNPJ(this);_updEmpresaObra('+i+',\'cnpj\',this.value)" style="'+inp+'"/></div>'
-        +'<div><label style="'+lbl+'">Nº do contrato</label>'
-          +'<input type="text" value="'+esc(e.num_contrato)+'" placeholder="Ex: 012/2026" oninput="_updEmpresaObra('+i+',\'num_contrato\',this.value)" style="'+inp+'"/></div>'
-      +'</div>'
-      +'<div class="row2" style="gap:10px;margin-bottom:10px">'
         +'<div><label style="'+lbl+'">Valor contratado (R$)</label>'
           +'<input type="text" inputmode="decimal" value="'+esc(e.valor)+'" placeholder="0,00" oninput="onMoneyInput(this);_updEmpresaObra('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updEmpresaObra('+i+',\'valor\',this.value)" style="'+inp+'"/></div>'
-        +'<div><label style="'+lbl+'">Data de assinatura</label>'
-          +'<input type="date" value="'+esc(e.data_assinatura)+'" onchange="_updEmpresaObra('+i+',\'data_assinatura\',this.value)" style="'+inp+'"/></div>'
       +'</div>'
       +'<div class="row2" style="gap:10px">'
-        +'<div><label style="'+lbl+'">Vigência até</label>'
-          +'<input type="date" value="'+esc(e.vigencia)+'" onchange="_updEmpresaObra('+i+',\'vigencia\',this.value)" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Data de assinatura</label>'
+          +'<input type="date" value="'+esc(e.data_assinatura)+'" onchange="_updEmpresaObra('+i+',\'data_assinatura\',this.value)" style="'+inp+'"/></div>'
         +'<div><label style="'+lbl+'">Observações</label>'
           +'<input type="text" value="'+esc(e.obs)+'" placeholder="Aditivo, consórcio, etc." oninput="_updEmpresaObra('+i+',\'obs\',this.value)" style="'+inp+'"/></div>'
       +'</div>'
@@ -4423,10 +4440,13 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   var cur=a._status_contrat||'Planejamento';
   var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
 
+  // Na obra, entrega/atraso não fazem sentido nesta etapa: o andamento é
+  // acompanhado por medição na Execução Física, não por data de entrega. A
+  // Contratação da obra fica só com o status e as empresas contratadas.
   var card='<div class="card">'
     +'<div class="card-title">Status da contratação</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'setStatusContrat')+'</div>'
-    +_camposContrato(a,isContr,undefined)
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;'+(ob?'':'margin-bottom:16px')+'">'+_statusPills(cur,'setStatusContrat')+'</div>'
+    +(ob?'':_camposContrato(a,isContr,undefined))
     +'</div>';
 
   // Aquisição sem lotes: a contratação passou a ser acompanhada POR LISTA de
@@ -4446,7 +4466,7 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   return ''+
     lockedBanner+
     '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'+
-    '<p>'+(ob?'Status da contratação, empresas contratadas e dados da entrega.':'Status da contratação e dados da entrega.')+'</p></div>'+
+    '<p>'+(ob?'Status da contratação e empresas contratadas.':'Status da contratação e dados da entrega.')+'</p></div>'+
     card+
     (ob?renderEmpresasObraCard():'');
 }
