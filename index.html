@@ -2326,9 +2326,10 @@ function contentHTML(){
     </div>
     <div class="card" style="border-left:3px solid var(--g500)">
       <div class="card-title">Informações do Projeto</div>
+      ${_temEmpresaObra(acq())?_campoEmpresaResumo():fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
       <div class="row2">
-        ${_temEmpresaObra(acq())?_campoEmpresaResumo():fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
-        ${fld('Data de Início','data_inicio_obra','date')}
+        ${fld('Data','data_inicio_obra','date')}
+        ${fld('Fiscal Responsável','fiscal_responsavel','text','Exemplo de nome e registro')}
       </div>
       ${(()=>{
         // A data de início é da obra, não do bimestre: se veio de um período
@@ -2341,31 +2342,12 @@ function contentHTML(){
           : '';
       })()}
       <div class="row2">
-        ${fld('Fiscal Responsável','fiscal_responsavel','text','Exemplo de nome e registro')}
-        <div></div>
-      </div>
-      <div class="row2">
-        ${fld('% Medido no Período','pct_medido_periodo','text','Ex: 15')}
-        ${(()=>{
-          // O acumulado é a soma do que já foi medido nos bimestres anteriores
-          // com o medido agora — calcular evita divergência entre os dois campos.
-          const a=acq();
-          const ant=_pctAcumuladoAnterior(a);
-          const atual=parseFloat(String(a.pct_medido_periodo||'').replace(',','.'))||0;
-          const tot=Math.min(100,ant+atual);
-          a.pct_acumulado_periodo=tot?String(tot.toFixed(2)).replace('.',','):'';
-          return '<div class="field"><label>% Acumulado até o Período</label>'
-            +'<div style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13.5px;font-weight:700;color:var(--g800)">'
-              +(tot?tot.toFixed(2).replace('.',',')+'%':'—')
-            +'</div>'
-            +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'
-              +(ant?'Calculado: '+ant.toFixed(2).replace('.',',')+'% de bimestres anteriores + '+atual.toFixed(2).replace('.',',')+'% deste período.'
-                  :'Calculado automaticamente a partir do % medido no período.')
-            +'</div></div>';
-        })()}
+        ${_campoPctMedido()}
+        ${_campoPctAcumulado()}
       </div>
       ${fld('Observações','observacoes_oficial','textarea','Exemplo de observações adicionais')}
     </div>
+    ${renderMedicoesObraCard()}
     <div class="card" id="card-arquivos-obra">
       <div class="card-title">Arquivos Inseridos</div>
       <p class="hint" style="margin-bottom:12px">Anexe os documentos e registros fotográficos referentes à execução desta obra.</p>
@@ -3404,6 +3386,18 @@ async function enviarAcaoSheet(a, tipoRegistro){
       valor_contratado_empresas:(a._empresas||[])
         .reduce(function(s,e){return s+parseBRL(e.valor||'');},0)
         .toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      // Boletins de medição do período: um por linha, com empresa e valor. O
+      // "% Medido no Período" continua indo na coluna própria (já é a soma
+      // deles), então nada que lê aquela coluna precisa mudar.
+      medicoes_obra:JSON.stringify((a._medicoes||[])
+        .filter(function(m){return (m.num_boletim||'').trim()||parseBRL(m.valor||'')>0||_pctDaMedicao(m)>0;})
+        .map(function(m){
+          return {empresa:m.empresa||'',num_boletim:m.num_boletim||'',data:m.data||'',
+                  valor:m.valor||'',pct:m.pct||''};
+        })),
+      valor_medido_periodo:(a._medicoes||[])
+        .reduce(function(s,m){return s+parseBRL(m.valor||'');},0)
+        .toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
       acao_concluida:(tipoRegistro==='Conclusao'||tipoRegistro==='Correcao')?'Sim':'Nao',
@@ -4089,7 +4083,18 @@ function registroParaAcq(reg){
       }catch(e){ return []; }
     })(),
     // Boletins de medição (obras)
-    _medicoes: (reg._medicoes&&reg._medicoes.length)?reg._medicoes.map(function(m){ return Object.assign({},m); }):undefined,
+    _medicoes: (function(){
+      // Registros novos trazem os boletins em "medicoes_obra" (JSON). Os
+      // antigos não têm nenhum — a obra segue com o % digitado à mão.
+      if(reg._medicoes&&reg._medicoes.length)return reg._medicoes.map(function(m){return Object.assign({},m);});
+      try{
+        const arr=JSON.parse(reg.medicoes_obra||'[]');
+        return (Array.isArray(arr)?arr:[]).map(function(m){
+          return {empresa:m.empresa||'',num_boletim:m.num_boletim||'',data:m.data||'',
+                  valor:m.valor||'',pct:m.pct||''};
+        });
+      }catch(e){ return []; }
+    })(),
     // Flags
     _sent:    true,
     _locked:  reg.tipo_registro==='Conclusao'||reg.tipo_registro==='Conclusão',
@@ -4363,6 +4368,210 @@ function _campoEmpresaResumo(){
       +esc(nomes[0]||'—')
     +'</div>'+nota
   +'</div>';
+}
+
+// ── MEDIÇÕES DO PERÍODO ─────────────────────────────────────────────────────
+// Um bimestre pode ter mais de um boletim de medição — e, com mais de uma
+// empresa contratada, medições de empresas diferentes no mesmo período. Um
+// campo único de "% medido" não dava conta disso: obrigava a somar de cabeça
+// e perdia o rastro de qual boletim gerou qual percentual. Aqui cada medição é
+// um registro próprio, e o % do período passa a ser a soma delas.
+function _medicoesObra(a){ if(!a._medicoes)a._medicoes=[]; return a._medicoes; }
+function totalMedidoObra(a){
+  return _medicoesObra(a).reduce(function(s,m){return s+parseBRL(m.valor||'');},0);
+}
+function _pctDaMedicao(m){
+  return parseFloat(String((m&&m.pct)||'').replace(',','.'))||0;
+}
+// Base do percentual de um boletim: o valor contratado da empresa que assinou
+// aquela medição. Com várias empresas na obra, usar o total contratado faria o
+// boletim da Beta ser medido contra o contrato da Alfa também — o percentual
+// sairia menor do que a execução real daquele contrato. Sem empresa vinculada
+// (ou sem valor nela), cai para o total contratado e, por fim, para o valor da
+// ação no plano.
+function _baseMedicao(a,m){
+  const nome=((m&&m.empresa)||'').trim();
+  if(nome){
+    const e=_empresasObra(a).find(function(x){return (x.nome||'').trim()===nome;});
+    const v=e?parseBRL(e.valor||''):0;
+    if(v>0)return {valor:v, origem:'contrato de '+nome};
+  }
+  const totalEmp=_empresasObra(a).reduce(function(s,x){return s+parseBRL(x.valor||'');},0);
+  if(totalEmp>0)return {valor:totalEmp, origem:'total contratado'};
+  const plano=parseValorSheet(a.acao_valor)||0;
+  if(plano>0)return {valor:plano, origem:'valor da ação no plano'};
+  return {valor:0, origem:''};
+}
+// O % de cada boletim sai do próprio valor medido ÷ base do contrato. Só
+// sobrescreve quando há valor informado: medição antiga, digitada à mão antes
+// desta tela, mantém o percentual que já tinha.
+function _recalcPctMedicoes(a){
+  _medicoesObra(a).forEach(function(m){
+    const v=parseBRL(m.valor||'');
+    if(!(v>0))return;
+    const base=_baseMedicao(a,m);
+    if(!(base.valor>0))return;
+    m.pct=Math.min(100,(v/base.valor)*100).toFixed(2).replace('.',',');
+  });
+}
+function totalPctMedicoes(a){
+  return _medicoesObra(a).reduce(function(s,m){return s+_pctDaMedicao(m);},0);
+}
+// Recalcula % do período e % acumulado a partir das medições e atualiza os
+// dois blocos na tela sem re-renderizar — quem está digitando não perde o foco.
+function _sincPctMedido(){
+  const a=acq();
+  const meds=_medicoesObra(a);
+  _recalcPctMedicoes(a);
+  meds.forEach(function(m,i){
+    const el=document.getElementById('med-pct-'+i);
+    if(el)el.textContent=_pctDaMedicao(m)?_pctDaMedicao(m).toFixed(2).replace('.',',')+'%':'—';
+    const elB=document.getElementById('med-base-'+i);
+    if(elB){
+      const base=_baseMedicao(a,m);
+      elB.textContent=base.valor>0
+        ? 'Sobre R$ '+base.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})+' · '+base.origem
+        : 'Informe o valor contratado da empresa para calcular.';
+    }
+  });
+  if(meds.length){
+    const soma=totalPctMedicoes(a);
+    a.pct_medido_periodo=soma?soma.toFixed(2).replace('.',','):'';
+  }
+  const ant=_pctAcumuladoAnterior(a);
+  const atual=parseFloat(String(a.pct_medido_periodo||'').replace(',','.'))||0;
+  const tot=Math.min(100,ant+atual);
+  a.pct_acumulado_periodo=tot?String(tot.toFixed(2)).replace('.',','):'';
+  const elP=document.getElementById('med-pct-periodo');
+  if(elP)elP.textContent=atual?atual.toFixed(2).replace('.',',')+'%':'—';
+  const elA=document.getElementById('med-pct-acumulado');
+  if(elA)elA.textContent=tot?tot.toFixed(2).replace('.',',')+'%':'—';
+  const elV=document.getElementById('med-total-valor');
+  if(elV)elV.textContent='R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const elQ=document.getElementById('med-total-pct');
+  if(elQ)elQ.textContent=totalPctMedicoes(a).toFixed(2).replace('.',',')+'%';
+}
+function _addMedicao(){
+  const a=acq();
+  const nomes=_nomesEmpresasObra(a);
+  _medicoesObra(a).push({empresa:nomes.length===1?nomes[0]:(a.empresa_executora||nomes[0]||''),
+                         data:'', num_boletim:'', valor:'', pct:''});
+  saveSession(); renderMain();
+}
+function _updMedicao(i,campo,valor){
+  const m=_medicoesObra(acq())[i];
+  if(!m)return;
+  m[campo]=valor;
+  if(campo==='pct'||campo==='valor'||campo==='empresa')_sincPctMedido();
+  _marcarTocado(acq());
+}
+async function _excluirMedicao(i){
+  const lst=_medicoesObra(acq()); const m=lst[i];
+  if(!m)return;
+  if((m.num_boletim||'').trim()||parseBRL(m.valor||'')>0||_pctDaMedicao(m)>0){
+    const ok=await showConfirmModal('Excluir medição',
+      'Remover '+((m.num_boletim||'').trim()?'o boletim '+m.num_boletim:'esta medição')+' do período?',
+      'Excluir','🗑️','#C0392B');
+    if(!ok)return;
+  }
+  lst.splice(i,1);
+  _sincPctMedido(); saveSession(); renderMain();
+}
+
+// Sem medições registradas, o % do período continua sendo digitado à mão —
+// obras antigas e registros já enviados não são forçados no modelo novo.
+function _campoPctMedido(){
+  const a=acq();
+  const meds=_medicoesObra(a);
+  if(!meds.length)return fld('% Medido no Período','pct_medido_periodo','text','Ex: 15');
+  _recalcPctMedicoes(a);
+  const soma=totalPctMedicoes(a);
+  a.pct_medido_periodo=soma?soma.toFixed(2).replace('.',','):'';
+  return '<div class="field"><label>% Medido no Período</label>'
+    +'<div id="med-pct-periodo" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13.5px;font-weight:700;color:var(--g800)">'
+      +(soma?soma.toFixed(2).replace('.',',')+'%':'—')
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Soma '
+      +(meds.length===1?'da medição registrada':'das '+meds.length+' medições registradas')+' abaixo.</div>'
+  +'</div>';
+}
+function _campoPctAcumulado(){
+  // O acumulado é a soma do que já foi medido nos bimestres anteriores com o
+  // medido agora — calcular evita divergência entre os dois campos.
+  const a=acq();
+  const ant=_pctAcumuladoAnterior(a);
+  const atual=parseFloat(String(a.pct_medido_periodo||'').replace(',','.'))||0;
+  const tot=Math.min(100,ant+atual);
+  a.pct_acumulado_periodo=tot?String(tot.toFixed(2)).replace('.',','):'';
+  return '<div class="field"><label>% Acumulado até o Período</label>'
+    +'<div id="med-pct-acumulado" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13.5px;font-weight:700;color:var(--g800)">'
+      +(tot?tot.toFixed(2).replace('.',',')+'%':'—')
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'
+      +(ant?'Calculado: '+ant.toFixed(2).replace('.',',')+'% de bimestres anteriores + '+atual.toFixed(2).replace('.',',')+'% deste período.'
+          :'Calculado automaticamente a partir do % medido no período.')
+    +'</div></div>';
+}
+
+function renderMedicoesObraCard(){
+  const a=acq();
+  const meds=_medicoesObra(a);
+  const nomes=_nomesEmpresasObra(a);
+  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+  const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
+  const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);background:#fff;box-sizing:border-box';
+
+  let html='<div class="card" id="card-medicoes-obra">'
+    +'<div class="card-title">Medições do período</div>'
+    +'<p class="hint" style="margin-bottom:12px">Um bimestre pode ter mais de um boletim de medição. Informe o valor de cada um — o percentual é calculado sobre o contrato da empresa, e o % do período é a soma deles.</p>';
+
+  _recalcPctMedicoes(a);
+  meds.forEach(function(m,i){
+    const base=_baseMedicao(a,m);
+    html+='<div class="medicao-item">'
+      +'<span class="medicao-remove" onclick="_excluirMedicao('+i+')" title="Remover medição">&times;</span>'
+      +'<div style="font-size:12px;font-weight:700;color:#7C4A0A;margin-bottom:10px">Medição '+(i+1)+'</div>'
+      +(nomes.length>1
+        ? '<div style="margin-bottom:10px"><label style="'+lbl+'">Empresa</label>'
+          +'<select onchange="_updMedicao('+i+',\'empresa\',this.value)" style="'+inp+'">'
+            +nomes.map(function(n){
+              return '<option value="'+esc(n)+'"'+(n===(m.empresa||'')?' selected':'')+'>'+esc(n)+'</option>';
+            }).join('')
+          +'</select></div>'
+        : '')
+      +'<div class="row2" style="gap:10px;margin-bottom:10px">'
+        +'<div><label style="'+lbl+'">Nº do boletim</label>'
+          +'<input type="text" value="'+esc(m.num_boletim)+'" placeholder="Ex: BM 03" oninput="_updMedicao('+i+',\'num_boletim\',this.value)" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Data da medição</label>'
+          +'<input type="date" value="'+esc(m.data)+'" onchange="_updMedicao('+i+',\'data\',this.value)" style="'+inp+'"/></div>'
+      +'</div>'
+      +'<div class="row2" style="gap:10px">'
+        +'<div><label style="'+lbl+'">Valor medido (R$)</label>'
+          +'<input type="text" inputmode="decimal" value="'+esc(m.valor)+'" placeholder="0,00" oninput="onMoneyInput(this);_updMedicao('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updMedicao('+i+',\'valor\',this.value)" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">% medido</label>'
+          +'<div id="med-pct-'+i+'" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;background:var(--g50);font-size:12.5px;font-weight:700;color:var(--g800)">'
+            +(_pctDaMedicao(m)?_pctDaMedicao(m).toFixed(2).replace('.',',')+'%':'—')
+          +'</div>'
+          +'<div id="med-base-'+i+'" style="font-size:10.5px;color:var(--ink3);margin-top:3px">'
+            +(base.valor>0
+              ? 'Sobre R$ '+base.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})+' · '+base.origem
+              : 'Informe o valor contratado da empresa para calcular.')
+          +'</div></div>'
+      +'</div>'
+    +'</div>';
+  });
+
+  const vazio=meds.length===0;
+  html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma medição registrada — o % do período está sendo informado à mão.</div>':'')
+    +'<button type="button" class="btn-add-med" onclick="_addMedicao()" style="width:100%;justify-content:center">+ '+(vazio?'Registrar medição':'Adicionar outra medição')+'</button>';
+
+  if(!vazio){
+    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--ink3)">'
+      +'<span>Total medido no período: <strong id="med-total-valor" style="color:var(--g800);font-size:14px">R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong></span>'
+      +'<span>% somado: <strong id="med-total-pct" style="color:var(--g800);font-size:14px">'+totalPctMedicoes(a).toFixed(2).replace('.',',')+'%</strong></span>'
+    +'</div>';
+  }
+  return html+'</div>';
 }
 
 function renderEmpresasObraCard(){
