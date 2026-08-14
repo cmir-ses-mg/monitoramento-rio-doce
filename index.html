@@ -1256,9 +1256,11 @@ async function selectPlanAction(instrumento, tipo){
   // Carregar histórico do bimestre anterior se a ação ainda não foi preenchida
   const _acqAtual = aquisicoes[idx];
   if(_acqAtual && !_acqAtual._sent && !_acqAtual._historicoCarregado){
-    _acqAtual._historicoCarregado=true;
     _promessasCarga.push(carregarHistoricoBimestreAnterior(instrumento, _acqAtual.acao_tipo||item.tipo).then(function(regs){
+      // Só marca como carregado quando a busca de fato trouxe algo: se a rede
+      // falhar, a próxima abertura tenta de novo em vez de desistir para sempre.
       if(regs && regs.length){
+        _acqAtual._historicoCarregado=true;
         return aplicarHistoricoNaAcao(regs, _acqAtual).then(function(){
           renderAll();
         });
@@ -3400,7 +3402,7 @@ function saveSession(){
   try{
     const data={
       municipio,
-      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_docs:undefined,_empresas:a._empresas||[]})),
+      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_docs:undefined,_historicoCarregado:undefined,_empresas:a._empresas||[]})),
       phase,acqIdx,
       savedAt:new Date().toISOString()
     };
@@ -3835,8 +3837,8 @@ async function selectInlineAction(instrumento, tipo){
   // Carregar histórico do bimestre anterior se ação ainda não preenchida
   const _acqSIA=aquisicoes[idx];
   if(_acqSIA&&!_acqSIA._sent&&!_acqSIA._historicoCarregado){
-    _acqSIA._historicoCarregado=true;
     _promessasSIA.push(carregarHistoricoBimestreAnterior(instrumento,_acqSIA.acao_tipo||tipo).then(function(regs){
+      if(regs&&regs.length)_acqSIA._historicoCarregado=true;
       if(regs&&regs.length){return aplicarHistoricoNaAcao(regs,_acqSIA).then(function(){renderAll();return carregarExecutadoHistorico();});}
       return carregarExecutadoHistorico();
     }));
@@ -5389,8 +5391,17 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // último. Uma lista anexada no 1º bimestre pode não constar do registro do
   // 3º — pegar só o último a faria desaparecer. Como os registros vêm em ordem
   // cronológica, a última ocorrência de cada id é a situação mais recente.
-  if(!(acqObj._listasEquip||[]).length){
+  // Diferente dos demais campos, as listas são mescladas mesmo quando a ação
+  // já tem preenchimento: uma lista de bimestre anterior que ainda não foi
+  // recebida precisa aparecer para ter a situação atualizada agora.
+  {
     const porId={}; const ordem=[];
+    // Preserva o que já está na tela (inclusive listas novas deste bimestre).
+    (acqObj._listasEquip||[]).forEach(function(l){
+      const id=l.id||('le_'+(l._nomes||[]).join('_'));
+      if(!porId[id])ordem.push(id);
+      porId[id]=l;
+    });
     registros.forEach(function(r){
       (r._listasEquip||[]).forEach(function(l){
         const id=l.id||('le_'+(l.nomes||[]).join('_'));
@@ -5408,12 +5419,33 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
             bimestre:r.bimestre||'', ano:r.ano||'', status:l.status
           }]);
         }
+        // Se a pessoa já atualizou esta lista NESTE bimestre, o que está na
+        // tela é mais recente que o registro anterior — não sobrescrever.
+        if(anterior){
+          const bim=municipio.bimestre||'', ano=String(municipio.ano||'');
+          const tocadaAgora=(anterior.historico_status||[]).some(function(h){
+            return h.bimestre===bim&&String(h.ano)===ano;
+          });
+          if(tocadaAgora||!anterior._recuperada&&anterior.status&&!l.status){
+            novo.status=anterior.status;
+            novo.situacao_entrega=anterior.situacao_entrega||novo.situacao_entrega;
+            novo.data_recebimento=anterior.data_recebimento||novo.data_recebimento;
+            novo.num_nf=anterior.num_nf||novo.num_nf;
+            novo.data_nf=anterior.data_nf||novo.data_nf;
+            novo.valor_nf=anterior.valor_nf||novo.valor_nf;
+            novo.obs=anterior.obs||novo.obs;
+            novo.arquivos_nf=anterior.arquivos_nf||[];
+            novo._nomesNF=anterior._nomesNF||novo._nomesNF;
+            novo.historico_status=anterior.historico_status||novo.historico_status;
+          }
+        }
         porId[id]=novo;
       });
     });
     if(ordem.length){
       acqObj._listasEquip=ordem.map(function(id){return porId[id];});
-    }else{
+    }
+    if(!(acqObj._listasEquip||[]).length){
       // Registros gravados ANTES de existir o detalhamento por lista só têm o
       // total em "Valor da Lista de Equipamentos". Sem isso a lista sumia do
       // bimestre seguinte e não havia como atualizar a situação dela. Aqui ela
