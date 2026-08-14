@@ -1291,6 +1291,14 @@ async function selectPlanAction(instrumento, tipo){
       if(mudou) renderAll();
     }));
   }
+  // Listas de equipamentos: mesma necessidade das atividades — uma lista
+  // anexada num bimestre precisa reaparecer nos seguintes para ter a situação
+  // atualizada. Esta busca existia mas nunca era chamada.
+  if(_acqAtual && _acqAtual.modalidade_objeto==='equipamento'){
+    _promessasCarga.push(carregarListasHistorico(_acqAtual).then(function(mudou){
+      if(mudou) renderAll();
+    }));
+  }
   Promise.allSettled(_promessasCarga).then(hideLoading);
 }
 
@@ -1375,6 +1383,9 @@ function switchAcq(i){
       calcAtividades();
       renderAll();
     });
+  }
+  if(a && a.modalidade_objeto==='equipamento'){
+    carregarListasHistorico(a).then(function(mudou){ if(mudou)renderAll(); });
   }
 }
 function addAcqBtn(){saveAllInputs();aquisicoes.push({});acqIdx=aquisicoes.length-1;phase=1;renderAll();}
@@ -3081,6 +3092,22 @@ function gerarPDFBase64(){
           y+=2;
         });
       }
+      sec('CONTRATAÇÃO');
+      row('Status da contratação:',a._status_contrat);
+      if(servico){row('Contratações de pessoal previstas:',a.pessoal_previsto);row('Contratações realizadas:',a.pessoal_realizado);}
+      row('Data Início:',a.data_inicio);row('Conclusão Prevista:',a.data_conclusao);
+      if(ob){
+        sec('EXECUÇÃO FÍSICA',true);
+        row('Empresa Executora:',a.empresa_executora);row('Endereço:',a.endereco_obra);
+        row('Data de Início:',a.data_inicio_obra);row('Fiscal Responsável:',a.fiscal_responsavel);
+        row('% Medido no Período:',a.pct_medido_periodo);row('% Acumulado até o Período:',a.pct_acumulado_periodo);
+        row('Observações:',a.observacoes_oficial);
+      } else {
+        sec('ENTREGA');
+        row('Situação Entrega:',a.situacao_entrega);row('Data(s) Entrega/Serviço:',a.data_entrega);row('Houve atraso?',a.houve_atraso);row('Justificativa atraso:',a.justificativa_atraso);
+        if(servico){row('Unidade de Medida:',a.unidade_medida);row('CNES:',a.cnes);}
+        // Notas do modelo antigo (a._nfs), mantidas para registros já enviados.
+        (a._nfs||[]).forEach(function(nf,ni){row('NF '+(ni+1)+' — Nº:',nf.num);row('NF '+(ni+1)+' — Série:',nf.serie);row('NF '+(ni+1)+' — Data:',nf.data);row('NF '+(ni+1)+' — Valor:',nf.valor?'R$ '+nf.valor:'');row('NF '+(ni+1)+' — CNES:',nf.cnes);});
       // Notas fiscais / execuções lançadas no período
       if(a._notas&&a._notas.filter(function(n){return n.confirmado;}).length){
         const _ehServ=a.modalidade_objeto==='servico';
@@ -3116,35 +3143,34 @@ function gerarPDFBase64(){
           y+=10;
           row('Arquivo(s):',nomes.join(', '));
           row('Situação:',l.status);
-          row('Nº do contrato:',l.num_contrato);
           row('Previsão de entrega:',l.data_prev?new Date(l.data_prev+'T00:00').toLocaleDateString('pt-BR'):'');
           row('Situação da entrega:',l.situacao_entrega);
           row('Data da entrega:',l.data_recebimento?new Date(l.data_recebimento+'T00:00').toLocaleDateString('pt-BR'):'');
           row('Justificativa do atraso:',l.justificativa);
+          // Comprovação do recebimento — era a informação da nota fiscal que
+          // não aparecia na seção de entrega do PDF.
+          row('Nº da NF:',l.num_nf);
+          row('Data da NF:',l.data_nf?new Date(l.data_nf+'T00:00').toLocaleDateString('pt-BR'):'');
+          row('Valor da NF:',l.valor_nf?'R$ '+l.valor_nf:'');
+          row('Anexo da NF:',((l.arquivos_nf&&l.arquivos_nf.length)?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[])).join(', '));
           row('Observações:',l.obs);
           y+=2;
         });
         const _tl=totalListasEquip(a);
         if(_tl>0)row('Total em listas:','R$ '+_tl.toLocaleString('pt-BR',{minimumFractionDigits:2}));
       }
-      sec('CONTRATAÇÃO');
-      row('Status da contratação:',a._status_contrat);
-      if(servico){row('Contratações de pessoal previstas:',a.pessoal_previsto);row('Contratações realizadas:',a.pessoal_realizado);}
-      row('Data Início:',a.data_inicio);row('Conclusão Prevista:',a.data_conclusao);
-      if(ob){
-        sec('EXECUÇÃO FÍSICA',true);
-        row('Empresa Executora:',a.empresa_executora);row('Endereço:',a.endereco_obra);
-        row('Data de Início:',a.data_inicio_obra);row('Fiscal Responsável:',a.fiscal_responsavel);
-        row('% Medido no Período:',a.pct_medido_periodo);row('% Acumulado até o Período:',a.pct_acumulado_periodo);
-        row('Observações:',a.observacoes_oficial);
-      } else {
-        sec('ENTREGA');
-        row('Situação Entrega:',a.situacao_entrega);row('Data(s) Entrega/Serviço:',a.data_entrega);row('Houve atraso?',a.houve_atraso);row('Justificativa atraso:',a.justificativa_atraso);
-        if(servico){row('Unidade de Medida:',a.unidade_medida);row('CNES:',a.cnes);}
-        (a._nfs||[]).forEach(function(nf,ni){row('NF '+(ni+1)+' — Nº:',nf.num);row('NF '+(ni+1)+' — Série:',nf.serie);row('NF '+(ni+1)+' — Data:',nf.data);row('NF '+(ni+1)+' — Valor:',nf.valor?'R$ '+nf.valor:'');row('NF '+(ni+1)+' — CNES:',nf.cnes);});
       }
       const allDocs=[{key:'contrato',label:'Contrato'},{key:'edital',label:'Edital'},{key:'art',label:'ART/RRT'},{key:'ordem_servico',label:'Ordem de serviço'},{key:'cronograma',label:'Cronograma'},{key:'termo_recebimento',label:'Termo de recebimento'},{key:'registro_patrimonial',label:'Registro patrimonial'},{key:'outros',label:'Outros'}];
-      const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){const d=allDocs.find(function(x){return x.key===e[0];});return d?d.label:e[0];}).join(', ');
+      // Os documentos de serviço agora são por atividade (chave doc__ativ_N):
+      // o rótulo mostra a qual execução cada documento pertence.
+      const _rotDoc=function(k){
+        const p=k.split('__');
+        const d=allDocs.find(function(x){return x.key===p[0];});
+        const base=d?d.label:(p[0]==='fotos'?'Registro fotográfico':p[0]);
+        if(p[1]&&p[1].indexOf('ativ_')===0)return base+' (serviço '+(parseInt(p[1].slice(5))+1)+')';
+        return base;
+      };
+      const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){return _rotDoc(e[0]);}).join(', ');
       row('Documentos anexados:',docsOk);
       sec('EXECUÇÃO FINALÍSTICA — METAS E RESULTADOS');
       row('Problemas/Riscos:',a.problemas);row('Medidas saneadoras:',a.medidas);
@@ -5387,6 +5413,25 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     });
     if(ordem.length){
       acqObj._listasEquip=ordem.map(function(id){return porId[id];});
+    }else{
+      // Registros gravados ANTES de existir o detalhamento por lista só têm o
+      // total em "Valor da Lista de Equipamentos". Sem isso a lista sumia do
+      // bimestre seguinte e não havia como atualizar a situação dela. Aqui ela
+      // é reconstruída a partir do valor, para poder ser acompanhada.
+      const recuperadas=[];
+      registros.forEach(function(r){
+        const v=parseValorSheet(r.valor_lista_equipamentos||0);
+        if(!(v>0))return;
+        recuperadas.push({
+          id:'le_hist_'+(r.bimestre||'').replace(/\D/g,'')+'_'+(r.ano||''),
+          _nomes:[], arquivos:[], valor:v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+          status:'', bimestre:r.bimestre||'', ano:r.ano||'',
+          num_contrato:'', data_prev:'', situacao_entrega:'', justificativa:'',
+          num_nf:'', data_nf:'', valor_nf:'', arquivos_nf:[], _nomesNF:[],
+          data_recebimento:'', obs:'', confirmado:true, _recuperada:true
+        });
+      });
+      if(recuperadas.length)acqObj._listasEquip=recuperadas;
     }
   }
 
@@ -5698,6 +5743,9 @@ function _updLista(i,campo,valor){
   if(!l)return;
   l[campo]=valor;
   if(campo==='status'||campo==='situacao_entrega')_registrarStatusPeriodo(l,campo,valor);
+  // Lista reconstruída de registro antigo passa a existir na aba do servidor
+  // assim que recebe uma situação — deixa de depender do registro legado.
+  if(l._recuperada&&campo==='status'&&valor)delete l._recuperada;
   _marcarTocado(a);
   // Campos de acompanhamento vão ao servidor na hora — é o que precisa
   // atravessar para os próximos bimestres.
@@ -5709,7 +5757,8 @@ function _confirmarLista(i){
   if(!l)return;
   if(!(l.arquivos&&l.arquivos.length)){ showAlertModal('Anexe o arquivo da lista de equipamentos.','⚠️'); return; }
   if(!(parseBRL(l.valor||'')>0)){ showAlertModal('Informe o valor da lista.','⚠️'); return; }
-  l.confirmado=true; _marcarTocado(a); salvarListaServidor(l); saveSession(); renderAll(true);
+  l.confirmado=true; delete l._recuperada;
+  _marcarTocado(a); salvarListaServidor(l); saveSession(); renderAll(true);
 }
 function _editarLista(i){
   const a=acq(); const l=_listasEquip(a)[i];
@@ -5978,6 +6027,9 @@ function renderListasEquipCard(){
   // acompanhamento nos bimestres seguintes — é justamente o que muda de um
   // período para o outro. Depois de recebida, vira histórico.
   const encerrada=function(l){return (l.status||'')==='Recebido';};
+  // Lista recuperada de registro antigo não tem arquivo nem situação — precisa
+  // ficar visível e editável até ser classificada.
+  const recuperada=function(l){return !!l._recuperada;};
 
   let html='<div class="card" id="card-financeiro-equip">'
     +'<div class="card-title">Listas de equipamentos adquiridos</div>'
@@ -5994,7 +6046,7 @@ function renderListasEquipCard(){
         +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
           +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
           +'<div style="flex:1;min-width:0">'
-            +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+(nomes.length?esc(nomes[0]):'Lista '+(i+1))+(nomes.length>1?' +'+(nomes.length-1):'')+'</div>'
+            +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+(nomes.length?esc(nomes[0]):(recuperada(l)?'Lista enviada em '+(l.bimestre||'bimestre anterior'):'Lista '+(i+1)))+(nomes.length>1?' +'+(nomes.length-1):'')+'</div>'
             +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+(l.bimestre||'—')+(l.ano?' / '+l.ano:'')
               +(anterior?' · concluída':'')
               +(pendenteDeAntes?' · <span style="color:var(--g700);font-weight:600">em acompanhamento</span> · '+(l.status||'sem situação'):'')
