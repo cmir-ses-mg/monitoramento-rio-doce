@@ -2303,11 +2303,6 @@ function contentHTML(){
     <div class="card">
       <div class="card-title">Localização da obra</div>
       ${fld('Endereço','endereco_obra','text','Ex: Rua das Flores, 123, Bairro Centro')}
-    </div>
-    <div class="card" id="card-financeiro-obra">
-      <div class="card-title">Valor executado</div>
-      ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?renderListasEquipCard():''}`;  
   }
@@ -2323,11 +2318,16 @@ function contentHTML(){
 
   // Phase 3 — OBRA
   if(phase===3&&obra) return`
-    ${lockedBanner}<div class="step-head"><h2>Execução Física <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Acompanhamento do andamento físico da obra.</p></div>
+    ${lockedBanner}<div class="step-head"><h2>Execução Física <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Quanto foi gasto e como a obra andou no período.</p></div>
+    <div class="card" id="card-financeiro-obra">
+      <div class="card-title">Valor executado</div>
+      ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
+      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
+    </div>
     <div class="card" style="border-left:3px solid var(--g500)">
       <div class="card-title">Informações do Projeto</div>
       <div class="row2">
-        ${fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
+        ${_temEmpresaObra(acq())?_campoEmpresaResumo():fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
         ${fld('Data de Início','data_inicio_obra','date')}
       </div>
       ${(()=>{
@@ -3392,6 +3392,19 @@ async function enviarAcaoSheet(a, tipoRegistro){
                 nomes_nf:(l.arquivos_nf&&l.arquivos_nf.length?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[])),
                 data_recebimento:l.data_recebimento||'',obs:l.obs||''};
       })),
+      // Empresas contratadas da obra: uma linha por empresa, com contrato e
+      // valor. O campo empresa_executora continua indo junto (nomes
+      // concatenados) para não quebrar quem já lê aquela coluna.
+      empresas_contratadas:JSON.stringify((a._empresas||[])
+        .filter(function(e){return (e.nome||'').trim();})
+        .map(function(e){
+          return {nome:e.nome||'',cnpj:e.cnpj||'',num_contrato:e.num_contrato||'',
+                  valor:e.valor||'',data_assinatura:e.data_assinatura||'',
+                  vigencia:e.vigencia||'',obs:e.obs||''};
+        })),
+      valor_contratado_empresas:(a._empresas||[])
+        .reduce(function(s,e){return s+parseBRL(e.valor||'');},0)
+        .toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
       tipo_monitoramento:a.modalidade_objeto||'equipamento',
       tipo_registro:tipoRegistro,
       acao_concluida:(tipoRegistro==='Conclusao'||tipoRegistro==='Correcao')?'Sim':'Nao',
@@ -4063,7 +4076,20 @@ function registroParaAcq(reg){
     atendimentos_realizados: reg.atendimentos_realizados || '',
     obs_gerais:            reg.obs_gerais       || '',
     // Empresas
-    _empresas: (reg._empresas||[]).map(function(e){ return Object.assign({},e); }),
+    _empresas: (function(){
+      // Registros novos trazem as empresas em "empresas_contratadas" (JSON);
+      // os antigos só têm o texto de empresa_executora, convertido adiante
+      // por _migrarEmpresaExecutora.
+      if((reg._empresas||[]).length)return reg._empresas.map(function(e){return Object.assign({},e);});
+      try{
+        const arr=JSON.parse(reg.empresas_contratadas||'[]');
+        return (Array.isArray(arr)?arr:[]).map(function(e){
+          return {nome:e.nome||'',cnpj:e.cnpj||'',num_contrato:e.num_contrato||'',
+                  valor:e.valor||'',data_assinatura:e.data_assinatura||'',
+                  vigencia:e.vigencia||'',obs:e.obs||'',confirmado:true};
+        });
+      }catch(e){ return []; }
+    })(),
     // Boletins de medição (obras)
     _medicoes: (reg._medicoes&&reg._medicoes.length)?reg._medicoes.map(function(m){ return Object.assign({},m); }):undefined,
     // Flags
@@ -4231,6 +4257,168 @@ function _setAtivField(idx,field,value){
   if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
 }
 
+// ── EMPRESAS CONTRATADAS DA OBRA ────────────────────────────────────────────
+// Uma obra pode ter mais de uma empresa: o contrato principal, um aditivo com
+// outra executora, um serviço complementar. O campo único de texto na Execução
+// Física não dava conta disso — nem de guardar contrato e valor de cada uma.
+// Aqui cada empresa é um registro próprio, e a soma dos valores já alimenta o
+// cálculo de percentual de execução (calcPctExecucaoAuto lê a._empresas).
+function _empresasObra(a){ if(!a._empresas)a._empresas=[]; return a._empresas; }
+function _temEmpresaObra(a){
+  return _empresasObra(a).some(function(e){return (e.nome||'').trim();});
+}
+// Ações preenchidas antes desta tela têm a empresa no campo de texto antigo.
+// Ela vira o primeiro registro, para ninguém precisar redigitar.
+function _migrarEmpresaExecutora(a){
+  if(_empresasObra(a).length)return;
+  const nome=(a.empresa_executora||'').trim();
+  if(!nome)return;
+  a._empresas.push({nome:nome,cnpj:'',num_contrato:'',valor:'',
+                    data_assinatura:'',vigencia:'',obs:'',confirmado:true});
+}
+// A planilha, a tela de revisão e os boletins ainda leem "empresa_executora"
+// como texto único. O campo segue espelhando as empresas cadastradas para não
+// quebrar nada que já consome esse dado.
+function _sincEmpresaExecutora(){
+  const a=acq();
+  const nomes=_empresasObra(a).filter(function(e){return (e.nome||'').trim();})
+                              .map(function(e){return e.nome.trim();});
+  if(nomes.length)a.empresa_executora=nomes.join(' / ');
+}
+function totalEmpresasObra(a){
+  return _empresasObra(a).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
+}
+function _addEmpresaObra(){
+  _empresasObra(acq()).push({nome:'',cnpj:'',num_contrato:'',valor:'',
+                             data_assinatura:'',vigencia:'',obs:'',confirmado:false});
+  renderMain();
+}
+function _updEmpresaObra(i,campo,valor){
+  const e=_empresasObra(acq())[i];
+  if(!e)return;
+  e[campo]=valor;
+  if(campo==='nome')_sincEmpresaExecutora();
+  _marcarTocado(acq());
+}
+function _confirmarEmpresaObra(i){
+  const e=_empresasObra(acq())[i];
+  if(!e)return;
+  if(!(e.nome||'').trim()){ showAlertModal('Informe o nome ou a razão social da empresa.','⚠️'); return; }
+  e.confirmado=true;
+  _sincEmpresaExecutora(); saveSession(); renderMain();
+}
+function _editarEmpresaObra(i){
+  const e=_empresasObra(acq())[i];
+  if(!e)return;
+  e.confirmado=false; renderMain();
+}
+async function _excluirEmpresaObra(i){
+  const lst=_empresasObra(acq()); const e=lst[i];
+  if(!e)return;
+  if((e.nome||'').trim()||parseBRL(e.valor||'')>0){
+    const ok=await showConfirmModal('Excluir empresa',
+      'Remover '+((e.nome||'').trim()||'esta empresa')+' da contratação desta obra?',
+      'Excluir','🗑️','#C0392B');
+    if(!ok)return;
+  }
+  lst.splice(i,1);
+  acq().empresa_executora='';
+  _sincEmpresaExecutora(); saveSession(); renderMain();
+}
+
+// Campo somente-leitura na Execução Física: a empresa passou a ser cadastrada
+// na Contratação, então aqui ela só é exibida — evita duas fontes para o mesmo
+// dado divergindo entre as etapas.
+function _campoEmpresaResumo(){
+  const emps=_empresasObra(acq()).filter(function(e){return (e.nome||'').trim();});
+  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');};
+  return '<div class="field"><label>Empresa Executora</label>'
+    +'<div style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13px;color:var(--ink);line-height:1.5">'
+      +emps.map(function(e){
+        return esc(e.nome)+(e.num_contrato?' <span style="color:var(--ink3);font-size:11.5px">· contrato '+esc(e.num_contrato)+'</span>':'');
+      }).join('<br/>')
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Cadastrada na etapa Contratação — altere por lá se precisar corrigir.</div>'
+  +'</div>';
+}
+
+function renderEmpresasObraCard(){
+  const a=acq();
+  _migrarEmpresaExecutora(a);
+  const emps=_empresasObra(a);
+  const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
+  const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
+  const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+
+  let html='<div class="card" id="card-empresas-obra">'
+    +'<div class="card-title">Dados da empresa contratada</div>'
+    +'<p class="hint" style="margin-bottom:12px">Uma obra pode ter mais de uma empresa contratada — cadastre cada uma com seu contrato e valor.</p>';
+
+  emps.forEach(function(e,i){
+    if(e.confirmado){
+      const linha2=[e.cnpj?'CNPJ '+esc(e.cnpj):'',
+                    e.num_contrato?'Contrato '+esc(e.num_contrato):'',
+                    e.vigencia?'Vigência até '+esc(e.vigencia.split('-').reverse().join('/')):'']
+                   .filter(Boolean).join(' · ');
+      html+='<div style="border:1px solid var(--g400);background:var(--g50);border-radius:8px;padding:12px;margin-bottom:10px">'
+        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+          +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+esc(e.nome||'Empresa '+(i+1))+'</div>'
+            +(linha2?'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+linha2+'</div>':'')
+          +'</div>'
+          +(parseBRL(e.valor||'')>0?'<div style="font-size:13px;font-weight:700;color:var(--g800);white-space:nowrap">'+fmt(parseBRL(e.valor))+'</div>':'')
+          +'<button type="button" onclick="_editarEmpresaObra('+i+')" style="padding:4px 12px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
+          +'<button type="button" onclick="_excluirEmpresaObra('+i+')" style="padding:4px 10px;font-size:11.5px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
+        +'</div>'
+      +'</div>';
+      return;
+    }
+
+    html+='<div style="border:1.5px solid var(--g500);border-radius:9px;padding:14px;margin-bottom:10px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--ink)">\u270e Empresa '+(i+1)+'</div>'
+        +'<button type="button" onclick="_excluirEmpresaObra('+i+')" style="padding:3px 10px;font-size:11px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
+      +'</div>'
+      +'<div style="margin-bottom:10px"><label style="'+lbl+'">Nome / Razão social <span class="req">*</span></label>'
+        +'<input type="text" value="'+esc(e.nome)+'" placeholder="Razão social da empresa contratada" oninput="_updEmpresaObra('+i+',\'nome\',this.value)" style="'+inp+'"/></div>'
+      +'<div class="row2" style="gap:10px;margin-bottom:10px">'
+        +'<div><label style="'+lbl+'">CNPJ</label>'
+          +'<input type="text" value="'+esc(e.cnpj)+'" placeholder="00.000.000/0000-00" inputmode="numeric" oninput="maskCNPJ(this);_updEmpresaObra('+i+',\'cnpj\',this.value)" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Nº do contrato</label>'
+          +'<input type="text" value="'+esc(e.num_contrato)+'" placeholder="Ex: 012/2026" oninput="_updEmpresaObra('+i+',\'num_contrato\',this.value)" style="'+inp+'"/></div>'
+      +'</div>'
+      +'<div class="row2" style="gap:10px;margin-bottom:10px">'
+        +'<div><label style="'+lbl+'">Valor contratado (R$)</label>'
+          +'<input type="text" inputmode="decimal" value="'+esc(e.valor)+'" placeholder="0,00" oninput="onMoneyInput(this);_updEmpresaObra('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updEmpresaObra('+i+',\'valor\',this.value)" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Data de assinatura</label>'
+          +'<input type="date" value="'+esc(e.data_assinatura)+'" onchange="_updEmpresaObra('+i+',\'data_assinatura\',this.value)" style="'+inp+'"/></div>'
+      +'</div>'
+      +'<div class="row2" style="gap:10px">'
+        +'<div><label style="'+lbl+'">Vigência até</label>'
+          +'<input type="date" value="'+esc(e.vigencia)+'" onchange="_updEmpresaObra('+i+',\'vigencia\',this.value)" style="'+inp+'"/></div>'
+        +'<div><label style="'+lbl+'">Observações</label>'
+          +'<input type="text" value="'+esc(e.obs)+'" placeholder="Aditivo, consórcio, etc." oninput="_updEmpresaObra('+i+',\'obs\',this.value)" style="'+inp+'"/></div>'
+      +'</div>'
+      +'<div style="margin-top:12px;text-align:right">'
+        +'<button type="button" onclick="_confirmarEmpresaObra('+i+')" style="padding:8px 18px;font-size:12.5px;font-weight:700;background:var(--g800);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar empresa</button>'
+      +'</div>'
+    +'</div>';
+  });
+
+  const vazio=emps.length===0;
+  html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma empresa cadastrada ainda.</div>':'')
+    +'<button type="button" onclick="_addEmpresaObra()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">+ '+(vazio?'Cadastrar empresa':'Adicionar outra empresa')+'</button>';
+
+  const tot=totalEmpresasObra(a);
+  if(tot>0){
+    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);text-align:right;font-size:12.5px;color:var(--ink3)">'
+      +'Total contratado: <strong style="color:var(--g800);font-size:14px">'+fmt(tot)+'</strong></div>';
+  }
+  return html+'</div>';
+}
+
 function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   var cur=a._status_contrat||'Planejamento';
   var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
@@ -4258,8 +4446,9 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   return ''+
     lockedBanner+
     '<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'+
-    '<p>Status da contratação e dados da entrega.</p></div>'+
-    card;
+    '<p>'+(ob?'Status da contratação, empresas contratadas e dados da entrega.':'Status da contratação e dados da entrega.')+'</p></div>'+
+    card+
+    (ob?renderEmpresasObraCard():'');
 }
 
 function deduplicarAquisicoes(){
@@ -5199,13 +5388,49 @@ async function carregarHistoricoBimestreAnterior(instrumento, tipo){
   }catch(e){ return null; }
 }
 
+// Lê as listas de equipamentos de um registro CRU da planilha. O histórico
+// chega direto do Apps Script, onde o detalhamento por lista vive na coluna
+// "listas_equipamentos" em JSON — quem desempacotava isso era só
+// registroParaAcq. Sem esta leitura aqui, o merge de listas do histórico não
+// encontrava nada, o resumo contava um item por bimestre a partir do total
+// agregado e a tela mostrava "2 listas" enquanto os cartões abaixo exibiam 5.
+// Devolve os itens já no formato usado pelo formulário (_nomes/_nomesNF).
+function _listasDoRegistro(r){
+  if(!r)return [];
+  let arr=[];
+  if(Array.isArray(r._listasEquip)) arr=r._listasEquip;
+  else{
+    try{ const j=JSON.parse(r.listas_equipamentos||'[]'); arr=Array.isArray(j)?j:[]; }
+    catch(e){ arr=[]; }
+  }
+  return arr.map(function(l){
+    const nomes=l.nomes||l._nomes||[];
+    return Object.assign({},l,{
+      nomes:nomes, _nomes:nomes,
+      arquivos:[], arquivos_nf:[],
+      _nomesNF:l.nomes_nf||l._nomesNF||[],
+      bimestre:l.bimestre||r.bimestre||'', ano:l.ano||r.ano||'',
+      confirmado:true
+    });
+  });
+}
+
 // Monta o histórico resumido de uma ação a partir dos registros de bimestres
 // anteriores (já ordenados do mais antigo para o mais recente).
 function _montarResumoAnterior(registros){
   const periodos=[];
   let totalListas=0, ultimoExecutado=0, totalNotasAnt=0;
   (registros||[]).forEach(function(r){
-    const vLista=parseValorSheet(r.valor_lista_equipamentos||0);
+    // O valor do bimestre sai das listas detalhadas sempre que elas existem:
+    // um mesmo bimestre pode ter várias listas, e a coluna agregada
+    // "valor_lista_equipamentos" guarda só o que foi somado na gravação
+    // daquele período — listas incluídas depois não entram nela. O agregado
+    // fica como reserva para registros antigos, anteriores ao detalhamento.
+    const detalhadas=_listasDoRegistro(r).filter(function(l){return parseValorSheet(l.valor||0)>0;});
+    const somaDetalhada=detalhadas.reduce(function(s,l){return s+parseValorSheet(l.valor||0);},0);
+    const vAgregado=parseValorSheet(r.valor_lista_equipamentos||0);
+    const vLista=somaDetalhada>0?somaDetalhada:vAgregado;
+    const qtdListas=detalhadas.length||(vAgregado>0?1:0);
     const vNotas=parseValorSheet(r.valor_notas||0);
     const vExec =parseValorSheet(r.valor_total_utilizado||r.valor_executado||0);
     if(vLista>0)totalListas+=vLista;
@@ -5213,7 +5438,7 @@ function _montarResumoAnterior(registros){
     if(vExec>0)ultimoExecutado=vExec; // valor_total_utilizado já é acumulado
     periodos.push({
       bimestre:r.bimestre||'', ano:r.ano||'',
-      executado:vExec, lista:vLista,
+      executado:vExec, lista:vLista, qtdListas:qtdListas,
       situacao:r.situacao_entrega||r._status_contrat||'',
       pct:r.pct_acumulado_periodo||'',
       quantidade:r.quantidade||'',
@@ -5221,7 +5446,9 @@ function _montarResumoAnterior(registros){
       responsavel:r.editado_por||''
     });
   });
-  return {periodos:periodos, totalListas:totalListas, totalNotas:totalNotasAnt, executadoAcumulado:ultimoExecutado};
+  const totalQtd=periodos.reduce(function(s,p){return s+(p.qtdListas||0);},0);
+  return {periodos:periodos, totalListas:totalListas, qtdListas:totalQtd,
+          totalNotas:totalNotasAnt, executadoAcumulado:ultimoExecutado};
 }
 
 // Card "O que já foi informado antes" — aparece em toda ação que tenha
@@ -5250,7 +5477,8 @@ function renderResumoAnterior(){
           return '<tr>'
             +'<td style="'+cel+'">'+(p.bimestre||'—')+(p.ano?' / '+p.ano:'')+'</td>'
             +'<td style="'+cel+';text-align:right">'+(p.executado>0?fmt(p.executado):'—')+'</td>'
-            +(temLista?'<td style="'+cel+';text-align:right">'+(p.lista>0?fmt(p.lista):'—')+'</td>':'')
+            +(temLista?'<td style="'+cel+';text-align:right">'+(p.lista>0?fmt(p.lista):'—')
+              +(p.qtdListas>1?'<div style="font-size:10px;color:var(--ink3);font-weight:400">'+p.qtdListas+' listas</div>':'')+'</td>':'')
             +'<td style="'+cel+'">'+(p.situacao||'—')+(p.pct?' · '+p.pct+'%':'')+'</td>'
           +'</tr>';
         }).join('')
@@ -5258,7 +5486,7 @@ function renderResumoAnterior(){
     +'</div>'
     +(temLista
       ? '<div style="margin-top:10px;padding:8px 10px;background:#fff;border:1px solid var(--g400);border-radius:7px;font-size:12px;color:var(--ink2)">'
-        +'<strong>'+r.periodos.filter(function(p){return p.lista>0;}).length+' lista(s) de equipamentos</strong> já enviada(s) em bimestre(s) anterior(es), '
+        +'<strong>'+(r.qtdListas||r.periodos.filter(function(p){return p.lista>0;}).length)+' lista(s) de equipamentos</strong> já enviada(s) em bimestre(s) anterior(es), '
         +'no valor total de <strong>'+fmt(r.totalListas)+'</strong>. Não é preciso reenviar — anexe apenas listas novas deste bimestre.'
       +'</div>'
       : '')
@@ -5420,7 +5648,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
       porId[id]=l;
     });
     registros.forEach(function(r){
-      (r._listasEquip||[]).forEach(function(l){
+      _listasDoRegistro(r).forEach(function(l){
         const id=l.id||('le_'+(l.nomes||[]).join('_'));
         if(!porId[id])ordem.push(id);
         const anterior=porId[id];
@@ -5462,25 +5690,54 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     if(ordem.length){
       acqObj._listasEquip=ordem.map(function(id){return porId[id];});
     }
-    if(!(acqObj._listasEquip||[]).length){
-      // Registros gravados ANTES de existir o detalhamento por lista só têm o
-      // total em "Valor da Lista de Equipamentos". Sem isso a lista sumia do
-      // bimestre seguinte e não havia como atualizar a situação dela. Aqui ela
-      // é reconstruída a partir do valor, para poder ser acompanhada.
+    // Registros gravados ANTES de existir o detalhamento por lista só têm o
+    // total em "Valor da Lista de Equipamentos". Sem isso a lista sumia do
+    // bimestre seguinte e não havia como atualizar a situação dela. Aqui ela é
+    // reconstruída a partir do valor — mas SÓ para o bimestre que realmente
+    // não tem lista detalhada. Reconstruir a partir do total quando o
+    // detalhamento existe criava um cartão fantasma somando por cima das
+    // listas reais do mesmo período (era a origem das duas primeiras linhas
+    // "Lista enviada em Nº Bimestre" aparecendo junto com os arquivos reais).
+    {
+      const atuais=acqObj._listasEquip||[];
+      const jaTemDoPeriodo=function(bim,ano){
+        return atuais.some(function(l){
+          return !l._recuperada&&(l.bimestre||'')===(bim||'')&&String(l.ano||'')===String(ano||'');
+        });
+      };
       const recuperadas=[];
       registros.forEach(function(r){
+        const bim=r.bimestre||'', ano=r.ano||'';
+        if(_listasDoRegistro(r).length)return;   // detalhado no próprio registro
+        if(jaTemDoPeriodo(bim,ano))return;       // detalhado em outro registro
         const v=parseValorSheet(r.valor_lista_equipamentos||0);
         if(!(v>0))return;
+        const id='le_hist_'+String(bim).replace(/\D/g,'')+'_'+ano;
+        if(atuais.some(function(l){return l.id===id;}))return;
+        if(recuperadas.some(function(l){return l.id===id;}))return;
         recuperadas.push({
-          id:'le_hist_'+(r.bimestre||'').replace(/\D/g,'')+'_'+(r.ano||''),
+          id:id,
           _nomes:[], arquivos:[], valor:v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-          status:'', bimestre:r.bimestre||'', ano:r.ano||'',
+          status:'', bimestre:bim, ano:ano,
           num_contrato:'', data_prev:'', situacao_entrega:'', justificativa:'',
           num_nf:'', data_nf:'', valor_nf:'', arquivos_nf:[], _nomesNF:[],
           data_recebimento:'', obs:'', confirmado:true, _recuperada:true
         });
       });
-      if(recuperadas.length)acqObj._listasEquip=recuperadas;
+      if(recuperadas.length)acqObj._listasEquip=atuais.concat(recuperadas);
+    }
+
+    // Limpeza do que já ficou duplicado em sessões anteriores: um cartão
+    // reconstruído que hoje tem equivalente detalhado no mesmo bimestre é
+    // duplicata pura — aparece na tela e infla o "Total em listas".
+    if((acqObj._listasEquip||[]).some(function(l){return l._recuperada;})){
+      const reais=acqObj._listasEquip.filter(function(l){return !l._recuperada;});
+      acqObj._listasEquip=acqObj._listasEquip.filter(function(l){
+        if(!l._recuperada)return true;
+        return !reais.some(function(x){
+          return (x.bimestre||'')===(l.bimestre||'')&&String(x.ano||'')===String(l.ano||'');
+        });
+      });
     }
   }
 
