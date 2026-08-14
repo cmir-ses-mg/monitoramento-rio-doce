@@ -1667,12 +1667,19 @@ async function carregarRendimentosHistorico(){
     if(String(municipio.rendimentos_periodo||'').trim()===''){
       const ordemAtual=_ordemPeriodoAtual();
       const meu=_rendHistorico.filter(function(p){return p.ordem===ordemAtual;})[0];
-      if(meu&&meu.valor>0){
-        municipio.rendimentos_periodo=meu.valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-        // Registros antigos não têm a divisão custeio/investimento; o total
-        // entra como custeio para não se perder, e pode ser reclassificado.
+      if(meu&&(meu.valor>0||meu.custeio>0||meu.investimento>0)){
+        const fmt=function(v){return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});};
+        municipio.rendimentos_periodo=fmt(meu.valor||((meu.custeio||0)+(meu.investimento||0)));
         if(String(municipio.rendimentos_custeio||'').trim()===''&&String(municipio.rendimentos_investimento||'').trim()===''){
-          municipio.rendimentos_custeio=municipio.rendimentos_periodo;
+          if(meu.custeio>0||meu.investimento>0){
+            // Registro já gravado com a divisão por conta.
+            if(meu.custeio>0)municipio.rendimentos_custeio=fmt(meu.custeio);
+            if(meu.investimento>0)municipio.rendimentos_investimento=fmt(meu.investimento);
+          }else{
+            // Registro anterior à separação: o total entra como custeio para
+            // não se perder, e pode ser reclassificado na edição.
+            municipio.rendimentos_custeio=municipio.rendimentos_periodo;
+          }
         }
         municipio.extrato_ja_enviado=true; // enviado junto com o bimestre
         saveSession();
@@ -1692,7 +1699,12 @@ function _ordemPeriodoAtual(){
 }
 
 // Soma dos rendimentos de todos os bimestres ANTERIORES ao que está aberto.
+// Mantida por compatibilidade com chamadas antigas — os rendimentos não são
+// mais acumulados entre bimestres.
 function _somaRendimentosAnteriores(){
+  return 0;
+}
+function _somaRendimentosAnterioresLegado(){
   if(!_rendHistorico)return 0;
   const ordemAtual=_ordemPeriodoAtual();
   return _rendHistorico.filter(function(p){return p.ordem<ordemAtual;})
@@ -1727,8 +1739,6 @@ function renderRendimentosHistorico(){
   // Registros antigos não têm a divisão — o total entra como custeio.
   const cust=function(p){return (p.custeio||p.investimento)?(p.custeio||0):(p.valor||0);};
   const inv=function(p){return p.investimento||0;};
-  const somaC=antes.reduce(function(s,p){return s+cust(p);},0);
-  const somaI=antes.reduce(function(s,p){return s+inv(p);},0);
   const atualC=parseBRL(municipio.rendimentos_custeio||'')||0;
   const atualI=parseBRL(municipio.rendimentos_investimento||'')||0;
 
@@ -1747,10 +1757,10 @@ function renderRendimentosHistorico(){
       +'<tr><td style="'+cel+';color:var(--ink3);font-style:italic">'+(municipio.bimestre||'Este bimestre')+' / '+(municipio.ano||'')+' (em preenchimento)</td>'
         +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualC)+'</td>'
         +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualI)+'</td></tr>'
-      +'<tr style="background:var(--g50)"><td style="'+cel+';font-weight:700;color:var(--g800);border-bottom:none">Acumulado por conta</td>'
-        +'<td style="'+cel+';text-align:right;font-weight:700;color:var(--g800);border-bottom:none">'+fmt(somaC+atualC)+'</td>'
-        +'<td style="'+cel+';text-align:right;font-weight:700;color:var(--g800);border-bottom:none">'+fmt(somaI+atualI)+'</td></tr>'
     +'</table>'
+    +'<div style="font-size:10.5px;color:var(--ink3);padding:7px 9px;border-top:1px solid var(--border2);background:var(--g50);line-height:1.45">'
+      +
+    +'</div>'
   +'</div>';
 }
 
@@ -2056,6 +2066,12 @@ function calcResumoExecucaoMunicipio(){
 
 // ── CONTENT ──────────────────────────────────────────────────
 function renderCapaMunicipio(modoResumo){
+  // Recalcular SEMPRE, não só quando o card está aberto: este campo é o que
+  // vai para a planilha e alimenta a tabela de rendimentos por bimestre.
+  (function(){
+    const t=parseBRL(municipio.rendimentos_custeio||'')+parseBRL(municipio.rendimentos_investimento||'');
+    if(t>0)municipio.rendimentos_periodo=t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  })();
   if(!municipio.municipio)return'';
   _dispararBuscaValorRecebidoSeNecessario(municipio.municipio);
   // VALOR RECEBIDO = repasse do Estado ao município. É um dado do PLANO, fixo,
@@ -2082,7 +2098,7 @@ function renderCapaMunicipio(modoResumo){
   // Vem de buscarRendimentosPorBimestre, que deduplica por período — antes o
   // valor era lido do último registro (já acumulado) e somado de novo, então
   // R$ 10.000 + R$ 11.000 virava R$ 135.000.
-  const _rendimentosBase=_somaRendimentosAnteriores();
+  const _rendimentosBase=0; // sem acumulação entre bimestres (ver acima)
   const _rendimentosAcumulados=_rendimentosBase+parseBRL(municipio.rendimentos_periodo||'');
   municipio._rendimentosBase=_rendimentosBase;
   const _temExtrato=extratosRegistrados();
@@ -3349,7 +3365,10 @@ async function enviarAcaoSheet(a, tipoRegistro){
       editado_em:a._editadoEm?new Date(a._editadoEm).toLocaleString('pt-BR'):'',
       valor_total_plano:(function(){return(getAllPlanActions(municipio.municipio||'')||[]).reduce(function(s,it){return s+(it.valor||0);},0);})(),
       valor_total_recebido:(municipio._recebidoBase||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-      rendimentos_acumulados:(_somaRendimentosAnteriores()+parseBRL(municipio.rendimentos_periodo||'')).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      // Rendimentos NÃO são acumulados: o saldo de um bimestre pode ser usado
+      // no seguinte, então somar os períodos criaria a ilusão de um saldo
+      // disponível que não existe. Cada bimestre registra apenas o seu.
+      rendimentos_acumulados:'',
       rendimentos_custeio:municipio.rendimentos_custeio||'',
       rendimentos_investimento:municipio.rendimentos_investimento||'',
       docs_marcados:docsOk,
