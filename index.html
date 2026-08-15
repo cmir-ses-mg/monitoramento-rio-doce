@@ -2303,6 +2303,17 @@ function contentHTML(){
     <div class="card">
       <div class="card-title">Localização da obra</div>
       ${fld('Endereço','endereco_obra','text','Ex: Rua das Flores, 123, Bairro Centro')}
+      ${fld('Data de início da obra','data_inicio_obra','date')}
+      ${(()=>{
+        // Endereço e data de início são da obra, não do bimestre: vêm
+        // preenchidos do período anterior e só precisam ser tocados se
+        // estiverem errados. Dizer isso evita redigitação e divergência.
+        const r=acq()._resumoAnterior;
+        const pAnt=r&&r.periodos&&r.periodos.length?r.periodos[r.periodos.length-1]:null;
+        return (acq().data_inicio_obra&&pAnt)
+          ? '<div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Data informada em bimestre anterior — altere apenas se estiver incorreta.</div>'
+          : '';
+      })()}
     </div>`:''}
     ${!obra&&!servico&&acq().acao_tipo?renderListasEquipCard():''}`;  
   }
@@ -2319,35 +2330,15 @@ function contentHTML(){
   // Phase 3 — OBRA
   if(phase===3&&obra) return`
     ${lockedBanner}<div class="step-head"><h2>Execução Física <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>Quanto foi gasto e como a obra andou no período.</p></div>
-    <div class="card" id="card-financeiro-obra">
-      <div class="card-title">Valor executado</div>
-      ${fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)}
-      <div style="font-size:11px;color:var(--ink3);margin:-8px 0 0">Valor total gasto neste bimestre — inclua aqui também a parcela paga com recurso próprio/rendimentos, se houver.</div>
-    </div>
+    ${renderMedicoesObraCard()}
     <div class="card" style="border-left:3px solid var(--g500)">
       <div class="card-title">Informações do Projeto</div>
-      ${_temEmpresaObra(acq())?_campoEmpresaResumo():fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}
-      <div class="row2">
-        ${fld('Data','data_inicio_obra','date')}
-        ${fld('Fiscal Responsável','fiscal_responsavel','text','Exemplo de nome e registro')}
-      </div>
-      ${(()=>{
-        // A data de início é da obra, não do bimestre: se veio de um período
-        // anterior, deixamos isso explícito para ninguém achar que precisa
-        // redigitar (ou pior, informar outra data).
-        const r=acq()._resumoAnterior;
-        const pAnt=r&&r.periodos&&r.periodos.length?r.periodos[r.periodos.length-1]:null;
-        return (acq().data_inicio_obra&&pAnt)
-          ? '<div style="font-size:11px;color:var(--ink3);margin:-6px 0 12px">Data informada em bimestre anterior — altere apenas se estiver incorreta.</div>'
-          : '';
-      })()}
       <div class="row2">
         ${_campoPctMedido()}
         ${_campoPctAcumulado()}
       </div>
       ${fld('Observações','observacoes_oficial','textarea','Exemplo de observações adicionais')}
     </div>
-    ${renderMedicoesObraCard()}
     <div class="card" id="card-arquivos-obra">
       <div class="card-title">Arquivos Inseridos</div>
       <p class="hint" style="margin-bottom:12px">Anexe os documentos e registros fotográficos referentes à execução desta obra.</p>
@@ -3393,7 +3384,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
         .filter(function(m){return (m.num_boletim||'').trim()||parseBRL(m.valor||'')>0||_pctDaMedicao(m)>0;})
         .map(function(m){
           return {empresa:m.empresa||'',num_boletim:m.num_boletim||'',data:m.data||'',
-                  valor:m.valor||'',pct:m.pct||''};
+                  valor:m.valor||'',pct:m.pct||'',fiscal:m.fiscal||''};
         })),
       valor_medido_periodo:(a._medicoes||[])
         .reduce(function(s,m){return s+parseBRL(m.valor||'');},0)
@@ -4091,7 +4082,7 @@ function registroParaAcq(reg){
         const arr=JSON.parse(reg.medicoes_obra||'[]');
         return (Array.isArray(arr)?arr:[]).map(function(m){
           return {empresa:m.empresa||'',num_boletim:m.num_boletim||'',data:m.data||'',
-                  valor:m.valor||'',pct:m.pct||''};
+                  valor:m.valor||'',pct:m.pct||'',fiscal:m.fiscal||''};
         });
       }catch(e){ return []; }
     })(),
@@ -4438,6 +4429,7 @@ function _sincPctMedido(){
     const soma=totalPctMedicoes(a);
     a.pct_medido_periodo=soma?soma.toFixed(2).replace('.',','):'';
   }
+  _sincValorExecutadoObra();
   const ant=_pctAcumuladoAnterior(a);
   const atual=parseFloat(String(a.pct_medido_periodo||'').replace(',','.'))||0;
   const tot=Math.min(100,ant+atual);
@@ -4451,11 +4443,33 @@ function _sincPctMedido(){
   const elQ=document.getElementById('med-total-pct');
   if(elQ)elQ.textContent=totalPctMedicoes(a).toFixed(2).replace('.',',')+'%';
 }
+// A planilha tem uma coluna única de fiscal, mas quem atesta pode mudar de um
+// boletim para o outro. A coluna recebe os nomes distintos — nada que já lê
+// esse campo precisa mudar.
+function _sincFiscalResponsavel(){
+  const a=acq();
+  const nomes=[];
+  _medicoesObra(a).forEach(function(m){
+    const n=(m.fiscal||'').trim();
+    if(n&&nomes.indexOf(n)===-1)nomes.push(n);
+  });
+  if(nomes.length)a.fiscal_responsavel=nomes.join(' / ');
+}
+// O valor executado da obra no bimestre é a soma dos boletins. Pedir o número
+// de novo, num campo separado, só abria espaço para os dois divergirem.
+function _sincValorExecutadoObra(){
+  const a=acq();
+  if(!_medicoesObra(a).length)return;
+  const tot=totalMedidoObra(a);
+  a.valor_executado=tot?tot.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
+  if(typeof calcTotalUtilizado==='function')calcTotalUtilizado();
+}
 function _addMedicao(){
   const a=acq();
   const nomes=_nomesEmpresasObra(a);
   _medicoesObra(a).push({empresa:nomes.length===1?nomes[0]:(a.empresa_executora||nomes[0]||''),
-                         data:'', num_boletim:'', valor:'', pct:''});
+                         data:'', num_boletim:'', valor:'', pct:'',
+                         fiscal:a.fiscal_responsavel||''});
   saveSession(); renderMain();
 }
 function _updMedicao(i,campo,valor){
@@ -4463,6 +4477,8 @@ function _updMedicao(i,campo,valor){
   if(!m)return;
   m[campo]=valor;
   if(campo==='pct'||campo==='valor'||campo==='empresa')_sincPctMedido();
+  if(campo==='empresa')_sincEmpresaExecutora();
+  if(campo==='fiscal')_sincFiscalResponsavel();
   _marcarTocado(acq());
 }
 async function _excluirMedicao(i){
@@ -4521,7 +4537,7 @@ function renderMedicoesObraCard(){
   const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
   const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);background:#fff;box-sizing:border-box';
 
-  let html='<div class="card" id="card-medicoes-obra">'
+  let html='<div class="card" id="card-financeiro-obra">'
     +'<div class="card-title">Medições do período</div>'
     +'<p class="hint" style="margin-bottom:12px">Um bimestre pode ter mais de um boletim de medição. Informe o valor de cada um — o percentual é calculado sobre o contrato da empresa, e o % do período é a soma deles.</p>';
 
@@ -4545,6 +4561,8 @@ function renderMedicoesObraCard(){
         +'<div><label style="'+lbl+'">Data da medição</label>'
           +'<input type="date" value="'+esc(m.data)+'" onchange="_updMedicao('+i+',\'data\',this.value)" style="'+inp+'"/></div>'
       +'</div>'
+      +'<div style="margin-bottom:10px"><label style="'+lbl+'">Fiscal responsável</label>'
+        +'<input type="text" value="'+esc(m.fiscal)+'" placeholder="Nome e registro de quem atestou" oninput="_updMedicao('+i+',\'fiscal\',this.value)" style="'+inp+'"/></div>'
       +'<div class="row2" style="gap:10px">'
         +'<div><label style="'+lbl+'">Valor medido (R$)</label>'
           +'<input type="text" inputmode="decimal" value="'+esc(m.valor)+'" placeholder="0,00" oninput="onMoneyInput(this);_updMedicao('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updMedicao('+i+',\'valor\',this.value)" style="'+inp+'"/></div>'
@@ -4562,14 +4580,24 @@ function renderMedicoesObraCard(){
   });
 
   const vazio=meds.length===0;
-  html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma medição registrada — o % do período está sendo informado à mão.</div>':'')
+  // Sem nenhum boletim o valor do bimestre ainda precisa de um lugar: período
+  // sem medição formal, ou obra que já vinha sendo preenchida no modelo antigo.
+  // Fica aqui mesmo, e não num card separado que duplicaria a soma.
+  html+=(vazio
+    ? '<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:6px 0 10px;text-align:center">Nenhum boletim registrado — informe o valor do bimestre abaixo, ou registre as medições.</div>'
+      +'<div style="max-width:280px;margin-bottom:12px">'
+        +fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)
+      +'</div>'
+    : '')
     +'<button type="button" class="btn-add-med" onclick="_addMedicao()" style="width:100%;justify-content:center">+ '+(vazio?'Registrar medição':'Adicionar outra medição')+'</button>';
 
   if(!vazio){
-    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--ink3)">'
-      +'<span>Total medido no período: <strong id="med-total-valor" style="color:var(--g800);font-size:14px">R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong></span>'
+    _sincValorExecutadoObra();
+    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--ink3)">'
+      +'<span>Valor executado no bimestre: <strong id="med-total-valor" style="color:var(--g800);font-size:14px">R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong></span>'
       +'<span>% somado: <strong id="med-total-pct" style="color:var(--g800);font-size:14px">'+totalPctMedicoes(a).toFixed(2).replace('.',',')+'%</strong></span>'
-    +'</div>';
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Soma dos boletins acima — é este valor que vai para a planilha como executado do período.</div>';
   }
   return html+'</div>';
 }
