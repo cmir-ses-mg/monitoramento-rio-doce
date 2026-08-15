@@ -1941,12 +1941,15 @@ else if(type==='email')
         onblur="validateField(this)"
       />`;
 
-else if(type==='phone')
+else if(type==='phone'||type==='tel')
   inp=`<input
         type="tel"
         ${baseAttrs}
         value="${val}"
         placeholder="${ph}"
+        inputmode="numeric"
+        maxlength="15"
+        autocomplete="tel"
         oninput="onPhoneInput(this)"
         onblur="validateField(this)"
       />`;
@@ -2228,7 +2231,7 @@ function contentHTML(){
     +'</div></div>'
     +'<div class="card"><div class="card-title">Responsável</div>'
     +fld('Nome completo','responsavel','text','Nome do responsável')
-    +'<div class="row2">'+fld('Cargo / Função','cargo','text','Ex: Secretário de Saúde')+fld('Telefone','telefone','tel','(xx) xxxxx-xxxx')+'</div>'
+    +'<div class="row2">'+fld('Cargo / Função','cargo','text','Ex: Secretário de Saúde')+fld('Telefone','telefone','phone','(31) 99999-9999')+'</div>'
     +fld('E-mail institucional','email','email','exemplo@municipio.mg.gov.br')
     +'</div>'
     +renderCapaMunicipio()
