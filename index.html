@@ -808,8 +808,11 @@ window.addEventListener('load', function(){
       <div class="login-field"><label>Confirmar nova senha</label><input type="password" id="ts-senha2" placeholder="Repita a nova senha" onkeydown="if(event.key==='Enter')doTrocarSenhaPrimeiroAcesso()"/></div>
       <button class="login-btn-primary" onclick="doTrocarSenhaPrimeiroAcesso()">Definir senha e entrar →</button>
     </div>
-    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border2);text-align:center">
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border2);text-align:center;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       <button type="button" onclick="switchLoginTab('suporte')" style="padding:7px 20px;font-size:12px;font-weight:700;font-family:var(--font);border:none;border-radius:20px;background:var(--g700);color:#fff;cursor:pointer;letter-spacing:.03em">Suporte</button>
+      <!-- Também aqui, antes de entrar: a dúvida mais comum ("como consigo
+           acesso?") aparece justamente nesta tela, e a resposta está no manual. -->
+      <button type="button" onclick="abrirManual()" style="padding:7px 20px;font-size:12px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:#fff;color:var(--g700);cursor:pointer;letter-spacing:.03em">Manual</button>
     </div>
     <!-- Recuperar -->
     <div id="painel-recuperar" style="display:none">
@@ -1364,6 +1367,23 @@ function calcularExecutadoAcumuladoHistorico(acqObj){
 }
 
 
+// ── MANUAL ──────────────────────────────────────────────────────────────────
+// Abre em outra aba, nunca na mesma: quem está preenchendo consulta a dúvida e
+// volta, sem risco de perder a tela no meio do preenchimento.
+const MANUAL_URL='manual.html';
+function abrirManual(){
+  // `noopener` porque a aba nova não precisa (nem deve) manipular esta.
+  window.open(MANUAL_URL,'_blank','noopener');
+}
+function _botaoManualHTML(){
+  return '<button onclick="abrirManual()" title="Abrir o manual em uma nova aba"'
+    +' onmouseover="this.style.background=\'var(--g200)\';this.style.color=\'var(--g900)\'"'
+    +' onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--g700)\'"'
+    +' style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;font-size:10px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:transparent;color:var(--g700);cursor:pointer;transition:background .15s,color .15s">'
+    +'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
+    +'Manual</button>';
+}
+
 function renderBadge(){
   const el=document.getElementById('topBadge');
   if(!el)return;
@@ -1374,6 +1394,7 @@ function renderBadge(){
     el.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px">'
       +'<span>'+(mun?(mun+(periodo?' · '+periodo:'')):(nome||''))+'</span>'
       +'<span style="width:1px;height:12px;background:var(--border2);display:inline-block"></span>'
+      +_botaoManualHTML()
       +'<button onclick="doLogout()" onmouseover="this.style.background=\'var(--g200)\';this.style.color=\'var(--g900)\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--g700)\'" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;font-size:10px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:transparent;color:var(--g700);cursor:pointer;transition:background .15s,color .15s">'
       +'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
       +'Sair</button></span>';
