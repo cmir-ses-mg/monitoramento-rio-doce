@@ -774,6 +774,11 @@ window.addEventListener('load', function(){
       <p style="font-size:12.5px;color:var(--ink2);margin:0 0 16px">Descreva o problema. A CMIR responde no e-mail informado.</p>
       <div class="login-field"><label>Nome</label><input type="text" id="sup-nome" placeholder="Seu nome completo"/></div>
       <div class="login-field"><label>E-mail</label><input type="email" id="sup-email" placeholder="seu@email.com"/></div>
+      <!-- O telefone entra aqui porque é neste formulário que a pessoa pede
+           acesso. Coletado uma vez, ele vai para o cadastro do usuário e volta
+           preenchido no monitoramento a cada bimestre — em vez de ser redigitado
+           a cada período, por seis anos. -->
+      <div class="login-field"><label>Telefone</label><input type="tel" id="sup-telefone" placeholder="(31) 99999-9999" inputmode="numeric" maxlength="15" oninput="onPhoneInput(this)"/></div>
       <div class="login-field"><label>Município / Consórcio</label>
         <select id="sup-municipio" style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;background:#fff">
           <option value="">Selecione...</option>
@@ -1127,12 +1132,6 @@ function calcAcqStatus(a){
   return'partial';
 }
 
-function lockAcq(idx){
-  if(!aquisicoes[idx])return;
-  aquisicoes[idx]._locked=true;
-  renderAll();
-}
-
 async function unlockAcq(idx){
   if(!aquisicoes[idx])return;
   const a=aquisicoes[idx];
@@ -1250,12 +1249,19 @@ async function selectPlanAction(instrumento, tipo){
   }
   acqIdx=idx;
   phase=1;
+  // Trava herdada de bimestre anterior não sobrevive à abertura da ação: só
+  // fica concluída o que foi concluído NESTE período, ou o que atingiu 100%
+  // (reavaliado em aplicarHistoricoNaAcao).
+  if(aquisicoes[idx]&&aquisicoes[idx]._locked&&!aquisicoes[idx]._sent){
+    aquisicoes[idx]._locked=false;
+    aquisicoes[idx]._autoConcluida=false;
+  }
   renderAll();
   showLoading('Buscando dados desta ação...');
   const _promessasCarga=[];
   // Carregar histórico do bimestre anterior se a ação ainda não foi preenchida
   const _acqAtual = aquisicoes[idx];
-  if(_acqAtual && !_acqAtual._sent && !_acqAtual._historicoCarregado){
+  if(_acqAtual && !_enviadaNestePeriodo(_acqAtual) && !_acqAtual._historicoCarregado){
     _promessasCarga.push(carregarHistoricoBimestreAnterior(instrumento, _acqAtual.acao_tipo||item.tipo).then(function(regs){
       // Só marca como carregado quando a busca de fato trouxe algo: se a rede
       // falhar, a próxima abertura tenta de novo em vez de desistir para sempre.
@@ -1357,40 +1363,6 @@ function calcularExecutadoAcumuladoHistorico(acqObj){
   return total;
 }
 
-
-async function deleteAcqTab(e,i){
-  e.stopPropagation();
-  if(aquisicoes.length<=1)return;
-  const _dok=await showConfirmModal('Excluir aquisição?',`"${aquisicoes[i].acao_tipo||'sem título'}"\nEsta ação não pode ser desfeita.`,'Excluir','🗑️','#C94040');
-  if(!_dok)return;
-  aquisicoes.splice(i,1);acqIdx=Math.min(acqIdx,aquisicoes.length-1);renderAll();
-}
-function switchAcq(i){
-  saveAllInputs();
-  acqIdx=i;
-  if(phase===0)phase=1;
-  renderAll();
-  const a=aquisicoes[i];
-  if(a && (!a._listas || !a._listas.length) && a.acao_instrumento && a.acao_tipo){
-    sincronizarListasDoServidor(a, a.acao_instrumento, a.acao_tipo).then(function(achou){
-      if(achou) renderAll();
-    });
-  }
-  if(a && a.acao_instrumento && a.acao_tipo){
-    a._executado_acumulado_historico = calcularExecutadoAcumuladoHistorico(a);
-    calcTotalUtilizado();
-  }
-  if(a && a.modalidade_objeto==='servico'){
-    carregarAtividadesHistoricoCusteio(a).then(function(){
-      calcAtividades();
-      renderAll();
-    });
-  }
-  if(a && a.modalidade_objeto==='equipamento'){
-    carregarListasHistorico(a).then(function(mudou){ if(mudou)renderAll(); });
-  }
-}
-function addAcqBtn(){saveAllInputs();aquisicoes.push({});acqIdx=aquisicoes.length-1;phase=1;renderAll();}
 
 function renderBadge(){
   const el=document.getElementById('topBadge');
@@ -1504,9 +1476,107 @@ function _marcarTocado(a){
     a._editadoEm=new Date().toISOString();
   }
 }
+// ── CAPA (RENDIMENTOS + EXTRATO) É POR PERÍODO ──────────────────────────────
+// Rendimento e extrato pertencem ao município NAQUELE bimestre. Como esses
+// campos moram soltos em `municipio`, trocar o bimestre no topo da tela deixava
+// na capa o valor do período aberto antes — o card continuava dizendo
+// "Rendimentos do bimestre registrados" com o valor do 2º bimestre depois de
+// escolher o 4º, e o "Editar" gravaria o rendimento de um período dentro do
+// outro. Agora cada troca arquiva a capa do período que sai e recarrega a do
+// período que entra.
+const _capaArquivosPorPeriodo={}; // File objects não cabem no localStorage
+let _periodoTrocadoNestaSessao=false;
+
+function _capaStorageKey(bim,ano){
+  const m=(municipio.municipio||'').replace(/\s+/g,'_');
+  const b=String(bim||'').replace(/\s+/g,'_');
+  const a=String(ano||'').trim();
+  if(!m||!b||!a)return null;
+  return 'rdoce_capa__'+m+'__'+b+'__'+a;
+}
+
+// Guarda a capa do período informado. Os campos de texto vão para o
+// localStorage (chave própria, que já inclui bimestre e ano) e os anexos ainda
+// não enviados ficam em memória, porque File não é serializável.
+function _arquivarCapaDoPeriodo(bim,ano){
+  const k=_capaStorageKey(bim,ano); if(!k)return;
+  _capaArquivosPorPeriodo[k]=(arquivos['mun_extratos_municipio']||[]).slice();
+  try{
+    localStorage.setItem(k,JSON.stringify({
+      rendimentos_periodo:municipio.rendimentos_periodo||'',
+      rendimentos_custeio:municipio.rendimentos_custeio||'',
+      rendimentos_investimento:municipio.rendimentos_investimento||'',
+      extratos_nomes:municipio.extratos_nomes||[],
+      extrato_ja_enviado:!!municipio.extrato_ja_enviado,
+      _capaTouchedAt:municipio._capaTouchedAt||0
+    }));
+  }catch(e){console.warn('arquivarCapa:',e);}
+}
+
+function _zerarCapaAtual(){
+  municipio.rendimentos_periodo='';
+  municipio.rendimentos_custeio='';
+  municipio.rendimentos_investimento='';
+  municipio.extratos_nomes=[];
+  municipio.extrato_ja_enviado=false;
+  municipio._capaTouchedAt=0;
+  arquivos['mun_extratos_municipio']=[];
+}
+
+// Zera e, se já houver capa arquivada para o período que está entrando, repõe.
+// Sem registro local, os campos ficam vazios e `carregarRendimentosHistorico`
+// busca no servidor o que já tiver sido enviado naquele bimestre.
+function _restaurarCapaDoPeriodo(bim,ano){
+  _zerarCapaAtual();
+  _restaurarContatoResponsavel(); // telefone/cargo são do contato, não do período
+  const k=_capaStorageKey(bim,ano); if(!k)return;
+  if(_capaArquivosPorPeriodo[k])arquivos['mun_extratos_municipio']=_capaArquivosPorPeriodo[k].slice();
+  try{
+    const raw=localStorage.getItem(k); if(!raw)return;
+    const c=JSON.parse(raw)||{};
+    municipio.rendimentos_periodo=c.rendimentos_periodo||'';
+    municipio.rendimentos_custeio=c.rendimentos_custeio||'';
+    municipio.rendimentos_investimento=c.rendimentos_investimento||'';
+    municipio.extratos_nomes=c.extratos_nomes||[];
+    municipio.extrato_ja_enviado=!!c.extrato_ja_enviado;
+    municipio._capaTouchedAt=c._capaTouchedAt||0;
+  }catch(e){console.warn('restaurarCapa:',e);}
+}
+
 // Trocar bimestre/ano invalida o que estava carregado do período anterior.
 function onTrocarPeriodo(el){
+  // O período ANTES da troca precisa ser lido antes de qualquer coisa: o select
+  // no DOM já está com o valor novo, então `saveAllInputs` sobrescreveria a
+  // referência e a capa seria arquivada na gaveta errada.
+  const bimAnterior=municipio.bimestre;
+  const anoAnterior=municipio.ano;
+  saveAllInputs();              // não perde o que estava digitado na capa
+  _arquivarCapaDoPeriodo(bimAnterior,anoAnterior);
   sv(el);
+  const trocou=(String(municipio.bimestre||'')!==String(bimAnterior||''))
+             ||(String(municipio.ano||'')!==String(anoAnterior||''));
+  if(trocou){
+    _restaurarCapaDoPeriodo(municipio.bimestre,municipio.ano);
+    _capaEditando=false;        // o card volta ao estado do período que entrou
+    _periodoTrocadoNestaSessao=true;
+    // O histórico de cada ação é relativo ao período aberto: o servidor devolve
+    // todos os bimestres MENOS o atual. Mantido em memória depois da troca, o
+    // 3º bimestre continuava enxergando o resumo montado para o 2º — daí o
+    // acumulado não somar o bimestre anterior e a tela abrir zerada.
+    const _novoPer=String(municipio.bimestre||'').trim()+'|'+String(municipio.ano||'').trim();
+    aquisicoes.forEach(function(a){
+      if(!a)return;
+      delete a._resumoAnterior;
+      delete a._historicoCarregado;
+      delete a._executado_historico;
+      // Envio e trava pertencem ao período em que aconteceram. Carregados para
+      // o bimestre seguinte, deixavam a ação bloqueada e sem histórico — dando
+      // a impressão de que o preenchimento anterior tinha sumido.
+      if(a._sent && a._sentPeriodo && a._sentPeriodo!==_novoPer){
+        a._sent=false; a._locked=false; a._autoConcluida=false;
+      }
+    });
+  }
   _rendHistorico=null;          // a tabela de rendimentos é por período
   _ultimoCapaEnviado='';
   if(municipio.bimestre&&municipio.ano){
@@ -1518,28 +1588,52 @@ function onTrocarPeriodo(el){
   }
 }
 
+// ── CONTATO DO RESPONSÁVEL: DO MUNICÍPIO, NÃO DO BIMESTRE ───────────────────
+// Nome, cargo e e-mail vêm da conta de acesso e reaparecem sozinhos a cada
+// período. O telefone não existe no cadastro de usuário, então era o único
+// campo que a pessoa redigitava a cada bimestre — seis anos de monitoramento
+// bimestral, o mesmo número digitado 36 vezes. Ele é do contato, não do
+// período: fica guardado por município e volta preenchido.
+function _contatoStorageKey(){
+  const m=(municipio.municipio||'').replace(/\s+/g,'_');
+  return m?('rdoce_contato__'+m):null;
+}
+function _salvarContatoResponsavel(){
+  const k=_contatoStorageKey(); if(!k)return;
+  try{
+    localStorage.setItem(k,JSON.stringify({
+      telefone:municipio.telefone||'',
+      cargo:municipio.cargo||'',
+      responsavel:municipio.responsavel||''
+    }));
+  }catch(e){}
+}
+// Só preenche o que estiver vazio — nunca sobrescreve o que a pessoa digitou
+// neste período nem o que veio da conta de acesso.
+function _restaurarContatoResponsavel(){
+  const k=_contatoStorageKey(); if(!k)return;
+  try{
+    const raw=localStorage.getItem(k); if(!raw)return;
+    const c=JSON.parse(raw)||{};
+    ['telefone','cargo','responsavel'].forEach(function(campo){
+      if(String(municipio[campo]||'').trim()==='' && String(c[campo]||'').trim()!==''){
+        municipio[campo]=c[campo];
+      }
+    });
+  }catch(e){}
+}
+
 function sv(el){
   if(!el.name)return;
   if(el.dataset.store==='mun')municipio[el.name]=el.value;
   else if(el.dataset.store==='acq'){acq()[el.name]=el.value;if(phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);}
+  if(el.name==='telefone'||el.name==='cargo'||el.name==='responsavel')_salvarContatoResponsavel();
   if(el.name==='municipio'||el.name==='bimestre'){
+    if(el.name==='municipio')_restaurarContatoResponsavel();
     renderAll();
   }
   // 'ano' só re-renderiza ao perder o foco (onblur no campo), não a cada tecla
   if(el.name==='acao_idx')onAcaoChange(el.value);
-}
-
-function updateAcaoSelect(){
-  const sel=document.getElementById('acao-select');
-  if(!sel)return;
-  const ILBL={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
-  const opts=getAcqOptions(municipio.municipio,null,acqIdx);
-  sel.innerHTML='<option value="">Selecione a ação...</option>'+opts.map((o,i)=>`<option value="${i}">${ILBL[o.instrumento]||o.instrumento} — ${o.tipo}</option>`).join('');
-  const info=document.getElementById('acao-info-card');
-  if(info)info.style.display='none';
-  acq().modalidade_objeto='';
-  const modeSection=document.getElementById('mode-section');
-  if(modeSection)modeSection.style.display='none';
 }
 
 function onAcaoChange(idx){
@@ -1574,13 +1668,6 @@ function onAcaoChange(idx){
     }
   }
   renderAcqBar();
-}
-
-function selectMode(modo){
-  acq().modalidade_objeto=modo;
-  refreshModeCards();
-  renderAcqBar();
-  renderPhaseBar();
 }
 
 function refreshModeCards(){
@@ -1698,67 +1785,67 @@ function _ordemPeriodoAtual(){
   return a*10+b;
 }
 
-// Soma dos rendimentos de todos os bimestres ANTERIORES ao que está aberto.
-// Mantida por compatibilidade com chamadas antigas — os rendimentos não são
-// mais acumulados entre bimestres.
-function _somaRendimentosAnteriores(){
-  return 0;
-}
-function _somaRendimentosAnterioresLegado(){
-  if(!_rendHistorico)return 0;
-  const ordemAtual=_ordemPeriodoAtual();
-  return _rendHistorico.filter(function(p){return p.ordem<ordemAtual;})
-                       .reduce(function(s,p){return s+(p.valor||0);},0);
-}
 
 function renderRendimentosHistorico(){
   if(_rendHistorico===null)return '<div style="font-size:11px;color:var(--ink3)">Carregando bimestres anteriores…</div>';
-  // Sem períodos anteriores, ainda assim mostramos o bimestre atual — é a
-  // informação que o card de identificação precisa exibir.
-  if(!_rendHistorico.filter(function(p){return p.ordem<_ordemPeriodoAtual();}).length
-     &&(parseBRL(municipio.rendimentos_custeio||'')||parseBRL(municipio.rendimentos_investimento||''))){
-    const f=function(v){return v?('R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})):'—';};
-    return '<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12.5px">'
-      +'<div><span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Custeio</span>'
-        +'<div style="font-weight:700;color:var(--ink)">'+f(parseBRL(municipio.rendimentos_custeio||''))+'</div></div>'
-      +'<div><span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Investimento</span>'
-        +'<div style="font-weight:700;color:var(--ink)">'+f(parseBRL(municipio.rendimentos_investimento||''))+'</div></div>'
-    +'</div>';
-  }
-  // Só os períodos ANTERIORES ao que está aberto — o atual está sendo digitado.
-  const ordemAtual=_ordemPeriodoAtual();
-  const antes=_rendHistorico.filter(function(p){return p.ordem<ordemAtual;});
-  if(!antes.length)return '<div style="font-size:11px;color:var(--ink3)">Nenhum rendimento registrado em bimestres anteriores.</div>';
 
-  // Duas colunas, nunca uma soma só: o rendimento de investimento não pode
-  // custear despesa de custeio, nem o contrário. Um total único daria a
-  // impressão de caixa único e induziria a erro na aplicação do recurso.
   const fmt=function(v){return v?('R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})):'—';};
-  const cel='padding:5px 8px;font-size:11.5px;border-bottom:1px solid var(--border2)';
-  const th='padding:5px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)';
-  // Registros antigos não têm a divisão — o total entra como custeio.
+  // Registros antigos não têm a divisão por conta — o total entra como custeio.
   const cust=function(p){return (p.custeio||p.investimento)?(p.custeio||0):(p.valor||0);};
   const inv=function(p){return p.investimento||0;};
   const atualC=parseBRL(municipio.rendimentos_custeio||'')||0;
   const atualI=parseBRL(municipio.rendimentos_investimento||'')||0;
 
+  // A tabela é DO ANO, não da série inteira. O rendimento é informado a cada
+  // bimestre e a lista não parava de crescer: em 2032 seriam 36 linhas para
+  // ler antes de digitar dois valores. O ano é o recorte que importa aqui —
+  // é nele que a prestação de contas fecha, e trocar o ano na capa troca a
+  // tabela junto.
+  const anoAtual=String(municipio.ano||'').trim();
+  const ordemAtual=_ordemPeriodoAtual();
+  const doAno=_rendHistorico.filter(function(p){
+    return String(p.ano||'').trim()===anoAtual && p.ordem<ordemAtual;
+  });
+
+  if(!doAno.length){
+    if(atualC||atualI){
+      return '<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12.5px">'
+        +'<div><span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Custeio</span>'
+          +'<div style="font-weight:700;color:var(--ink)">'+fmt(atualC)+'</div></div>'
+        +'<div><span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)">Investimento</span>'
+          +'<div style="font-weight:700;color:var(--ink)">'+fmt(atualI)+'</div></div>'
+      +'</div>';
+    }
+    return '<div style="font-size:11px;color:var(--ink3)">Nenhum rendimento registrado antes neste ano'
+      +(anoAtual?' ('+anoAtual+')':'')+'.</div>';
+  }
+
+  // Duas colunas, nunca uma soma só: o rendimento de investimento não pode
+  // custear despesa de custeio, nem o contrário. Um total único daria a
+  // impressão de caixa único e induziria a erro na aplicação do recurso.
+  const cel='padding:5px 8px;font-size:11.5px;border-bottom:1px solid var(--border2)';
+  const th='padding:5px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)';
+  // Sem linha de total. O rendimento é informação, não cálculo: um total no
+  // rodapé convidaria a somá-lo com execução ou a tratá-lo como saldo, e ele
+  // não é nem uma coisa nem outra. A tabela só mostra o que foi informado em
+  // cada bimestre do ano.
+
   return '<div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-top:4px">'
     +'<table style="width:100%;border-collapse:collapse">'
       +'<tr style="background:var(--g50)">'
-        +'<th style="'+th+';text-align:left">Bimestre</th>'
+        +'<th style="'+th+';text-align:left">Bimestre'+(anoAtual?' · '+anoAtual:'')+'</th>'
         +'<th style="'+th+';text-align:right">Custeio</th>'
         +'<th style="'+th+';text-align:right">Investimento</th>'
       +'</tr>'
-      +antes.map(function(p){
-        return '<tr><td style="'+cel+';color:var(--ink2)">'+p.bimestre+' / '+p.ano+'</td>'
+      +doAno.map(function(p){
+        return '<tr><td style="'+cel+';color:var(--ink2)">'+p.bimestre+'</td>'
           +'<td style="'+cel+';text-align:right;color:var(--ink2)">'+fmt(cust(p))+'</td>'
           +'<td style="'+cel+';text-align:right;color:var(--ink2)">'+fmt(inv(p))+'</td></tr>';
       }).join('')
-      +'<tr><td style="'+cel+';color:var(--ink3);font-style:italic">'+(municipio.bimestre||'Este bimestre')+' / '+(municipio.ano||'')+' (em preenchimento)</td>'
+      +'<tr><td style="'+cel+';color:var(--ink3);font-style:italic">'+(municipio.bimestre||'Este bimestre')+' (em preenchimento)</td>'
         +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualC)+'</td>'
         +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualI)+'</td></tr>'
     +'</table>'
-    
   +'</div>';
 }
 
@@ -1792,8 +1879,21 @@ function registrarExtratosEnviados(nomes){
 // Sessões salvas antes desta versão não têm registro de extrato. Se alguma ação
 // deste bimestre já foi enviada, o extrato subiu junto com ela — então não faz
 // sentido exigir novo anexo de quem está apenas retomando o preenchimento.
+// Depois que o período muda em tela, as ações já enviadas continuam em memória.
+// Contá-las aqui sem olhar o período fazia o bimestre novo nascer com o extrato
+// dado como entregue.
 function _extratoSubiuEmEnvioAnterior(){
-  try{return aquisicoes.some(function(a){return a&&a._sent;});}catch(e){return false;}
+  try{
+    const atual=String(municipio.bimestre||'').trim()+'|'+String(municipio.ano||'').trim();
+    return aquisicoes.some(function(a){
+      if(!a||!a._sent)return false;
+      if(a._sentPeriodo)return a._sentPeriodo===atual;
+      // Registro sem carimbo de período: só vale enquanto ninguém trocou o
+      // bimestre nesta sessão — aí ele pertence, por construção, ao período
+      // que foi aberto.
+      return !_periodoTrocadoNestaSessao;
+    });
+  }catch(e){return false;}
 }
 function extratosRegistrados(){
   if((arquivos['mun_extratos_municipio']||[]).length>0)return true;
@@ -1942,6 +2042,9 @@ else if(type==='email')
       />`;
 
 else if(type==='phone'||type==='tel')
+  // `onchange` além do `oninput`: quando o navegador preenche o campo sozinho
+  // (autofill), ele não dispara `input`. O telefone aparecia na tela mas nunca
+  // chegava ao objeto `municipio` — e ia vazio para a planilha.
   inp=`<input
         type="tel"
         ${baseAttrs}
@@ -1951,7 +2054,8 @@ else if(type==='phone'||type==='tel')
         maxlength="15"
         autocomplete="tel"
         oninput="onPhoneInput(this)"
-        onblur="validateField(this)"
+        onchange="sv(this)"
+        onblur="sv(this);validateField(this)"
       />`;
 
 else
@@ -1966,11 +2070,7 @@ function chipsHTML(label,key,opts){
   return`<div class="field"><label>${label}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur===o?' on':''}" onclick="pickChip('${key}','${o}',this)"><input type="radio" name="${key}" value="${o}">${o}</label>`).join('')}</div></div>`;
 }
 
-// Chips de múltipla escolha (armazena array em acq()[key])
-function multiChipsHTML(label,key,opts){
-  const cur=acq()[key]||[];
-  return`<div class="field"><label>${label}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur.indexOf(o)>=0?' on':''}" onclick="toggleMultiChip('${key}','${o}',this)"><input type="checkbox" name="${key}" value="${o}">${o}</label>`).join('')}</div></div>`;
-}
+
 function toggleMultiChip(key,val,el){
   if(!acq()[key])acq()[key]=[];
   const arr=acq()[key];
@@ -2095,13 +2195,9 @@ function renderCapaMunicipio(modoResumo){
   const _pctRecebido=_r.valorGlobal>0?Math.max(0,Math.min(100,Math.round((_capaRecebido/_r.valorGlobal)*100))):0;
   // O recebido vem do plano (local), então não há mais espera de rede aqui.
   const _aindaCarregando=false;
-  // Acumulado = soma dos bimestres ANTERIORES + o que está sendo digitado agora.
-  // Vem de buscarRendimentosPorBimestre, que deduplica por período — antes o
-  // valor era lido do último registro (já acumulado) e somado de novo, então
-  // R$ 10.000 + R$ 11.000 virava R$ 135.000.
-  const _rendimentosBase=0; // sem acumulação entre bimestres (ver acima)
-  const _rendimentosAcumulados=_rendimentosBase+parseBRL(municipio.rendimentos_periodo||'');
-  municipio._rendimentosBase=_rendimentosBase;
+  // Rendimento é só um valor informado: o que a conta rendeu no bimestre. Não é
+  // execução, não abate saldo e não entra no valor de nenhuma ação — por isso
+  // não existe mais nenhum acumulado calculado a partir dele aqui.
   const _temExtrato=extratosRegistrados();
   const _extratoJaEnviado=((municipio.extratos_nomes||[]).length>0||!!municipio.extrato_ja_enviado)&&(arquivos['mun_extratos_municipio']||[]).length===0;
   // Fora da Revisão final (modoResumo), não exibimos mais a identificação do
@@ -2176,7 +2272,8 @@ function renderCapaMunicipio(modoResumo){
       +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_bimestreVal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
     +'</div>'
     +'<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
-      +'<div class="r-lbl" style="margin-bottom:8px">Rendimentos por bimestre</div>'
+      +'<div class="r-lbl" style="margin-bottom:8px">Rendimentos informados em '+(municipio.ano||'—')
+        +' <span style="font-weight:400">(valor rendido nas contas; não é execução e não abate o valor das ações)</span></div>'
       +renderRendimentosHistorico()
     +'</div>'
   +'</div>';
@@ -2234,7 +2331,11 @@ function contentHTML(){
     +'<div class="row2">'+fld('Cargo / Função','cargo','text','Ex: Secretário de Saúde')+fld('Telefone','telefone','phone','(31) 99999-9999')+'</div>'
     +fld('E-mail institucional','email','email','exemplo@municipio.mg.gov.br')
     +'</div>'
-    +renderCapaMunicipio()
+    // O card de rendimentos saiu daqui. Esta tela é de conferência: escolher o
+    // período e confirmar quem responde. Rendimento e extrato são preenchimento
+    // de fato, e ficavam duplicados — o mesmo card aparecia aqui e na etapa
+    // Instrumento, com dois pontos de entrada para o mesmo dado. Agora só a
+    // etapa Instrumento pede.
   );
   }
 
@@ -2336,10 +2437,7 @@ function contentHTML(){
     ${renderMedicoesObraCard()}
     <div class="card" style="border-left:3px solid var(--g500)">
       <div class="card-title">Informações do Projeto</div>
-      <div class="row2">
-        ${_campoPctMedido()}
-        ${_campoPctAcumulado()}
-      </div>
+      <div id="wrap-empresa-executora">${_temEmpresaObra(acq())?_campoEmpresaResumo():fld('Empresa Executora','empresa_executora','text','Exemplo de empresa executora')}</div>
       ${fld('Observações','observacoes_oficial','textarea','Exemplo de observações adicionais')}
     </div>
     <div class="card" id="card-arquivos-obra">
@@ -2355,7 +2453,7 @@ function contentHTML(){
   // Phase 3 — CUSTEIO (com atividades)
   if(phase===3&&servico&&(acq()._atividades||[]).filter(at=>at.confirmado).length>0) return lockedBanner
     +'<div class="step-head"><h2>Execução do Serviço <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
-    +'<p>Resumo da execução por atividade — status definido na etapa de Contratação.</p></div>'
+    +'<p>Como cada atividade foi executada, com nota fiscal e comprovação.</p></div>'
     +(acq()._atividades||[]).filter(function(at){return at.confirmado;}).map(function(at){
       const a=acq();
       const realIdx=a._atividades.indexOf(at);
@@ -2373,9 +2471,22 @@ function contentHTML(){
           +'</div>'
           +'<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;color:'+statusBadgeColor+'">'+status+'</span>'
         +'</div>'
+        // Situação da execução, período e atraso vieram da etapa Contratação
+        // para cá: descrevem como o serviço andou, não como foi contratado.
         +(status==='Planejamento'||status==='Processo aberto'
-          ? '<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Avance o status na etapa "Contratação" para registrar a execução.</div>'
-          : renderNotasFiscaisCard('ativ_'+realIdx,{embutido:true})
+          ? '<div style="margin-top:10px;font-size:12px;color:var(--ink3);font-style:italic">Atividade ainda não contratada. Avance o status na etapa "Contratação" para registrar a execução.</div>'
+          : '<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
+              +_chipsObj(at,'Situação da execução','situacao_execucao',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'],realIdx,'_setAtivField')
+              +_spFieldGeneric(at,'periodo_execucao','Período de execução','text','Ex: jan-jun/2026',realIdx,'_setAtivField')
+              +_chipsObj(at,'Houve atraso?','houve_atraso',['Sim','Não'],realIdx,'_setAtivField')
+              +_spFieldGeneric(at,'justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...',realIdx,'_setAtivField')
+            +'</div>'
+            // Nota fiscal só depois que a execução começou. Atividade apenas
+            // contratada ainda não tem o que faturar, e pedir NF ali fazia a
+            // pessoa procurar um documento que não existe.
+            +(status==='Contratado'
+              ? '<div style="margin-top:12px;font-size:12px;color:var(--ink3);font-style:italic">Contratada, mas sem execução registrada. A nota fiscal e os comprovantes aparecem quando o status virar "Em execução".</div>'
+              : renderNotasFiscaisCard('ativ_'+realIdx,{embutido:true}))
             // Documentos DESTA atividade: contrato, ordem de serviço e fotos
             // são de cada execução, não da ação inteira. Com dois serviços na
             // mesma ação, uma lista única não diria a qual deles cada arquivo
@@ -2390,7 +2501,7 @@ function contentHTML(){
 
   // Phase 3 — EQUIPAMENTO
   if(phase===3&&!obra) return (acq()._lotes||[]).filter(l=>l.confirmado).length===0 ? `
-    ${lockedBanner}<div class="step-head"><h2>${servico?'Execução do Serviço':'Entrega e Patrimônio'} <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>${servico?'Situação do serviço prestado, comprovações e relatórios.':'Situação da entrega, notas fiscais e incorporação patrimonial.'}</p></div>
+    ${lockedBanner}<div class="step-head"><h2>${servico?'Execução do Serviço':'Entrega e Recebimento'} <span style="color:var(--g400)">#${acqIdx+1}</span>${modeBadge}</h2><p>${servico?'Situação do serviço prestado, comprovações e relatórios.':'Situação da entrega e notas fiscais.'}</p></div>
     ${servico
       ? `<div class="card">
           <div class="card-title">Execução da entrega</div>
@@ -2404,8 +2515,8 @@ function contentHTML(){
         </div>`
       : renderListasStatusCards(3)}`
   : lockedBanner
-    +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Patrimônio')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
-    +'<p>Situação da entrega por lote — notas fiscais e incorporação patrimonial.</p></div>'
+    +'<div class="step-head"><h2>'+(servico?'Execução do Serviço':'Entrega e Recebimento')+' <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+modeBadge+'</h2>'
+    +'<p>Situação da entrega por lote e notas fiscais.</p></div>'
     +(acq()._lotes||[]).filter(function(l){return l.confirmado;}).map(function(lote,li){
       var status=lote._status||'Planejamento';
       var concluido=status==='Concluído';
@@ -2460,7 +2571,11 @@ function contentHTML(){
           +'<div style="padding:10px 12px;background:var(--g50);border:1px solid var(--border2);border-radius:7px;font-size:13px;color:var(--ink2);line-height:1.5">'+(_metaTexto||'Meta não cadastrada para esta ação.')+'</div>'
         +'</div>';
       })()}
-      ${chipsHTML('Status da meta','status_meta',['Não iniciado','Em andamento','Em execução','Concluída'])}
+      ${/* "Em andamento" e "Em execução" diziam a mesma coisa. Duas opções para
+            um mesmo estado não são escolha, são dúvida: dois municípios
+            marcavam rótulos diferentes para a mesma situação e o relatório
+            saía com a meta repartida entre dois status sem diferença real. */''}
+      ${chipsHTML('Status da meta','status_meta',['Não iniciada','Em andamento','Concluída'])}
     </div>    <div class="card">
       <div class="card-title">Pendências e riscos</div>
       ${fld('Dificuldades, riscos ou pendências','problemas','textarea','Descreva os principais problemas...')}
@@ -2556,7 +2671,7 @@ async function goToAcq(i){
   acqIdx=i;phase=1;renderAll();
 }
 function goToPhase(p){saveAllInputs();phase=p;renderAll();}
-function deleteAcqReview(i){} // não usado no novo modelo
+ // não usado no novo modelo
 
 function renderNav(){
   const info=document.getElementById('navInfo');
@@ -2565,7 +2680,11 @@ function renderNav(){
   const iR=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>`;
   const iS=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
   const planTotal=getAllPlanActions(municipio.municipio||'').length;
-  const filled=aquisicoes.filter(a=>a.modalidade_objeto).length;
+  // `filled` contava itens de `aquisicoes`, que inclui as unidades desdobradas
+  // de uma ação multi-unidade (5 UBS = 5 entradas) e eventuais rascunhos. Com
+  // isso o rodapé chegava a mostrar "6/5 ações" — mais preenchidas do que
+  // existem no plano. O teto é o total do plano.
+  const filled=Math.min(aquisicoes.filter(a=>a.modalidade_objeto).length, planTotal||Infinity);
   if(phase===0){
     info.innerHTML=`Selecione o município e período`;
     btns.innerHTML=`<button class="btn btn-primary" onclick="nextPhase()">Avançar ${iR}</button>`;
@@ -2727,13 +2846,6 @@ function nextPhase(){
   renderAll();
 }
 function prevPhase(){saveAllInputs();if(phase<=1)return;phase--;renderAll();}
-function goToReview(){
-  saveAllInputs();
-  if(!validateStep())return;
-  phase=5;renderAll();
-}
-
-
 let _pendingSubmit=false;
 function showMissingModal(missing,lblMap){
   const subtitle=document.getElementById('modal-subtitle');
@@ -2783,25 +2895,6 @@ function showConfirmModal(title, body, okLabel, icon, okColor){
   });
 }
 
-function showConfirmModal3(title, body, okLabel, extraLabel, cancelLabel, icon){
-  return new Promise(resolve=>{
-    _confirmResolve=resolve;
-    document.getElementById('confirm-modal-title').textContent=title;
-    document.getElementById('confirm-modal-body').innerHTML=body;
-    document.getElementById('confirm-modal-icon').textContent=icon||'📋';
-    document.getElementById('confirm-modal-icon').style.background=icon==='⚠️'?'#FFF3E0':'var(--g100)';
-    const okBtn=document.getElementById('confirm-modal-ok');
-    okBtn.textContent=okLabel||'Confirmar';
-    okBtn.style.background='var(--g800)';
-    const extraBtn=document.getElementById('confirm-modal-extra');
-    extraBtn.textContent=extraLabel||'';
-    extraBtn.style.display=extraLabel?'':'none';
-    const cancelBtn=document.getElementById('confirm-modal-cancel');
-    cancelBtn.textContent=cancelLabel||'Cancelar';
-    const modal=document.getElementById('confirm-modal');
-    modal.style.display='flex';
-  });
-}
 function confirmModalResolve(val){
   document.getElementById('confirm-modal').style.display='none';
   if(_confirmResolve){_confirmResolve(val);_confirmResolve=null;}
@@ -3291,6 +3384,9 @@ async function concludeAction(){
   a._corrections=(a._corrections||0)+(jaEnviada?1:0);
   a._sent=true;
   a._sentAt=new Date().toISOString();
+  // Carimbo do período: sem ele, uma ação enviada no 2º bimestre continuava
+  // valendo como "enviada" depois de trocar para o 4º.
+  a._sentPeriodo=String(municipio.bimestre||'').trim()+'|'+String(municipio.ano||'').trim();
   a._locked=true;
   enviarAcaoSheet(a, tipoRegistro);
   salvarListasPendentesSheet(a);
@@ -3365,7 +3461,7 @@ async function enviarAcaoSheet(a, tipoRegistro){
                 num_contrato:l.num_contrato||'',data_prev:l.data_prev||'',
                 situacao_entrega:l.situacao_entrega||'',justificativa:l.justificativa||'',
                 num_nf:l.num_nf||'',data_nf:l.data_nf||'',valor_nf:l.valor_nf||'',
-                nomes_nf:(l.arquivos_nf&&l.arquivos_nf.length?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[])),
+                nomes_nf:_nomesAnexoNF(l),
                 data_recebimento:l.data_recebimento||'',obs:l.obs||''};
       })),
       // Empresas contratadas da obra: uma linha por empresa, com contrato e
@@ -3419,7 +3515,12 @@ function saveSession(){
   try{
     const data={
       municipio,
-      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_docs:undefined,_historicoCarregado:undefined,_empresas:a._empresas||[]})),
+      // `_resumoAnterior` é cache derivado do histórico do servidor, não dado
+      // do preenchimento. Gravá-lo no localStorage congelava o resumo de um
+      // bimestre — e, quando o formato do resumo mudava numa versão nova, a
+      // cópia velha continuava sendo lida e as colunas novas apareciam vazias.
+      // Sai daqui: é sempre recalculado a partir da planilha.
+      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_docs:undefined,_historicoCarregado:undefined,_resumoAnterior:undefined,_empresas:a._empresas||[]})),
       phase,acqIdx,
       savedAt:new Date().toISOString()
     };
@@ -3437,8 +3538,29 @@ function saveSession(){
 let _syncTimer=null;
 let _ultimoSyncEnviado={}; // acaoKey -> touchedAt já confirmado no servidor
 
+// Campo derivado nunca entra vindo de fora. Parar de ENVIÁ-LOS não basta: as
+// linhas já gravadas na aba SessoesParciais continuam trazendo o resumo antigo,
+// e ele ressuscitava a cada restauração — sobrevivendo, inclusive, à limpeza da
+// base. Como tudo aqui é recalculado a partir do histórico, descartar na
+// entrada não custa nada e fecha o buraco dos dois lados.
+function _descartarCachesDerivados(a){
+  if(!a)return a;
+  delete a._resumoAnterior;
+  delete a._historicoCarregado;
+  delete a._executado_historico;
+  return a;
+}
+
 function _acqParaPayload(a){
-  return JSON.stringify({...a,_nfs:undefined,_docs:undefined,_empresas:a._empresas||[]});
+  // Os mesmos caches derivados que já saem do localStorage precisam sair daqui.
+  // Esta é a cópia que vai para a aba SessoesParciais e volta ao restaurar —
+  // sem a limpeza, um `_resumoAnterior` velho ressuscitava pelo servidor mesmo
+  // depois de a base ser limpa, e a tela passava a misturar dois mundos: o
+  // percentual acumulado vinha do resumo congelado, e o detalhamento por
+  // empresa vinha do histórico atual. Daí um dizer 83,34% e o outro "—".
+  return JSON.stringify({...a,_nfs:undefined,_docs:undefined,
+    _resumoAnterior:undefined,_historicoCarregado:undefined,_executado_historico:undefined,
+    _empresas:a._empresas||[]});
 }
 
 function agendarSyncSessaoServidor(){
@@ -3561,6 +3683,7 @@ async function mesclarSessaoDoServidor(){
       let remoto=null;
       try{remoto=JSON.parse(it.payload);}catch(e){return;}
       remoto._touchedAt=Number(it.touchedAt)||remoto._touchedAt||0;
+      _descartarCachesDerivados(remoto);
       limparAtividadesEmBranco(remoto);limparNotasEmBranco(remoto);
       const idxLocal=aquisicoes.findIndex(function(a){return a._key===it.acaoKey;});
       if(idxLocal===-1){
@@ -3640,8 +3763,16 @@ function loadSession(key){
     const data=JSON.parse(raw);
     Object.assign(municipio,data.municipio||{});
     aquisicoes.length=0;
-    (data.aquisicoes||[{}]).forEach(a=>aquisicoes.push(a));
+    (data.aquisicoes||[{}]).forEach(a=>aquisicoes.push(_descartarCachesDerivados(a)));
     aquisicoes.forEach(function(a){limparAtividadesEmBranco(a);limparNotasEmBranco(a);limparListasEmBranco(a);}); // descarta cards fantasma de sessões antigas
+    // Sessões gravadas antes do carimbo de período: a própria chave da sessão
+    // já traz bimestre e ano, então dá para preencher retroativamente.
+    const _perSessao=String((data.municipio&&data.municipio.bimestre)||'').trim()
+                    +'|'+String((data.municipio&&data.municipio.ano)||'').trim();
+    if(_perSessao!=='|'){
+      aquisicoes.forEach(function(a){if(a&&a._sent&&!a._sentPeriodo)a._sentPeriodo=_perSessao;});
+    }
+    _periodoTrocadoNestaSessao=false; // sessão recém-carregada é do seu período
     // aquisicoes can be empty — getOrCreateAcq will populate on action select
     phase=data.phase||0;
     acqIdx=Math.min(data.acqIdx||0,aquisicoes.length-1);
@@ -3679,39 +3810,6 @@ function listSessions(){
 // renderSessionBanner removida — integrada ao renderSessionHistoryCard
 
 
-// ── FUNÇÕES DE SESSÃO ────────────────────────────────────────────────────────
-async function resumeSession(){
-  const key=sessionKey();
-  showLoading('Retomando preenchimento...');
-  const savedAt=loadSession(key);
-  if(!savedAt){ hideLoading(); return; }
-  {
-    aquisicoes.forEach(function(a){
-      if(a.acao_instrumento||a.acao_tipo){
-        a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
-      }
-      if(!a.acao_descricao||!a.acao_valor){
-        const _meta=buscarMetadadosPlano(municipio.municipio,a.acao_instrumento,a.acao_tipo);
-        if(_meta){a.acao_descricao=a.acao_descricao||_meta.acao;a.acao_eixo=a.acao_eixo||_meta.eixo;a.acao_valor=a.acao_valor||_meta.valor;}
-      }
-    });
-    migrarAquisicoesAgregadas();
-    phase=1; // Voltar para instrumento para garantir renderização correta
-    renderAll();
-    setTimeout(function(){
-      restoreInputs();
-      applyConditionals();
-    },100);
-    // Esperar o que colegas preencheram em outras máquinas antes de liberar a
-    // tela: antes isso vinha depois, e a página aparecia estática e só então se
-    // preenchia sozinha, dando a impressão de travamento.
-    try{
-      const aplicadas=await mesclarSessaoDoServidor();
-      if(aplicadas>0){migrarAquisicoesAgregadas();renderAll();}
-    }catch(e){ console.warn('mesclarSessaoDoServidor:',e); }
-    setTimeout(function(){restoreInputs();applyConditionals();hideLoading();},100);
-  }
-}
 
 function discardSession(){
   clearSession(sessionKey());
@@ -3719,120 +3817,7 @@ function discardSession(){
   renderAll();
 }
 
-async function loadAndResume(key){
-  showLoading('Retomando preenchimento...');
-  loadSession(key);
-  // Re-aplicar detecção automática de tipo
-  aquisicoes.forEach(function(a){
-    if(a.acao_instrumento||a.acao_tipo){
-      a.modalidade_objeto=detectarTipoMonitoramento(a.acao_instrumento||'',a.acao_tipo||'');
-    }
-    if(!a.acao_descricao||!a.acao_valor){
-      const _meta=buscarMetadadosPlano(municipio.municipio,a.acao_instrumento,a.acao_tipo);
-      if(_meta){a.acao_descricao=a.acao_descricao||_meta.acao;a.acao_eixo=a.acao_eixo||_meta.eixo;a.acao_valor=a.acao_valor||_meta.valor;}
-    }
-  });
-  migrarAquisicoesAgregadas();
-  // Mesclar o que colegas preencheram em outras máquinas (sessão parcial no servidor)
-  const _aplicadas=await mesclarSessaoDoServidor();
-  if(_aplicadas>0)migrarAquisicoesAgregadas();
-  phase=1;
-  renderAll();
-
-  // Se a sessão local está vazia ou tem poucas ações, buscar da planilha
-  const acqComDados = aquisicoes.filter(function(a){return a.acao_tipo;});
-  if(acqComDados.length===0 && municipio.municipio && municipio.bimestre && municipio.ano){
-    // Mostrar loading
-    const mc = document.getElementById('mainContent');
-    if(mc){
-      const loadDiv = document.createElement('div');
-      loadDiv.id='load-planilha';
-      loadDiv.style.cssText='text-align:center;padding:40px;font-size:13px;color:var(--ink3)';
-      loadDiv.innerHTML='⏳ Buscando registros anteriores...';
-      mc.prepend(loadDiv);
-    }
-    const registros = await buscarRegistrosPlanilha(municipio.municipio, municipio.bimestre, municipio.ano);
-    const loadDiv = document.getElementById('load-planilha');
-    if(loadDiv) loadDiv.remove();
-
-    if(registros && registros.length > 0){
-      // Popular aquisicoes com dados da planilha
-      aquisicoes.length=0;
-      registros.forEach(function(reg){
-        aquisicoes.push(registroParaAcq(reg));
-      });
-      migrarAquisicoesAgregadas();
-      acqIdx=0;
-      renderAll();
-      setTimeout(function(){ restoreInputs(); applyConditionals(); }, 100);
-      // Mostrar toast
-      const info=document.getElementById('navInfo');
-      if(info){
-        const prev=info.innerHTML;
-        info.innerHTML='<span style="color:var(--g600)">✓ '+registros.length+' registro'+(registros.length>1?'s':'')+' carregado'+(registros.length>1?'s':'')+' da planilha</span>';
-        setTimeout(function(){info.innerHTML=prev;},3000);
-      }
-    } else {
-      // Nenhum registro encontrado
-      const info=document.getElementById('navInfo');
-      if(info){
-        const prev=info.innerHTML;
-        info.innerHTML='<span style="color:var(--ink3)">Nenhum registro encontrado para este período</span>';
-        setTimeout(function(){info.innerHTML=prev;},3000);
-      }
-    }
-  } else {
-    setTimeout(function(){ restoreInputs(); applyConditionals(); }, 100);
-  }
-  hideLoading();
-}
-
-function deleteSession(key){
-  clearSession(key);
-  renderAll(); // renderSessionHistoryCard will refresh inline
-}
-
 // Verificar sessões ao iniciar
-
-function renderInlineActionList(){
-  const ben=municipio.municipio||'';
-  if(!ben)return '<div style="padding:14px;background:var(--g50);border-radius:var(--r-sm);font-size:13px;color:var(--ink3)">Selecione um município/consórcio na etapa de Identificação.</div>';
-  const planActions=getAllPlanActions(ben);
-  if(!planActions.length)return '<div style="padding:14px;font-size:13px;color:var(--ink3)">Nenhuma ação encontrada para este município/consórcio.</div>';
-  const ILBL={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
-  const STATUS_DOT={'empty':'🔴','partial':'🟡','complete':'🟢','locked':'✅'};
-  const groups={};
-  const instOrder=['RES_Investimento','RES_Custeio','Convenio','Contrato'];
-  planActions.forEach(item=>{if(!groups[item.instrumento])groups[item.instrumento]=[];groups[item.instrumento].push(item);});
-  let out='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);margin-bottom:10px">Selecione a ação a monitorar:</div>';
-  instOrder.forEach(inst=>{
-    if(!groups[inst])return;
-    out+=`<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--g600);margin:10px 0 5px">${ILBL[inst]||inst}</div>`;
-    groups[inst].forEach(item=>{
-      const agg=calcAcqStatusAgregado(ben,item);
-      const st=agg.status;
-      const a=agg.multi?null:agg.a;
-      const _tipoIAL=a&&a.modalidade_objeto?a.modalidade_objeto:(typeof detectarTipoMonitoramento==='function'?detectarTipoMonitoramento(item.instrumento||'',item.tipo||''):(isObra(item.tipo)?'obra':'equipamento'));
-      const obra=_tipoIAL==='obra';
-      const servico=_tipoIAL==='servico';
-      const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
-      const displayType=item.tipo.replace(/\n.*/,'');
-      const multiSub=agg.multi?` · ${agg.concluidas}/${agg.total} concluídas`:'';
-      out+=`<div onclick="selectInlineAction('${inst}','${safeType}')"
-        style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:6px;cursor:pointer;background:${obra?'#FFF8F0':'var(--white)'};transition:all .15s"
-        onmouseover="this.style.borderColor='var(--g400)';this.style.background='var(--g50)'"
-        onmouseout="this.style.borderColor='var(--border)';this.style.background='${obra?'#FFF8F0':'var(--white)'}'">
-        <span style="font-size:16px;flex-shrink:0">${obra?'🏗️':servico?'🛠️':'📦'}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${displayType}</div>
-          <div style="font-size:11px;color:var(--ink3);margin-top:2px">R$ ${item.valor?Number(item.valor).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'} · ${item.eixo}${multiSub}</div>
-        </div>
-        <span style="font-size:13px;flex-shrink:0">${STATUS_DOT[st]}</span>
-      </div>`;
-    });
-  });
-  return out;
-}
 
 async function selectInlineAction(instrumento, tipo){
   const ben=municipio.municipio||'';
@@ -3853,7 +3838,7 @@ async function selectInlineAction(instrumento, tipo){
   const _promessasSIA=[];
   // Carregar histórico do bimestre anterior se ação ainda não preenchida
   const _acqSIA=aquisicoes[idx];
-  if(_acqSIA&&!_acqSIA._sent&&!_acqSIA._historicoCarregado){
+  if(_acqSIA&&!_enviadaNestePeriodo(_acqSIA)&&!_acqSIA._historicoCarregado){
     _promessasSIA.push(carregarHistoricoBimestreAnterior(instrumento,_acqSIA.acao_tipo||tipo).then(function(regs){
       if(regs&&regs.length)_acqSIA._historicoCarregado=true;
       if(regs&&regs.length){return aplicarHistoricoNaAcao(regs,_acqSIA).then(function(){renderAll();return carregarExecutadoHistorico();});}
@@ -3873,51 +3858,27 @@ async function selectInlineAction(instrumento, tipo){
 }
 
 
+// Link de recomeço, apenas quando há algo salvo para descartar.
+function _linkDescartarSessao(thisBim){
+  if(!thisBim||!(thisBim.total>0))return '';
+  const dt=thisBim.savedAt?new Date(thisBim.savedAt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+  return '<div style="text-align:right;font-size:11.5px;color:var(--ink3);margin:-4px 0 14px">'
+    +(dt?'Salvo automaticamente em '+dt+' · ':'')
+    +'<span onclick="discardSession()" style="color:var(--red);cursor:pointer;text-decoration:underline">recomeçar do zero</span>'
+  +'</div>';
+}
 function renderSessionHistoryCard(){
   const key=sessionKey();
   const allSessions=listSessions();
   const thisBim=key?allSessions.find(s=>s.key===key):null;
-  const munNorm=(municipio.municipio||'').trim().toLowerCase();
-  const otherSessions=allSessions.filter(s=>s.key!==key&&s.mun.trim().toLowerCase()===munNorm);
 
-  let html='';
-
-  // Banner para a sessão atual (mesmo mun+bim+ano) se tiver dados salvos
-  if(thisBim&&thisBim.total>0){
-    const dt=thisBim.savedAt?new Date(thisBim.savedAt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-    html+=`<div style="background:var(--g50);border:1.5px solid var(--g300);border-radius:var(--r);padding:13px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;animation:fadeUp .3s ease">
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--g800)">🔄 Preenchimento em andamento</div>
-        <div style="font-size:12px;color:var(--g600);margin-top:2px">${thisBim.total===1?'1 ação preenchida':thisBim.total+' ações preenchidas'}${thisBim.sent?' · '+thisBim.sent+' enviada'+(thisBim.sent!==1?'s':''):''}  · salvo ${dt}</div>
-      </div>
-      <div style="display:flex;gap:8px;flex-shrink:0">
-        <button onclick="resumeSession()" style="padding:6px 14px;font-size:12px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:6px;background:var(--g600);color:#fff;cursor:pointer">▶ Continuar</button>
-        <button onclick="discardSession()" style="padding:6px 12px;font-size:12px;font-weight:600;font-family:'Sora',sans-serif;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--red);cursor:pointer">Descartar</button>
-      </div>
-    </div>`;
-  }
-
-  // Sessões de bimestres anteriores do mesmo município/consórcio
-  if(otherSessions.length){
-    html+=`<div style="background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:14px;animation:fadeUp .3s ease">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--ink3);margin-bottom:10px">Bimestres anteriores — ${municipio.municipio}</div>
-      ${otherSessions.map(s=>{
-        const dt=s.savedAt?new Date(s.savedAt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-        return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2);gap:10px">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--ink)">${s.bim} / ${s.ano}</div>
-            <div style="font-size:11px;color:var(--ink3)">${s.total===1?'1 ação':s.total+' ações'} · ${s.sent?s.sent+(s.sent===1?' enviada':' enviadas'):'nenhuma enviada'} · ${dt}</div>
-          </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button onclick="loadAndResume('${s.key}')" style="padding:5px 12px;font-size:12px;font-weight:600;font-family:'Sora',sans-serif;border:none;border-radius:6px;background:var(--g800);color:#fff;cursor:pointer">Abrir</button>
-            <button onclick="deleteSession('${s.key}');renderAll()" style="padding:5px 10px;font-size:12px;font-family:'Sora',sans-serif;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--red);cursor:pointer">✕</button>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-  }
-
-  return html;
+  // A lista de bimestres anteriores saiu daqui. Ela crescia uma linha por
+  // período preenchido e nunca parava: em 2030 seriam mais de vinte botões
+  // "Abrir" empilhados acima do formulário, empurrando o trabalho do dia para
+  // baixo da dobra. Quem quiser consultar ou corrigir outro período troca o
+  // bimestre na capa — o mesmo caminho, sem carregar o histórico inteiro na
+  // tela o tempo todo. As sessões continuam salvas normalmente.
+  return _linkDescartarSessao(thisBim);
 }
 
 
@@ -4058,7 +4019,10 @@ function registroParaAcq(reg){
     medidas:               reg.medidas          || '',
     impactos:              reg.impactos         || '',
     meta_prevista:         reg.meta_prevista    || '',
-    status_meta:           reg.status_meta      || '',
+    // "Em execução" e "Não iniciado" eram rótulos de versões anteriores;
+    // convertidos para os equivalentes atuais, senão o chip não acende e a
+    // pessoa acha que o campo veio vazio.
+    status_meta:           ({'Em execução':'Em andamento','Não iniciado':'Não iniciada'})[reg.status_meta] || reg.status_meta || '',
     resultados_alcancados: reg.resultados_alcancados || [],
     atendimentos_realizados: reg.atendimentos_realizados || '',
     obs_gerais:            reg.obs_gerais       || '',
@@ -4091,7 +4055,19 @@ function registroParaAcq(reg){
     })(),
     // Flags
     _sent:    true,
-    _locked:  reg.tipo_registro==='Conclusao'||reg.tipo_registro==='Conclusão',
+    // Período de origem do registro — usado para não dar o extrato de um
+    // bimestre como entregue em outro.
+    _sentPeriodo: String(reg.bimestre||'').trim()+'|'+String(reg.ano||'').trim(),
+    // Um registro de conclusão só trava a ação se for do bimestre que está
+    // aberto. Vindo do histórico, ele descreve um período encerrado — travar
+    // por causa dele fazia a ação nascer concluída no bimestre seguinte.
+    _locked:  (reg.tipo_registro==='Conclusao'||reg.tipo_registro==='Conclusão')
+              // Exige coincidência EXPLÍCITA de período. A versão anterior
+              // tratava bimestre ausente como "serve", e é justamente no
+              // histórico que esse campo às vezes não vem — então a ação
+              // continuava nascendo travada no bimestre seguinte.
+              && String(reg.bimestre||'').trim()===String(municipio.bimestre||'').trim()
+              && String(reg.ano||'').trim()===String(municipio.ano||'').trim(),
     _key:     (reg.acao_instrumento||'')+'__'+(reg.acao_tipo||''),
   };
   // Calcular _key igual ao getOrCreateAcq
@@ -4103,7 +4079,6 @@ function registroParaAcq(reg){
 function setStatusContrat(s){acq()._status_contrat=s;renderMain();}
 
 function maskCNPJ(el){let v=el.value.replace(/\D/g,'').substring(0,14);if(v.length>12)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/,'$1.$2.$3/$4-$5');else if(v.length>8)v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4}).*/,'$1.$2.$3/$4');else if(v.length>5)v=v.replace(/^(\d{2})(\d{3})(\d{0,3}).*/,'$1.$2.$3');else if(v.length>2)v=v.replace(/^(\d{2})(\d{0,3}).*/,'$1.$2');el.value=v;el.dispatchEvent(new Event('change'));}
-function maskMoeda(el){let v=el.value.replace(/\D/g,'');if(!v){el.value='';el.dispatchEvent(new Event('change'));return;}v=(parseInt(v,10)/100).toFixed(2);el.value=v.replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');el.dispatchEvent(new Event('change'));}
 function _spField(storeObj,field,label,type,ph,idx){
   const val=(storeObj[field]||'').toString().replace(/"/g,'&quot;');
   const onChange='onchange="acq()[\''+field+'\']=this.value"';
@@ -4194,7 +4169,6 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
     const realIdx=a._atividades.indexOf(at);
     var cur=at._status||'Planejamento';
     var isContr=['Contratado','Em execução','Concluído'].includes(cur);
-    var emExec=['Em execução','Concluído'].includes(cur);
     var concluido=cur==='Concluído';
     var borderColor=isContr?'var(--g400)':'var(--border)';
     var pills=_STAT_ATIV.map(function(s){
@@ -4204,15 +4178,11 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
     }).join('');
     var vlr=(at.empresas||[]).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
 
-    var lockStyleExec=emExec?'':'opacity:.5;pointer-events:none';
-    var avisoExec=emExec?'':'<div style="font-size:12px;color:var(--ink3);margin:14px 0 12px;font-style:italic">Preencha quando a atividade estiver em execução</div>';
-    var blocoExec='<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:14px">'
-      +'<div style="'+lockStyleExec+'">'+avisoExec
-      +_chipsObj(at,'Situação da execução','situacao_execucao',['Não iniciada','Parcial — dentro do previsto','Parcial — atrasado','Parcial — adiantado','Total / Concluído'],realIdx,'_setAtivField')
-      +_spFieldGeneric(at,'periodo_execucao','Período de execução','text','Ex: jan-jun/2026',realIdx,'_setAtivField')
-      +_chipsObj(at,'Houve atraso?','houve_atraso',['Sim','Não'],realIdx,'_setAtivField')
-      +_spFieldGeneric(at,'justificativa_atraso','Se houve atraso, justificar','textarea','Descreva o motivo do atraso...',realIdx,'_setAtivField')
-      +'</div></div>';
+    // Situação da execução, período e atraso saíram desta etapa: são fatos da
+    // EXECUÇÃO, e ficavam numa tela chamada "Contratação" — a pessoa entrava
+    // para informar contrato e era perguntada sobre entrega. Foram para a etapa
+    // seguinte, junto com nota fiscal e documentos.
+    var blocoExec='';
 
     return '<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
@@ -4228,7 +4198,7 @@ function renderContratacaoAtividades(ativs,lockedBanner,modeBadge){
   }).join('');
   return (lockedBanner||'')
     +'<div class="step-head"><h2>Contratação <span style="color:var(--g400)">#'+(acqIdx+1)+'</span>'+(modeBadge||'')+'</h2>'
-    +'<p>Um card por atividade selecionada na etapa anterior.</p></div>'
+    +'<p>Em que pé está o processo de cada atividade selecionada na etapa anterior.</p></div>'
     // O card "Contratação de pessoal" saiu daqui: as listas de custeio já trazem
     // os itens de contratação de equipe ("Contratação de membros...", "de
     // profissionais de digitação", "de agentes..."), então o número de pessoas
@@ -4281,16 +4251,35 @@ function _migrarEmpresaExecutora(a){
 function _nomesEmpresasObra(a){
   return _empresasObra(a).map(function(e){return (e.nome||'').trim();}).filter(Boolean);
 }
+// "Contratado" deixou de ser um botão: existir empresa cadastrada JÁ é o
+// contrato. Marcar o status à mão além de cadastrar a empresa era pedir a
+// mesma informação duas vezes — e abria espaço para os dois discordarem.
+// Antes do contrato restam dois estados que só a pessoa sabe: se o processo
+// ainda está sendo planejado ou se já foi aberto.
+function _sincStatusContratacao(){
+  const a=acq();
+  const tem=_temEmpresaObra(a);
+  const cur=a._status_contrat||'';
+  if(tem){ a._status_contrat='Contratado'; return; }
+  // Sem empresa, não pode ficar num status pós-contrato herdado.
+  if(['Contratado','Em entrega','Concluído'].indexOf(cur)>=0)a._status_contrat='Processo aberto';
+  if(!cur)a._status_contrat='Planejamento';
+}
+// A planilha, a revisão final e os boletins ainda leem "empresa_executora" como
+// texto único. Com mais de uma empresa medindo no mesmo bimestre, a coluna
+// recebe os nomes separados por " / " — mesma solução já usada no fiscal
+// responsável. Guardar só a primeira faria a segunda sumir da prestação de
+// contas justamente no período em que ela executou.
 function _sincEmpresaExecutora(){
   const a=acq();
+  const mediram=_empresasQueMediram(a);
+  if(mediram.length){ a.empresa_executora=mediram.join(' / '); return; }
   const nomes=_nomesEmpresasObra(a);
   if(!nomes.length)return;
   if(nomes.indexOf((a.empresa_executora||'').trim())===-1)a.empresa_executora=nomes[0];
 }
-function _setEmpresaExecutora(v){
-  acq().empresa_executora=v;
-  _marcarTocado(acq()); saveSession();
-}
+// `_setEmpresaExecutora` saiu: a empresa executora deixou de ser escolhida à
+// mão e passou a ser derivada dos boletins do período.
 function totalEmpresasObra(a){
   return _empresasObra(a).reduce(function(s,e){return s+parseBRL(e.valor||'');},0);
 }
@@ -4303,20 +4292,13 @@ function _updEmpresaObra(i,campo,valor){
   const e=_empresasObra(acq())[i];
   if(!e)return;
   e[campo]=valor;
-  if(campo==='nome')_sincEmpresaExecutora();
+  if(campo==='nome'){ _sincEmpresaExecutora(); _sincStatusContratacao(); }
   _marcarTocado(acq());
-}
-function _confirmarEmpresaObra(i){
-  const e=_empresasObra(acq())[i];
-  if(!e)return;
-  if(!(e.nome||'').trim()){ showAlertModal('Informe o nome ou a razão social da empresa.','⚠️'); return; }
-  e.confirmado=true;
-  _sincEmpresaExecutora(); saveSession(); renderMain();
-}
-function _editarEmpresaObra(i){
-  const e=_empresasObra(acq())[i];
-  if(!e)return;
-  e.confirmado=false; renderMain();
+  // Grava na sessão a cada alteração, como já era feito nas listas de
+  // equipamento. Sem isto, a empresa editada ficava só na memória da página até
+  // que outra ação disparasse um salvamento — e qualquer recarregamento no meio
+  // do caminho levava a alteração embora.
+  saveSession();
 }
 async function _excluirEmpresaObra(i){
   const lst=_empresasObra(acq()); const e=lst[i];
@@ -4329,38 +4311,125 @@ async function _excluirEmpresaObra(i){
   }
   lst.splice(i,1);
   acq().empresa_executora='';
-  _sincEmpresaExecutora(); saveSession(); renderMain();
+  _sincEmpresaExecutora(); _sincStatusContratacao(); saveSession(); renderMain();
 }
 
 // Campo somente-leitura na Execução Física: a empresa passou a ser cadastrada
 // na Contratação, então aqui ela só é exibida — evita duas fontes para o mesmo
 // dado divergindo entre as etapas.
-// Na Execução Física a empresa não é digitada: ela vem da Contratação. Com uma
-// só, aparece como texto fixo; com várias, vira lista suspensa, porque a
-// medição do período costuma ser de uma delas — e o campo único da planilha
-// precisa saber de qual.
+// Na Execução Física a empresa não é digitada nem escolhida: ela vem dos
+// boletins. Cada medição já diz de qual empresa é — perguntar de novo, num
+// campo único, obrigava a eleger UMA quando duas mediram no mesmo bimestre, e
+// a escolhida apagava a outra na coluna da planilha. Aqui o campo virou
+// leitura: mostra quem mediu neste período (ou, sem boletim ainda, quem está
+// contratado).
+function _empresasQueMediram(a){
+  const validos=_nomesEmpresasObra(a);
+  const nomes=[];
+  _medicoesObra(a).forEach(function(m){
+    let n=((m&&m.empresa)||'').trim();
+    if(!n)return;
+    // Boletins gravados antes da correção podem trazer o nome combinado
+    // ("Empresa 2 / Empresa 1"). Aqui ele é desmembrado e, se sobrar algo que
+    // não é empresa contratada, é descartado em vez de virar uma empresa nova.
+    n.split(' / ').forEach(function(parte){
+      const p=parte.trim();
+      if(!p)return;
+      if(validos.length&&validos.indexOf(p)===-1)return;
+      if(nomes.indexOf(p)===-1)nomes.push(p);
+    });
+  });
+  return nomes;
+}
 function _campoEmpresaResumo(){
   const a=acq();
-  const nomes=_nomesEmpresasObra(a);
+  const contratadas=_nomesEmpresasObra(a);
+  const mediram=_empresasQueMediram(a);
+  const nomes=mediram.length?mediram:contratadas;
   const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');};
-  const nota='<div style="font-size:11px;color:var(--ink3);margin-top:4px">Cadastrada na etapa Contratação — altere por lá se precisar corrigir.</div>';
 
-  if(nomes.length>1){
-    const sel=(a.empresa_executora||'').trim();
-    return '<div class="field"><label>Empresa Executora</label>'
-      +'<select onchange="_setEmpresaExecutora(this.value)" style="width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:#fff;box-sizing:border-box">'
-        +nomes.map(function(n){
-          return '<option value="'+esc(n)+'"'+(n===sel?' selected':'')+'>'+esc(n)+'</option>';
-        }).join('')
-      +'</select>'
-      +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'+nomes.length+' empresas contratadas — selecione a que executou a medição deste período.</div>'
-    +'</div>';
-  }
+  let nota;
+  if(mediram.length>1)
+    nota=mediram.length+' empresas mediram neste bimestre — os valores de cada uma estão nos boletins acima.';
+  else if(mediram.length===1&&contratadas.length>1)
+    nota='Entre as '+contratadas.length+' empresas contratadas, só esta registrou medição neste bimestre.';
+  else
+    nota='Cadastrada na etapa Contratação — altere por lá se precisar corrigir.';
 
   return '<div class="field"><label>Empresa Executora</label>'
     +'<div style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13px;color:var(--ink);line-height:1.5">'
-      +esc(nomes[0]||'—')
-    +'</div>'+nota
+      +(nomes.length?nomes.map(esc).join('<br>'):'—')
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'+nota+'</div>'
+  +'</div>';
+}
+
+// Resumo do que a empresa do boletim já mediu antes deste bimestre, e quanto
+// isso representa do contrato dela. Fica em branco quando não há histórico —
+// não vale ocupar linha para dizer "nada ainda".
+function _linhaHistoricoEmpresa(a,m){
+  const nome=((m&&m.empresa)||'').trim();
+  if(!nome)return '';
+  const esc=function(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');};
+  const hist=(a&&a._resumoAnterior&&a._resumoAnterior.porEmpresa)||{};
+  const reg=hist[nome.toLowerCase().replace(/\s+/g,' ')];
+  if(!reg||!(reg.valor>0))return '';
+  const fmt=function(v){return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  const emp=_empresasObra(a).find(function(x){return (x.nome||'').trim().toLowerCase()===nome.toLowerCase();});
+  const contrato=emp?parseBRL(emp.valor||''):0;
+  const pct=contrato>0?Math.min(100,(reg.valor/contrato)*100):0;
+  return '<strong style="color:var(--ink2)">'+esc(nome)+'</strong> já mediu '
+    +'<strong style="color:var(--g800)">'+fmt(reg.valor)+'</strong> em bimestres anteriores'
+    +(reg.boletins>1?' ('+reg.boletins+' boletins)':'')
+    +(contrato>0
+      ? ' — '+String(pct.toFixed(2)).replace('.',',')+'% do contrato de '+fmt(contrato)+'.'
+      : '.');
+}
+
+// Quanto cada empresa contratada já mediu: antes deste bimestre, agora, e o
+// total contra o contrato dela. É a leitura que falta quando uma obra tem mais
+// de uma empresa — o resumo do card é da AÇÃO inteira, e não diz se a Empresa 1
+// está quase acabando enquanto a Empresa 2 mal começou.
+function _tabelaMedidoPorEmpresa(a){
+  const contratadas=_empresasObra(a).filter(function(e){return String(e.nome||'').trim();});
+  if(contratadas.length<2)return ''; // com uma empresa só, a linha do boletim já basta
+  const hist=(a&&a._resumoAnterior&&a._resumoAnterior.porEmpresa)||{};
+  const agora={};
+  _medicoesObra(a).forEach(function(m){
+    const n=((m&&m.empresa)||'').trim(); if(!n)return;
+    agora[n.toLowerCase().replace(/\s+/g,' ')]=(agora[n.toLowerCase().replace(/\s+/g,' ')]||0)+parseBRL(m.valor||'');
+  });
+  const fmt=function(v){return v>0?('R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})):'—';};
+  const esc=function(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');};
+  const cel='padding:5px 8px;font-size:11.5px;border-bottom:1px solid var(--border2)';
+  const th='padding:5px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)';
+
+  const linhas=contratadas.map(function(e){
+    const k=String(e.nome).trim().toLowerCase().replace(/\s+/g,' ');
+    const antes=(hist[k]&&hist[k].valor)||0;
+    const neste=agora[k]||0;
+    const contrato=parseBRL(e.valor||'');
+    const total=antes+neste;
+    const pct=contrato>0?Math.min(100,(total/contrato)*100):0;
+    return '<tr>'
+      +'<td style="'+cel+';color:var(--ink2);font-weight:600">'+esc(e.nome)+'</td>'
+      +'<td style="'+cel+';text-align:right;color:var(--ink3)">'+fmt(antes)+'</td>'
+      +'<td style="'+cel+';text-align:right;color:var(--ink3)">'+fmt(neste)+'</td>'
+      +'<td style="'+cel+';text-align:right;font-weight:700;color:var(--g800)">'+fmt(total)
+        +(contrato>0?'<div style="font-size:10px;font-weight:400;color:var(--ink3)">'+String(pct.toFixed(2)).replace('.',',')+'% de '+fmt(contrato)+'</div>':'')
+      +'</td>'
+    +'</tr>';
+  }).join('');
+
+  return '<div style="margin-top:12px;border:1px solid var(--border2);border-radius:8px;overflow:hidden">'
+    +'<table style="width:100%;border-collapse:collapse">'
+      +'<tr style="background:var(--g50)">'
+        +'<th style="'+th+';text-align:left">Medido por empresa</th>'
+        +'<th style="'+th+';text-align:right">Bimestres anteriores</th>'
+        +'<th style="'+th+';text-align:right">Neste bimestre</th>'
+        +'<th style="'+th+';text-align:right">Total</th>'
+      +'</tr>'+linhas
+    +'</table>'
   +'</div>';
 }
 
@@ -4421,6 +4490,10 @@ function _sincPctMedido(){
     const el=document.getElementById('med-pct-'+i);
     if(el)el.textContent=_pctDaMedicao(m)?_pctDaMedicao(m).toFixed(2).replace('.',',')+'%':'—';
     const elB=document.getElementById('med-base-'+i);
+    const elH=document.getElementById('med-hist-'+i);
+    if(elH)elH.innerHTML=_linhaHistoricoEmpresa(a,m);
+    const elT=document.getElementById('med-por-empresa');
+    if(elT)elT.innerHTML=_tabelaMedidoPorEmpresa(a);
     if(elB){
       const base=_baseMedicao(a,m);
       elB.textContent=base.valor>0
@@ -4428,10 +4501,11 @@ function _sincPctMedido(){
         : 'Informe o valor contratado da empresa para calcular.';
     }
   });
-  if(meds.length){
-    const soma=totalPctMedicoes(a);
-    a.pct_medido_periodo=soma?soma.toFixed(2).replace('.',','):'';
-  }
+  const r=_recalcResumoObra(a);
+  const elP2=document.getElementById('med-pct-periodo');
+  if(elP2)elP2.textContent=r.soma?r.soma.toFixed(2).replace('.',',')+'%':'—';
+  const elA2=document.getElementById('med-pct-acumulado');
+  if(elA2)elA2.textContent=r.acumulado?r.acumulado.toFixed(2).replace('.',',')+'%':'—';
   _sincValorExecutadoObra();
   const ant=_pctAcumuladoAnterior(a);
   const atual=parseFloat(String(a.pct_medido_periodo||'').replace(',','.'))||0;
@@ -4443,8 +4517,13 @@ function _sincPctMedido(){
   if(elA)elA.textContent=tot?tot.toFixed(2).replace('.',',')+'%':'—';
   const elV=document.getElementById('med-total-valor');
   if(elV)elV.textContent='R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2});
-  const elQ=document.getElementById('med-total-pct');
-  if(elQ)elQ.textContent=totalPctMedicoes(a).toFixed(2).replace('.',',')+'%';
+  const elF=document.getElementById('med-resumo-frase');
+  if(elF)elF.innerHTML=_fraseResumoMedicoes({soma:atual,anterior:ant,acumulado:tot});
+  // Trocar a empresa de um boletim muda quem executou no período — o card
+  // "Informações do projeto" precisa acompanhar sem esperar um re-render.
+  _sincEmpresaExecutora();
+  const elE=document.getElementById('wrap-empresa-executora');
+  if(elE&&_temEmpresaObra(a))elE.innerHTML=_campoEmpresaResumo();
 }
 // A planilha tem uma coluna única de fiscal, mas quem atesta pode mudar de um
 // boletim para o outro. A coluna recebe os nomes distintos — nada que já lê
@@ -4462,7 +4541,6 @@ function _sincFiscalResponsavel(){
 // de novo, num campo separado, só abria espaço para os dois divergirem.
 function _sincValorExecutadoObra(){
   const a=acq();
-  if(!_medicoesObra(a).length)return;
   const tot=totalMedidoObra(a);
   a.valor_executado=tot?tot.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
   if(typeof calcTotalUtilizado==='function')calcTotalUtilizado();
@@ -4470,7 +4548,13 @@ function _sincValorExecutadoObra(){
 function _addMedicao(){
   const a=acq();
   const nomes=_nomesEmpresasObra(a);
-  _medicoesObra(a).push({empresa:nomes.length===1?nomes[0]:(a.empresa_executora||nomes[0]||''),
+  // Sempre um nome de empresa REAL. Antes o padrão caía em
+  // `a.empresa_executora`, que passou a ser um resumo — com duas empresas
+  // medindo, ele vale "Empresa 2 / Empresa 1". Esse texto ia para o boletim
+  // como se fosse o nome de uma empresa, e aí nada casava: o cálculo do
+  // percentual não achava o contrato dela e caía no total contratado, e o
+  // histórico por empresa não encontrava ninguém.
+  _medicoesObra(a).push({empresa:nomes[0]||'',
                          data:'', num_boletim:'', valor:'', pct:'',
                          fiscal:a.fiscal_responsavel||''});
   saveSession(); renderMain();
@@ -4497,44 +4581,24 @@ async function _excluirMedicao(i){
   _sincPctMedido(); saveSession(); renderMain();
 }
 
-// Sem medições registradas, o % do período continua sendo digitado à mão —
-// obras antigas e registros já enviados não são forçados no modelo novo.
-function _campoPctMedido(){
-  const a=acq();
-  const meds=_medicoesObra(a);
-  if(!meds.length)return fld('% Medido no Período','pct_medido_periodo','text','Ex: 15');
+
+// Percentual do período e acumulado sempre saem da mesma conta, com ou sem
+// boletim. Antes o % do período era campo manual quando não havia medição e
+// virava calculado quando havia — o mesmo rótulo mudando de comportamento no
+// meio do preenchimento, em outro card. Agora só existe um caminho.
+function _recalcResumoObra(a){
   _recalcPctMedicoes(a);
   const soma=totalPctMedicoes(a);
   a.pct_medido_periodo=soma?soma.toFixed(2).replace('.',','):'';
-  return '<div class="field"><label>% Medido no Período</label>'
-    +'<div id="med-pct-periodo" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13.5px;font-weight:700;color:var(--g800)">'
-      +(soma?soma.toFixed(2).replace('.',',')+'%':'—')
-    +'</div>'
-    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Soma '
-      +(meds.length===1?'da medição registrada':'das '+meds.length+' medições registradas')+' abaixo.</div>'
-  +'</div>';
-}
-function _campoPctAcumulado(){
-  // O acumulado é a soma do que já foi medido nos bimestres anteriores com o
-  // medido agora — calcular evita divergência entre os dois campos.
-  const a=acq();
   const ant=_pctAcumuladoAnterior(a);
-  const atual=parseFloat(String(a.pct_medido_periodo||'').replace(',','.'))||0;
-  const tot=Math.min(100,ant+atual);
-  a.pct_acumulado_periodo=tot?String(tot.toFixed(2)).replace('.',','):'';
-  return '<div class="field"><label>% Acumulado até o Período</label>'
-    +'<div id="med-pct-acumulado" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--g50);font-size:13.5px;font-weight:700;color:var(--g800)">'
-      +(tot?tot.toFixed(2).replace('.',',')+'%':'—')
-    +'</div>'
-    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">'
-      +(ant?'Calculado: '+ant.toFixed(2).replace('.',',')+'% de bimestres anteriores + '+atual.toFixed(2).replace('.',',')+'% deste período.'
-          :'Calculado automaticamente a partir do % medido no período.')
-    +'</div></div>';
+  const tot=Math.min(100,ant+soma);
+  a.pct_acumulado_periodo=tot?tot.toFixed(2).replace('.',','):'';
+  return {soma:soma, anterior:ant, acumulado:tot};
 }
-
 function renderMedicoesObraCard(){
   const a=acq();
   const meds=_medicoesObra(a);
+  const resumo=_recalcResumoObra(a);
   const nomes=_nomesEmpresasObra(a);
   const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
   const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
@@ -4579,99 +4643,139 @@ function renderMedicoesObraCard(){
               : 'Informe o valor contratado da empresa para calcular.')
           +'</div></div>'
       +'</div>'
+      // Onde aquele contrato parou. Sem isto, para saber se o boletim novo faz
+      // sentido, a pessoa teria de abrir bimestre por bimestre e somar à mão.
+      +'<div id="med-hist-'+i+'" style="font-size:11px;color:var(--ink3);margin-top:6px;line-height:1.45">'
+        +_linhaHistoricoEmpresa(a,m)
+      +'</div>'
+      +'<div style="display:none">'
+      +'</div>'
     +'</div>';
   });
 
   const vazio=meds.length===0;
-  // Sem nenhum boletim o valor do bimestre ainda precisa de um lugar: período
-  // sem medição formal, ou obra que já vinha sendo preenchida no modelo antigo.
-  // Fica aqui mesmo, e não num card separado que duplicaria a soma.
+  // Bimestre sem boletim formal também se resolve aqui: registre a medição e
+  // preencha só o valor. Um campo solto de "valor executado", que aparecia sem
+  // boletim e sumia com boletim, fazia o mesmo dado trocar de lugar no meio do
+  // preenchimento.
   html+=(vazio
-    ? '<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:6px 0 10px;text-align:center">Nenhum boletim registrado — informe o valor do bimestre abaixo, ou registre as medições.</div>'
-      +'<div style="max-width:280px;margin-bottom:12px">'
-        +fld('Valor executado no bimestre (R$)','valor_executado','money','','',true)
-      +'</div>'
+    ? '<div style="font-size:12.5px;color:var(--ink3);padding:10px 0 14px;text-align:center;line-height:1.5">Nenhum boletim registrado neste bimestre.<br/><span style="font-size:11.5px">Se não houve medição formal, registre mesmo assim e preencha apenas o valor gasto.</span></div>'
     : '')
-    +'<button type="button" class="btn-add-med" onclick="_addMedicao()" style="width:100%;justify-content:center">+ '+(vazio?'Registrar medição':'Adicionar outra medição')+'</button>';
+    +'<button type="button" class="btn-add-med" onclick="_addMedicao()" style="width:100%;justify-content:center">+ '+(vazio?'Registrar medição do período':'Adicionar outra medição')+'</button>';
 
-  if(!vazio){
-    _sincValorExecutadoObra();
-    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--ink3)">'
-      +'<span>Valor executado no bimestre: <strong id="med-total-valor" style="color:var(--g800);font-size:14px">R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong></span>'
-      +'<span>% somado: <strong id="med-total-pct" style="color:var(--g800);font-size:14px">'+totalPctMedicoes(a).toFixed(2).replace('.',',')+'%</strong></span>'
-    +'</div>'
-    +'<div style="font-size:11px;color:var(--ink3);margin-top:4px">Soma dos boletins acima — é este valor que vai para a planilha como executado do período.</div>';
-  }
+  _sincValorExecutadoObra();
+  // O resumo aparece sempre, com os mesmos três números — inclusive zerado.
+  // É o que evita a sensação de que a tela muda de regra a cada preenchimento.
+  const linha=function(rot,id,val,forte){
+    return '<div style="flex:1;min-width:130px">'
+      +'<div style="font-size:10.5px;color:var(--ink3);letter-spacing:.03em;text-transform:uppercase;margin-bottom:2px">'+rot+'</div>'
+      +'<div id="'+id+'" style="font-size:'+(forte?'15px':'14px')+';font-weight:700;color:var(--g800)">'+val+'</div>'
+    +'</div>';
+  };
+  // Dois números, não três. O "% medido no período" era a soma dos boletins
+  // logo acima — a mesma conta, repetida a dois centímetros de distância. Sem
+  // histórico carregado os dois ficavam idênticos, o que dava a impressão de
+  // que o acumulado tinha esquecido os bimestres anteriores. Fica o acumulado,
+  // que é o número que a pessoa não consegue conferir de cabeça.
+  html+='<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border2);display:flex;gap:14px;flex-wrap:wrap">'
+    +linha('Executado no bimestre','med-total-valor','R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2}),true)
+    +linha('% acumulado até aqui','med-pct-acumulado',resumo.acumulado?resumo.acumulado.toFixed(2).replace('.',',')+'%':'—')
+  +'</div>'
+  +'<div id="med-resumo-frase" style="font-size:11px;color:var(--ink3);margin-top:8px;line-height:1.45">'
+    +_fraseResumoMedicoes(resumo)
+  +'</div>'
+  +'<div id="med-por-empresa">'+_tabelaMedidoPorEmpresa(a)+'</div>';
   return html+'</div>';
+}
+
+// A frase estava sendo montada só na renderização do card. Ao acrescentar um
+// segundo boletim, os números com id eram atualizados na hora, mas ela ficava
+// congelada no valor de antes — a tela dizia "0,05% deste bimestre" enquanto o
+// acumulado ao lado já contava 0,55%.
+function _fraseResumoMedicoes(resumo){
+  return 'Tudo calculado a partir dos boletins acima. O valor executado é a soma deles, e é ele que vai para a planilha.'
+    +(resumo.anterior
+      ? ' O acumulado soma '+resumo.soma.toFixed(2).replace('.',',')+'% deste bimestre com '+resumo.anterior.toFixed(2).replace('.',',')+'% já medidos antes.'
+      : (resumo.soma?' Todo o percentual acumulado vem deste bimestre — não há medição registrada antes.':''));
 }
 
 function renderEmpresasObraCard(){
   const a=acq();
   _migrarEmpresaExecutora(a);
+  _sincStatusContratacao();
   const emps=_empresasObra(a);
   const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
-  const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:3px';
-  const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);box-sizing:border-box';
   const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  const lbl='font-size:10.5px;color:var(--ink3);display:block;margin-bottom:3px';
+  const inp='width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);background:#fff;box-sizing:border-box';
+  const tem=emps.length>0;
 
-  let html='<div class="card" id="card-empresas-obra">'
-    +'<div class="card-title">Dados da empresa contratada</div>'
-    +'<p class="hint" style="margin-bottom:12px">Uma obra pode ter mais de uma empresa contratada — cadastre cada uma com seu contrato e valor.</p>';
+  let html='<div class="card">'
+    +'<div class="card-title">Contratação</div>';
 
-  emps.forEach(function(e,i){
-    if(e.confirmado){
-      const linha2=[e.cnpj?'CNPJ '+esc(e.cnpj):'',
-                    e.data_assinatura?'Assinado em '+esc(e.data_assinatura.split('-').reverse().join('/')):'',
-                    e.obs?esc(e.obs):'']
-                   .filter(Boolean).join(' · ');
-      html+='<div style="border:1px solid var(--g400);background:var(--g50);border-radius:8px;padding:12px;margin-bottom:10px">'
-        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-          +'<div style="width:24px;height:24px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
-          +'<div style="flex:1;min-width:0">'
-            +'<div style="font-size:13px;font-weight:700;color:var(--ink)">'+esc(e.nome||'Empresa '+(i+1))+'</div>'
-            +(linha2?'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+linha2+'</div>':'')
-          +'</div>'
-          +(parseBRL(e.valor||'')>0?'<div style="font-size:13px;font-weight:700;color:var(--g800);white-space:nowrap">'+fmt(parseBRL(e.valor))+'</div>':'')
-          +'<button type="button" onclick="_editarEmpresaObra('+i+')" style="padding:4px 12px;font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink2);cursor:pointer;font-family:var(--font)">Editar</button>'
-          +'<button type="button" onclick="_excluirEmpresaObra('+i+')" style="padding:4px 10px;font-size:11.5px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
-        +'</div>'
-      +'</div>';
-      return;
-    }
-
-    html+='<div style="border:1.5px solid var(--g500);border-radius:9px;padding:14px;margin-bottom:10px">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-        +'<div style="font-size:13px;font-weight:700;color:var(--ink)">\u270e Empresa '+(i+1)+'</div>'
-        +'<button type="button" onclick="_excluirEmpresaObra('+i+')" style="padding:3px 10px;font-size:11px;border:1px solid #FECACA;border-radius:6px;background:#fff;color:#B91C1C;cursor:pointer;font-family:var(--font)">Excluir</button>'
+  // ── Estado da contratação ────────────────────────────────────────────────
+  if(tem){
+    html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+      +'<span style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:20px;background:#E8F5E9;color:#1B5E20">Contratado</span>'
+      +'<span style="font-size:11.5px;color:var(--ink3)">'+emps.length+' empresa'+(emps.length>1?'s':'')+' cadastrada'+(emps.length>1?'s':'')+' abaixo.</span>'
+    +'</div>';
+  }else{
+    // Antes do contrato só existem dois estados, e só a pessoa sabe qual é.
+    const cur=a._status_contrat||'Planejamento';
+    html+='<div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px">Em que pé está o processo?</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'
+      +['Planejamento','Processo aberto'].map(function(st){
+        const on=st===cur;
+        const col=on?(_STAT_COLORS[st]||'background:var(--g600);color:#fff'):'background:var(--g50);color:var(--ink3)';
+        return '<span onclick="setStatusContrat(&apos;'+st+'&apos;)" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:20px;cursor:pointer;'+col+';transition:all .15s">'+st+'</span>';
+      }).join('')
       +'</div>'
-      +'<div style="margin-bottom:10px"><label style="'+lbl+'">Nome / Razão social <span class="req">*</span></label>'
-        +'<input type="text" value="'+esc(e.nome)+'" placeholder="Razão social da empresa contratada" oninput="_updEmpresaObra('+i+',\'nome\',this.value)" style="'+inp+'"/></div>'
-      +'<div class="row2" style="gap:10px;margin-bottom:10px">'
+      +'<div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px;padding-top:12px;border-top:1px solid var(--border2)">Assim que a empresa for cadastrada, a ação passa a Contratado automaticamente.</div>';
+  }
+
+  // ── Empresas: uma linha editável cada, sem passo de confirmação ──────────
+  emps.forEach(function(e,i){
+    html+='<div style="border:1px solid var(--border2);border-radius:9px;padding:12px;margin-bottom:8px;background:var(--g50)">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+        +'<div style="width:22px;height:22px;border-radius:50%;background:var(--g700);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
+        +'<input type="text" value="'+esc(e.nome)+'" placeholder="Razão social da empresa" oninput="_updEmpresaObra('+i+',\'nome\',this.value)" style="'+inp+';flex:1;font-weight:700"/>'
+        +'<span onclick="_excluirEmpresaObra('+i+')" title="Remover empresa" style="cursor:pointer;font-size:20px;color:var(--ink3);line-height:1;padding:0 4px">&times;</span>'
+      +'</div>'
+      +'<div class="row3" style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px">'
         +'<div><label style="'+lbl+'">CNPJ</label>'
           +'<input type="text" value="'+esc(e.cnpj)+'" placeholder="00.000.000/0000-00" inputmode="numeric" oninput="maskCNPJ(this);_updEmpresaObra('+i+',\'cnpj\',this.value)" style="'+inp+'"/></div>'
-        +'<div><label style="'+lbl+'">Valor contratado (R$)</label>'
+        +'<div><label style="'+lbl+'">Valor contratado</label>'
           +'<input type="text" inputmode="decimal" value="'+esc(e.valor)+'" placeholder="0,00" oninput="onMoneyInput(this);_updEmpresaObra('+i+',\'valor\',this.value)" onblur="this.value=fmtBRL(this.value);_updEmpresaObra('+i+',\'valor\',this.value)" style="'+inp+'"/></div>'
-      +'</div>'
-      +'<div class="row2" style="gap:10px">'
-        +'<div><label style="'+lbl+'">Data de assinatura</label>'
+        +'<div><label style="'+lbl+'">Assinatura</label>'
           +'<input type="date" value="'+esc(e.data_assinatura)+'" onchange="_updEmpresaObra('+i+',\'data_assinatura\',this.value)" style="'+inp+'"/></div>'
-        +'<div><label style="'+lbl+'">Observações</label>'
-          +'<input type="text" value="'+esc(e.obs)+'" placeholder="Aditivo, consórcio, etc." oninput="_updEmpresaObra('+i+',\'obs\',this.value)" style="'+inp+'"/></div>'
-      +'</div>'
-      +'<div style="margin-top:12px;text-align:right">'
-        +'<button type="button" onclick="_confirmarEmpresaObra('+i+')" style="padding:8px 18px;font-size:12.5px;font-weight:700;background:var(--g800);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:var(--font)">\u2713 Confirmar empresa</button>'
       +'</div>'
     +'</div>';
   });
 
-  const vazio=emps.length===0;
-  html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma empresa cadastrada ainda.</div>':'')
-    +'<button type="button" onclick="_addEmpresaObra()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">+ '+(vazio?'Cadastrar empresa':'Adicionar outra empresa')+'</button>';
+  html+='<button type="button" onclick="_addEmpresaObra()" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer;font-family:var(--font)">+ '
+    +(tem?'Adicionar outra empresa':'Cadastrar empresa contratada')+'</button>';
 
+  // ── Total contra o valor da ação ────────────────────────────────────────
+  // Um total solto não diz nada. Contra o valor previsto no plano, ele
+  // responde se o contrato coube no orçamento — que é o que interessa saber
+  // nesta etapa.
   const tot=totalEmpresasObra(a);
   if(tot>0){
-    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);text-align:right;font-size:12.5px;color:var(--ink3)">'
-      +'Total contratado: <strong style="color:var(--g800);font-size:14px">'+fmt(tot)+'</strong></div>';
+    const plano=parseValorSheet(a.acao_valor)||0;
+    let ref='';
+    if(plano>0){
+      const dif=tot-plano;
+      const pct=(tot/plano*100);
+      ref=Math.abs(dif)<0.01
+        ? '<span style="color:var(--ink3)">igual ao valor da ação no plano</span>'
+        : (dif<0
+          ? '<span style="color:var(--ink3)">'+pct.toFixed(0)+'% do valor da ação · saldo de '+fmt(-dif)+'</span>'
+          : '<span style="color:#B91C1C;font-weight:600">'+fmt(dif)+' acima do valor da ação</span>');
+    }
+    html+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--ink3)">'
+      +'<span>Total contratado: <strong style="color:var(--g800);font-size:14px">'+fmt(tot)+'</strong></span>'
+      +(ref?'<span>'+ref+'</span>':'')
+    +'</div>';
   }
   return html+'</div>';
 }
@@ -4681,13 +4785,14 @@ function renderContratacaoUnico(a,ob,lockedBanner,modeBadge){
   var isContr=['Contratado','Em entrega','Concluído'].includes(cur);
 
   // Na obra, entrega/atraso não fazem sentido nesta etapa: o andamento é
-  // acompanhado por medição na Execução Física, não por data de entrega. A
-  // Contratação da obra fica só com o status e as empresas contratadas.
-  var card='<div class="card">'
+  // acompanhado por medição na Execução Física, não por data de entrega. E a
+  // etapa inteira responde a uma pergunta só — já tem contrato? — então status
+  // e empresas viraram um card único (renderEmpresasObraCard).
+  var card=ob?'':('<div class="card">'
     +'<div class="card-title">Status da contratação</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;'+(ob?'':'margin-bottom:16px')+'">'+_statusPills(cur,'setStatusContrat')+'</div>'
-    +(ob?'':_camposContrato(a,isContr,undefined))
-    +'</div>';
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+_statusPills(cur,'setStatusContrat')+'</div>'
+    +_camposContrato(a,isContr,undefined)
+    +'</div>');
 
   // Aquisição sem lotes: a contratação passou a ser acompanhada POR LISTA de
   // equipamentos, no lugar do status único da ação. Listas anexadas em
@@ -4965,12 +5070,6 @@ function calcPctExecucaoAuto(a){
   if(!totalBase||!totalMedido)return 0;
   return Math.max(0,Math.min(100,Math.round((totalMedido/totalBase)*100)));
 }
-function refreshPctAutoDisplay(){
-  const pct=calcPctExecucaoAuto(acq());
-  const bar=document.getElementById('pct-auto-bar');const lbl=document.getElementById('pct-auto-lbl');
-  if(bar)bar.style.width=pct+'%';
-  if(lbl)lbl.textContent=pct+'% executado';
-}
 // Compara o valor total utilizado com o valor do plano para esta ação e, se
 // ultrapassar, deixa o número em vermelho e mostra um banner de aviso no
 // topo do card financeiro correspondente. Reutilizado por obra, equipamento
@@ -4989,7 +5088,12 @@ function _verificarEstouroOrcamento(a,valorBase,proprio,elResumo,cardId,corPadra
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
   const cor=estourou&&!coberto?'#C0392B':corPadrao;
   elResumo.style.color=cor;
-  elResumo.title=estourou&&!coberto?'⚠️ Valor utilizado ultrapassa o valor total da ação no plano':(coberto?'✓ Excedente coberto com recurso próprio/rendimentos':'');
+  // "recurso próprio", sem citar rendimentos: quem cobre o excedente é o campo
+  // `valor_proprio` da AÇÃO. O rendimento é um valor informado da conta do
+  // município no bimestre — não custeia ação nem entra em nenhuma conta de
+  // execução. Citar os dois juntos sugeria que o rendimento poderia cobrir o
+  // estouro, que é exatamente o que não pode acontecer na prestação de contas.
+  elResumo.title=estourou&&!coberto?'⚠️ Valor utilizado ultrapassa o valor total da ação no plano':(coberto?'✓ Excedente coberto com recurso próprio':'');
   const cardEl=document.getElementById(cardId);
   const avisoId='aviso-estouro-'+cardId;
   document.getElementById(avisoId)?.remove();
@@ -4999,11 +5103,11 @@ function _verificarEstouroOrcamento(a,valorBase,proprio,elResumo,cardId,corPadra
     const titleEl=cardEl.querySelector('.card-title');
     if(coberto){
       aviso.style.cssText='background:#E8F5E9;border:1.5px solid var(--g500);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--g800);font-weight:600;line-height:1.5';
-      aviso.innerHTML='✓ O valor ultrapassou o plano ('+fmt(valorBase)+' > '+fmt(valorPlano)+'), mas o excedente de '+fmt(excedente)+' já está coberto pelo recurso próprio/rendimentos informado ('+fmt(proprio||0)+').';
+      aviso.innerHTML='✓ O valor ultrapassou o plano ('+fmt(valorBase)+' > '+fmt(valorPlano)+'), mas o excedente de '+fmt(excedente)+' já está coberto pelo recurso próprio informado ('+fmt(proprio||0)+').';
     }else{
       const falta=excedente-(proprio||0);
       aviso.style.cssText='background:#FDEDEC;border:1.5px solid #C0392B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:#C0392B;font-weight:600;line-height:1.5';
-      aviso.innerHTML='⚠️ O valor utilizado ('+fmt(valorBase)+') ultrapassa o valor total da ação no plano ('+fmt(valorPlano)+'). Faltam <u>'+fmt(falta)+'</u> pra cobrir o excedente com recurso próprio/rendimentos.';
+      aviso.innerHTML='⚠️ O valor utilizado ('+fmt(valorBase)+') ultrapassa o valor total da ação no plano ('+fmt(valorPlano)+'). Faltam <u>'+fmt(falta)+'</u> pra cobrir o excedente com recurso próprio.';
     }
     if(titleEl)titleEl.insertAdjacentElement('afterend',aviso);else cardEl.prepend(aviso);
   }
@@ -5142,6 +5246,7 @@ async function enviarChamadoSuporte(){
   limparMensagensLogin();
   const nome=document.getElementById('sup-nome')?.value.trim();
   const email=document.getElementById('sup-email')?.value.trim().toLowerCase();
+  const tel=document.getElementById('sup-telefone')?.value.trim()||'';
   const mun=document.getElementById('sup-municipio')?.value||'';
   const assunto=document.getElementById('sup-assunto')?.value||'';
   const desc=document.getElementById('sup-descricao')?.value.trim();
@@ -5156,11 +5261,11 @@ async function enviarChamadoSuporte(){
   try{
     const resp=await fetch(APPS_SCRIPT_URL,{
       method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify({acao:'abrirChamadoSuporte',nome:nome,email:email,municipio:mun,assunto:assunto,descricao:desc})
+      body:JSON.stringify({acao:'abrirChamadoSuporte',nome:nome,email:email,telefone:tel,municipio:mun,assunto:assunto,descricao:desc})
     });
     const data=await resp.json();
     if(data.status==='ok'){
-      ['sup-nome','sup-email','sup-descricao'].forEach(function(id){const el=document.getElementById(id);if(el)el.value='';});
+      ['sup-nome','sup-email','sup-telefone','sup-descricao'].forEach(function(id){const el=document.getElementById(id);if(el)el.value='';});
       const sa=document.getElementById('sup-assunto');if(sa)sa.value='';
       mostrarSucessoLogin('✓ Chamado enviado'+(data.protocolo?' — protocolo '+data.protocolo:'')+'. A CMIR responde em '+email+'.');
       switchLoginTab('login');
@@ -5252,6 +5357,10 @@ function aplicarSessao(sess){
     if(sess.nome)municipio.responsavel=sess.nome;
     if(sess.cargo)municipio.cargo=sess.cargo;
     if(sess.email)municipio.email=sess.email;
+    if(sess.telefone)municipio.telefone=sess.telefone;
+    // Contas antigas, cadastradas antes do campo de telefone existir, ainda não
+    // trazem o número — nesse caso vale o último informado neste navegador.
+    _restaurarContatoResponsavel();
     // Beneficiário e administrador usam a MESMA tela de seleção. A diferença é
     // só o campo do município: para o beneficiário ele já vem definido pelo
     // login (não é escolha dele); para o administrador vira uma lista com todos
@@ -5355,36 +5464,6 @@ async function _verificarSessaoExistente(){
   }
 }
 
-// Usado quando o preenchimento existente só está no servidor (outro
-// navegador/dispositivo/usuário) e não no localStorage local. Combina:
-// 1) registros concluídos da planilha, 2) sessão parcial (em andamento).
-async function carregarDoServidorEContinuar(){
-  document.getElementById('sessao-banner-temp')?.remove();
-  const mc=document.getElementById('mainContent');
-  let loadDiv=null;
-  if(mc){
-    loadDiv=document.createElement('div');
-    loadDiv.id='load-planilha';
-    loadDiv.style.cssText='text-align:center;padding:40px;font-size:13px;color:var(--ink3)';
-    loadDiv.innerHTML='⏳ Buscando registros anteriores...';
-    mc.prepend(loadDiv);
-  }
-  const registros=await buscarRegistrosPlanilha(municipio.municipio,municipio.bimestre,municipio.ano);
-  if(registros&&registros.length){
-    aquisicoes.length=0;
-    registros.forEach(function(reg){ aquisicoes.push(registroParaAcq(reg)); });
-  }
-  // Trazer também o preenchimento parcial (ações ainda não concluídas por
-  // colegas em outras máquinas) — mescla por _touchedAt.
-  await mesclarSessaoDoServidor();
-  migrarAquisicoesAgregadas();
-  document.getElementById('load-planilha')?.remove();
-  if(aquisicoes.length){
-    acqIdx=0;phase=1;
-    renderAll();
-    setTimeout(function(){ restoreInputs(); applyConditionals(); },100);
-  }
-}
 
 // Busca PLANO_DATA do servidor (aba PlanoData, lida via Code.gs). Se falhar
 // por qualquer motivo (rede, aba ainda não migrada, etc), usa o fallback fixo
@@ -5675,12 +5754,179 @@ function _listasDoRegistro(r){
   });
 }
 
+// ── ACUMULADOS SÃO SEMPRE DERIVADOS, NUNCA LIDOS PRONTOS ────────────────────
+// Este formulário vai ser preenchido por dezenas de municípios até 2032. Um
+// acumulado guardado na planilha e relido como verdade absoluta é uma bomba de
+// efeito retardado: basta UM bimestre em que o histórico não chegou a tempo
+// (rede lenta, máquina nova, ação aberta antes da resposta) para o total ser
+// gravado a partir de zero — e esse número errado vira a base de todos os
+// bimestres seguintes, sem ninguém perceber. Por isso, daqui em diante:
+//
+//   • a planilha guarda FATOS DO PERÍODO (valor executado no bimestre, % medido
+//     no bimestre, empresas, boletins);
+//   • todo acumulado é recalculado a partir da série completa, a cada leitura.
+//
+// As colunas de total continuam sendo gravadas (Power BI e relatórios já leem
+// elas), mas nunca voltam a ser usadas como ENTRADA de cálculo.
+
+// Ordena por período e mantém uma única linha por bimestre/ano — a mais recente.
+// Correções regravam a ação e o servidor já remove a linha antiga por ID, mas
+// abas legadas e importações manuais podem deixar duplicatas, e uma duplicata
+// numa série somada dobra o acumulado.
+function _ordemPeriodo(bim,ano){
+  const b=parseInt(String(bim||'').replace(/[^0-9]/g,''),10)||0;
+  const a=parseInt(String(ano||'').replace(/[^0-9]/g,''),10)||0;
+  return a*10+b;
+}
+function _consolidarRegistros(registros){
+  const porPeriodo={};
+  (registros||[]).forEach(function(r){
+    if(!r)return;
+    const chave=_ordemPeriodo(r.bimestre,r.ano);
+    const atual=porPeriodo[chave];
+    // Sem data_hora (registros antigos), o último da lista vence — a lista
+    // chega ordenada do mais antigo para o mais recente.
+    if(!atual||(Number(r.data_hora)||0)>=(Number(atual.data_hora)||0))porPeriodo[chave]=r;
+  });
+  return Object.keys(porPeriodo)
+    .sort(function(x,y){return Number(x)-Number(y);})
+    .map(function(k){return porPeriodo[k];});
+}
+
+// Valor e percentual DO bimestre, lidos direto das colunas de período. As
+// colunas de total corrido (`Valor Total Utilizado`, `% Acumulado até o
+// Período`) foram removidas da planilha: acumulado congelado numa linha herda
+// qualquer erro de um bimestre passado e quebra sob filtro. Todo acumulado é
+// somado aqui, a cada leitura, a partir destes valores.
+function _executadoDoPeriodo(r){
+  return parseValorSheet(r.valor_executado||0);
+}
+function _pctDoPeriodo(r){
+  return parseFloat(String(r.pct_medido_periodo||'').replace(',','.'))||0;
+}
+
+// Junta duas listas de empresas sem perder nenhuma. O que já está na tela tem
+// prioridade (pode ser correção feita agora); o histórico entra para completar
+// campos vazios e para trazer de volta empresas que sumiram da lista atual.
+function _mesclarEmpresas(atuais,doHistorico){
+  const porChave={};
+  const ordem=[];
+  const juntar=function(lista,preferirExistente){
+    (lista||[]).forEach(function(e){
+      if(!String((e&&e.nome)||'').trim())return;
+      const k=_acharChaveEmpresa(porChave,e);
+      if(!porChave[k]){porChave[k]=Object.assign({nome:'',cnpj:'',valor:'',data_assinatura:'',obs:'',confirmado:true},e);ordem.push(k);return;}
+      const alvo=porChave[k];
+      ['nome','cnpj','valor','data_assinatura','obs'].forEach(function(campo){
+        const novo=String(e[campo]||'').trim();
+        if(!novo)return;
+        if(preferirExistente&&String(alvo[campo]||'').trim())return;
+        alvo[campo]=e[campo];
+      });
+    });
+  };
+  juntar(atuais,false);
+  juntar(doHistorico,true); // não sobrescreve o que já está preenchido na tela
+  return ordem.map(function(k){return porChave[k];});
+}
+
+// Une as empresas contratadas de TODOS os bimestres da ação. O contrato não
+// acaba no fim do período: uma empresa assinada no 1º bimestre segue executando
+// no 4º, e é o valor contratado dela que serve de base para o percentual dos
+// boletins de medição. Deduplica por CNPJ (só os dígitos) e, na falta dele,
+// pelo nome normalizado. Entre duas versões da mesma empresa vence a mais
+// recente, campo a campo, sem apagar dado que só existia na antiga.
+// Uma ação enviada no 1º bimestre continua com `_sent` na memória depois que a
+// pessoa troca para o 2º. Como as duas buscas de histórico só rodam para ação
+// "ainda não preenchida", elas eram puladas — e a empresa cadastrada no
+// bimestre anterior nunca voltava. `_sent` sozinho não responde à pergunta
+// certa; a pergunta é se foi enviada NESTE período.
+function _enviadaNestePeriodo(a){
+  if(!a||!a._sent)return false;
+  const atual=String(municipio.bimestre||'').trim()+'|'+String(municipio.ano||'').trim();
+  if(a._sentPeriodo)return a._sentPeriodo===atual;
+  return !_periodoTrocadoNestaSessao;
+}
+
+function _chaveEmpresa(e){
+  const cnpj=String((e&&e.cnpj)||'').replace(/\D/g,'');
+  if(cnpj.length>=11)return 'cnpj:'+cnpj;
+  return 'nome:'+_nomeEmpresaNorm(e);
+}
+function _nomeEmpresaNorm(e){
+  return String((e&&e.nome)||'').trim().toLowerCase().replace(/\s+/g,' ');
+}
+// Acha a chave já registrada que corresponde a esta empresa. Só o CNPJ não
+// basta: a mesma empresa aparece ora com CNPJ (vinda da planilha), ora sem ele
+// (migrada do campo de texto "empresa_executora"), e as duas formas geravam
+// chaves diferentes — a obra passava a listar "Exemplo 1" duas vezes, cada uma
+// com metade dos dados. Quando um dos lados não tem CNPJ, o nome decide.
+function _acharChaveEmpresa(porChave,e){
+  const k=_chaveEmpresa(e);
+  if(porChave[k])return k;
+  const nome=_nomeEmpresaNorm(e);
+  if(!nome)return k;
+  const semCnpj=String((e&&e.cnpj)||'').replace(/\D/g,'').length<11;
+  const achada=Object.keys(porChave).find(function(kk){
+    const alvo=porChave[kk];
+    if(_nomeEmpresaNorm(alvo)!==nome)return false;
+    const alvoSemCnpj=String(alvo.cnpj||'').replace(/\D/g,'').length<11;
+    return semCnpj||alvoSemCnpj;
+  });
+  return achada||k;
+}
+function _empresasDoHistorico(registros){
+  const porChave={};
+  const ordem=[];
+  _consolidarRegistros(registros).forEach(function(r){
+    let arr=[];
+    try{ const j=JSON.parse(r.empresas_contratadas||'[]'); arr=Array.isArray(j)?j:[]; }
+    catch(e){ arr=[]; }
+    arr.forEach(function(e){
+      if(!String((e&&e.nome)||'').trim())return;
+      const k=_acharChaveEmpresa(porChave,e);
+      if(!porChave[k]){porChave[k]={nome:'',cnpj:'',valor:'',data_assinatura:'',obs:'',confirmado:true};ordem.push(k);}
+      const alvo=porChave[k];
+      ['nome','cnpj','valor','data_assinatura','obs'].forEach(function(campo){
+        if(String(e[campo]||'').trim())alvo[campo]=e[campo];
+      });
+    });
+  });
+  return ordem.map(function(k){return porChave[k];});
+}
+
 // Monta o histórico resumido de uma ação a partir dos registros de bimestres
 // anteriores (já ordenados do mais antigo para o mais recente).
+// Quanto CADA empresa já mediu em bimestres anteriores. Os boletins vão para a
+// planilha em `medicoes_obra` com o nome da empresa em cada um, então dá para
+// reconstruir isso sem pedir nada novo a quem preenche. Serve para a pessoa
+// saber, na hora de lançar o boletim, onde aquele contrato parou — sem abrir
+// bimestre por bimestre para somar à mão.
+function _medidoAnteriorPorEmpresa(registros){
+  const porEmpresa={};
+  _consolidarRegistros(registros).forEach(function(r){
+    let arr=[];
+    try{ const j=JSON.parse(r.medicoes_obra||'[]'); arr=Array.isArray(j)?j:[]; }
+    catch(e){ arr=[]; }
+    arr.forEach(function(m){
+      const nome=((m&&m.empresa)||'').trim();
+      if(!nome)return;
+      const v=parseBRL(m.valor||'');
+      if(!(v>0))return;
+      const k=nome.toLowerCase().replace(/\s+/g,' ');
+      if(!porEmpresa[k])porEmpresa[k]={nome:nome,valor:0,boletins:0};
+      porEmpresa[k].valor+=v;
+      porEmpresa[k].boletins++;
+    });
+  });
+  return porEmpresa;
+}
+
 function _montarResumoAnterior(registros){
   const periodos=[];
-  let totalListas=0, ultimoExecutado=0, totalNotasAnt=0;
-  (registros||[]).forEach(function(r){
+  let totalListas=0, totalNotasAnt=0;
+  let execAcumulado=0, pctAcumulado=0;
+  _consolidarRegistros(registros).forEach(function(r){
     // O valor do bimestre sai das listas detalhadas sempre que elas existem:
     // um mesmo bimestre pode ter várias listas, e a coluna agregada
     // "valor_lista_equipamentos" guarda só o que foi somado na gravação
@@ -5692,69 +5938,93 @@ function _montarResumoAnterior(registros){
     const vLista=somaDetalhada>0?somaDetalhada:vAgregado;
     const qtdListas=detalhadas.length||(vAgregado>0?1:0);
     const vNotas=parseValorSheet(r.valor_notas||0);
-    const vExec =parseValorSheet(r.valor_total_utilizado||r.valor_executado||0);
+    // Valor e percentual DO PERÍODO; o acumulado é a soma corrente da série.
+    const vExec=_executadoDoPeriodo(r);
+    const pctPer=_pctDoPeriodo(r);
+    execAcumulado+=vExec;
+    pctAcumulado=Math.min(100,pctAcumulado+pctPer);
     if(vLista>0)totalListas+=vLista;
     if(vNotas>0)totalNotasAnt+=vNotas;
-    if(vExec>0)ultimoExecutado=vExec; // valor_total_utilizado já é acumulado
     periodos.push({
       bimestre:r.bimestre||'', ano:r.ano||'',
-      executado:vExec, lista:vLista, qtdListas:qtdListas,
+      executado:vExec, executadoAcumulado:execAcumulado,
+      lista:vLista, qtdListas:qtdListas,
       situacao:r.situacao_entrega||r._status_contrat||'',
-      pct:r.pct_acumulado_periodo||'',
+      // `pct` passa a ser o percentual DAQUELE bimestre; `pctAcumulado` é o
+      // corrido até ele. Antes as duas ideias dividiam o mesmo campo, e a
+      // tabela mostrava 0,12% num bimestre e 0,09% no seguinte — um acumulado
+      // que diminui, sinal de que o número guardado não era confiável.
+      pct:pctPer?String(pctPer.toFixed(2)).replace('.',','):'',
+      pctAcumulado:pctAcumulado?String(pctAcumulado.toFixed(2)).replace('.',','):'',
       quantidade:r.quantidade||'',
       notas:vNotas,
       responsavel:r.editado_por||''
     });
   });
   const totalQtd=periodos.reduce(function(s,p){return s+(p.qtdListas||0);},0);
+  // `porEmpresa` vem junto, dentro do resumo. Guardado numa propriedade
+  // separada, ele virava um segundo cache que precisava ser invalidado nos
+  // mesmos pontos que o resumo — e bastava esquecer um para a linha do boletim
+  // sumir sem explicação. Um cache só, reconstruído junto.
   return {periodos:periodos, totalListas:totalListas, qtdListas:totalQtd,
-          totalNotas:totalNotasAnt, executadoAcumulado:ultimoExecutado};
+          totalNotas:totalNotasAnt,
+          executadoAcumulado:execAcumulado, pctAcumulado:pctAcumulado,
+          porEmpresa:_medidoAnteriorPorEmpresa(registros)};
 }
 
 // Card "O que já foi informado antes" — aparece em toda ação que tenha
 // histórico, para situar quem está preenchendo agora.
+//
+// A tabela linha-a-linha saiu daqui. Ela crescia um bimestre por período e não
+// tinha teto: em 2032 seriam 36 linhas de leitura obrigatória acima do campo
+// que a pessoa veio preencher. O que ela precisa saber antes de digitar é só
+// onde a ação chegou — o total acumulado. O detalhe bimestre a bimestre
+// continua na planilha e no Power BI, que é onde a análise histórica é feita.
 function renderResumoAnterior(){
   const a=acq();
   const r=a&&a._resumoAnterior;
   if(!r||!r.periodos||!r.periodos.length)return '';
   const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
-  const cel='padding:5px 8px;font-size:11.5px;border-bottom:1px solid var(--border2);color:var(--ink2)';
-  const th='padding:5px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);text-align:left';
-  const temLista=r.totalListas>0;
+  const qtd=r.periodos.length;
+  const ultimo=r.periodos[qtd-1];
+  const lbl='font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)';
+  const val='font-size:14px;font-weight:700;color:var(--g800);margin-top:2px';
+
+  const blocos=[];
+  if(r.executadoAcumulado>0)
+    blocos.push('<div><span style="'+lbl+'">Executado até aqui</span><div style="'+val+'">'+fmt(r.executadoAcumulado)+'</div></div>');
+  // Um percentual só. Antes havia dois — "físico" e "financeiro" — mas os dois
+  // eram a MESMA quantia dividida por denominadores diferentes: o valor medido
+  // sobre o contrato da empresa, e o executado sobre o valor da ação no plano.
+  // Nenhum dos dois mede execução física de verdade (ninguém informa quanto da
+  // obra está levantada); os dois medem dinheiro. Chamar um de "físico" era
+  // rótulo errado e obrigava a pessoa a escolher qual número reportar.
+  // Fica o que fecha a prestação de contas: quanto do valor da ação no plano
+  // já foi executado — e o denominador aparece escrito, para conferir a conta.
+  const valorPlano=parseValorSheet(a.acao_valor)||0;
+  if(valorPlano>0&&r.executadoAcumulado>0){
+    const pct=Math.min(100,(r.executadoAcumulado/valorPlano)*100);
+    blocos.push('<div><span style="'+lbl+'">% do valor da ação</span><div style="'+val+'">'
+      +String(pct.toFixed(2)).replace('.',',')+'%</div>'
+      +'<div style="font-size:10.5px;color:var(--ink3)">de '+fmt(valorPlano)+' no plano</div></div>');
+  }
+  if(r.totalListas>0)
+    blocos.push('<div><span style="'+lbl+'">Listas enviadas</span><div style="'+val+'">'+fmt(r.totalListas)
+      +'</div><div style="font-size:10.5px;color:var(--ink3)">'+(r.qtdListas||1)+' lista(s)</div></div>');
+  if(r.totalNotas>0)
+    blocos.push('<div><span style="'+lbl+'">Notas lançadas</span><div style="'+val+'">'+fmt(r.totalNotas)+'</div></div>');
+  if(!blocos.length)return '';
 
   return '<div class="card" style="border-left:3px solid var(--g400);background:var(--g50)">'
-    +'<div class="card-title">O que já foi informado em bimestres anteriores</div>'
-    +'<p class="hint" style="margin:0 0 10px">Somente leitura — serve para situar quem está preenchendo agora.</p>'
-    +'<div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;background:#fff">'
-      +'<table style="width:100%;border-collapse:collapse">'
-        +'<tr style="background:var(--g50)">'
-          +'<th style="'+th+'">Bimestre</th>'
-          +'<th style="'+th+';text-align:right">Executado</th>'
-          +(temLista?'<th style="'+th+';text-align:right">Lista enviada</th>':'')
-          +'<th style="'+th+'">Situação</th>'
-        +'</tr>'
-        +r.periodos.map(function(p){
-          return '<tr>'
-            +'<td style="'+cel+'">'+(p.bimestre||'—')+(p.ano?' / '+p.ano:'')+'</td>'
-            +'<td style="'+cel+';text-align:right">'+(p.executado>0?fmt(p.executado):'—')+'</td>'
-            +(temLista?'<td style="'+cel+';text-align:right">'+(p.lista>0?fmt(p.lista):'—')
-              +(p.qtdListas>1?'<div style="font-size:10px;color:var(--ink3);font-weight:400">'+p.qtdListas+' listas</div>':'')+'</td>':'')
-            +'<td style="'+cel+'">'+(p.situacao||'—')+(p.pct?' · '+p.pct+'%':'')+'</td>'
-          +'</tr>';
-        }).join('')
-      +'</table>'
+    +'<div class="card-title">Acumulado até o bimestre anterior</div>'
+    +'<p class="hint" style="margin:0 0 12px">Somando '+(qtd===1?'1 bimestre já enviado':qtd+' bimestres já enviados')
+      +(ultimo&&ultimo.bimestre?', o último em '+ultimo.bimestre+(ultimo.ano?' / '+ultimo.ano:''):'')
+      +'. Registre abaixo apenas o que aconteceu neste período.</p>'
+    +'<div style="display:flex;gap:26px;flex-wrap:wrap;padding:10px 12px;background:#fff;border:1px solid var(--border2);border-radius:8px">'
+      +blocos.join('')
     +'</div>'
-    +(temLista
-      ? '<div style="margin-top:10px;padding:8px 10px;background:#fff;border:1px solid var(--g400);border-radius:7px;font-size:12px;color:var(--ink2)">'
-        +'<strong>'+(r.qtdListas||r.periodos.filter(function(p){return p.lista>0;}).length)+' lista(s) de equipamentos</strong> já enviada(s) em bimestre(s) anterior(es), '
-        +'no valor total de <strong>'+fmt(r.totalListas)+'</strong>. Não é preciso reenviar — anexe apenas listas novas deste bimestre.'
-      +'</div>'
-      : '')
-    +(r.totalNotas>0
-      ? '<div style="margin-top:8px;font-size:12px;color:var(--ink3)">Já lançado em notas fiscais nos bimestres anteriores: <strong style="color:var(--g800)">'+fmt(r.totalNotas)+'</strong>. Registre aqui apenas as notas deste bimestre.</div>'
-      : '')
-    +(r.executadoAcumulado>0
-      ? '<div style="margin-top:8px;font-size:12px;color:var(--ink3)">Valor executado acumulado até o bimestre anterior: <strong style="color:var(--g800)">'+fmt(r.executadoAcumulado)+'</strong></div>'
+    +(r.totalListas>0
+      ? '<div style="margin-top:8px;font-size:11.5px;color:var(--ink3)">Não é preciso reenviar as listas anteriores — anexe apenas as novas deste bimestre.</div>'
       : '')
   +'</div>';
 }
@@ -5778,8 +6048,23 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     if(!acqObj[campo] && reg[campo]) acqObj[campo] = reg[campo];
   });
 
-  // As notas fiscais são do PERÍODO — não são copiadas para o bimestre novo.
-  // O que atravessa é o total já lançado antes, exibido no card de histórico.
+  // 1b. EMPRESAS CONTRATADAS — o contrato da obra não acaba no fim do bimestre.
+  // Só o campo de texto "empresa_executora" atravessava; o cadastro em si
+  // ficava para trás, e o bimestre novo abria a Contratação como se a obra
+  // nunca tivesse sido contratada ("Em que pé está o processo? Planejamento"),
+  // sem base para calcular o percentual dos boletins de medição.
+  // Lidas de TODOS os bimestres e MESCLADAS com o que já está na tela. Antes
+  // isso só rodava quando a ação não tinha nenhuma empresa: bastava a primeira
+  // empresa ter sido carregada para a segunda nunca mais ser buscada, e ela
+  // sumia da série inteira junto com a base de cálculo dos boletins dela.
+  try{
+    const doHist=_empresasDoHistorico(registros);
+    if(doHist.length)acqObj._empresas=_mesclarEmpresas(acqObj._empresas,doHist);
+  }catch(e){}
+
+  // As notas fiscais e os boletins de medição são do PERÍODO — não são copiados
+  // para o bimestre novo. O que atravessa é o total já lançado antes, exibido
+  // no card de histórico, e o % acumulado que ele alimenta.
 
   // 2. Tipo
   if(!acqObj.modalidade_objeto && reg.tipo_monitoramento) acqObj.modalidade_objeto = reg.tipo_monitoramento;
@@ -5792,12 +6077,13 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!acqObj.descricao_item && reg.descricao_item) acqObj.descricao_item = reg.descricao_item;
   if(!acqObj.quantidade && reg.quantidade) acqObj.quantidade = String(reg.quantidade);
 
-  // 4. Valor executado histórico — usa valor_total_utilizado que já é acumulativo
-  // (não exige que o registro anterior esteja marcado "Concluído": a maioria dos
+  // 4. Valor executado histórico — soma dos valores DE CADA bimestre anterior,
+  // calculada no resumo acima. Não exige registro "Concluído": a maioria dos
   // bimestres de uma obra em andamento é "Parcial", e antes isso fazia o valor
-  // histórico nunca carregar — causa raiz do "Já executado" aparecer sempre R$ 0,00)
-  const valHist = parseValorSheet(reg.valor_total_utilizado||reg.valor_executado||0);
-  if(valHist > 0 && !acqObj._executado_historico) acqObj._executado_historico = valHist;
+  // histórico nunca carregar. Também não lê mais o total corrido gravado na
+  // planilha, que herda qualquer erro cometido num bimestre passado.
+  const valHist = (acqObj._resumoAnterior && acqObj._resumoAnterior.executadoAcumulado) || 0;
+  if(valHist > 0) acqObj._executado_historico = valHist;
 
   // 5. Conclusão automática — vale para OBRA, EQUIPAMENTO e SERVIÇO/CUSTEIO:
   // quando o valor acumulado (histórico + o que a própria ação já registrou)
@@ -5805,6 +6091,18 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // seguinte, sem precisar reconfirmar nada. Para obra, usa a soma real dos
   // boletins de medição (mais precisa); para os demais tipos, usa o valor
   // total utilizado já acumulado vindo da planilha.
+  // Concluir a ação num bimestre NÃO a conclui no seguinte. "Concluída" ali
+  // significa "terminei de informar este período", não "a obra acabou" — e a
+  // ação chegava travada no bimestre novo, sem nada preenchido. O único motivo
+  // legítimo para já nascer concluída é a execução ter de fato chegado a 100%,
+  // que é o que a regra abaixo verifica. Este trecho só roda quando a ação
+  // ainda não foi tocada neste bimestre, então destravar aqui não desfaz
+  // conclusão feita agora.
+  if(acqObj._locked&&!acqObj._sent){
+    acqObj._locked=false;
+    acqObj._autoConcluida=false;
+    delete acqObj._autoConcluidaBimestre;
+  }
   if(!acqObj._locked){
     const valorPlano=parseValorSheet(acqObj.acao_valor)||0;
     const acumuladoPorBoletins=(acqObj.modalidade_objeto==='obra'&&typeof calcPctExecucaoAuto==='function')?calcPctExecucaoAuto(acqObj):0;
@@ -6238,12 +6536,12 @@ function totalNotas(a,ref){
 function _pctAcumuladoAnterior(a){
   const r=a&&a._resumoAnterior;
   if(!r||!r.periodos||!r.periodos.length)return 0;
-  // O último acumulado registrado já embute os anteriores.
-  for(let i=r.periodos.length-1;i>=0;i--){
-    const p=parseFloat(String(r.periodos[i].pct||'').replace(',','.'));
-    if(p>0)return p;
-  }
-  return 0;
+  // Soma dos percentuais DE CADA bimestre anterior, recalculada aqui. A versão
+  // anterior pegava o último acumulado gravado e confiava que ele já embutia os
+  // demais — quando esse número era escrito com base zero (histórico ainda não
+  // carregado no momento do envio), o acumulado do 2º bimestre saía MENOR que o
+  // do 1º e o erro se propagava para sempre.
+  return Math.min(100,r.pctAcumulado||0);
 }
 
 // `ref` amarra as notas ao item que as gerou (atividade A1, lote L2...), para
@@ -6294,14 +6592,30 @@ function _registrarStatusPeriodo(obj,campo,valor){
   if(idx>=0)obj.historico_status[idx].status=valor;
   else obj.historico_status.push({bimestre:bim,ano:ano,campo:campo,status:valor});
 }
+// Ordem cronológica de um período: ano*10 + número do bimestre. Serve para
+// comparar "1º Bimestre / 2026" com "2º Bimestre / 2026" sem depender da ordem
+// em que os registros foram gravados.
+function _ordemPeriodo(bim,ano){
+  const n=parseInt(String(bim||'').replace(/\D/g,''),10)||0;
+  const a=parseInt(String(ano||''),10)||0;
+  return a*10+n;
+}
 // Última situação registrada em bimestre ANTERIOR ao aberto.
+// Antes esta função só excluía o período atual e devolvia o ÚLTIMO item do
+// array — que é ordem de gravação, não ordem de tempo. Reabrindo o 1º
+// bimestre, ela pescava o registro do 2º e anunciava "No 2º Bimestre esta
+// lista estava como...", citando um período que ainda não aconteceu.
 function _statusAnterior(obj,campo){
   if(!obj||!obj.historico_status)return null;
-  const bim=municipio.bimestre||'', ano=String(municipio.ano||'');
-  const ant=obj.historico_status.filter(function(h){
-    return h.campo===campo&&!(h.bimestre===bim&&String(h.ano)===ano);
+  const atual=_ordemPeriodo(municipio.bimestre,municipio.ano);
+  let melhor=null, melhorOrd=-1;
+  obj.historico_status.forEach(function(h){
+    if(h.campo!==campo)return;
+    const ord=_ordemPeriodo(h.bimestre,h.ano);
+    if(!(ord>0)||ord>=atual)return;      // só o que é estritamente anterior
+    if(ord>melhorOrd){ melhorOrd=ord; melhor=h; }
   });
-  return ant.length?ant[ant.length-1]:null;
+  return melhor;
 }
 
 function _updLista(i,campo,valor){
@@ -6321,7 +6635,12 @@ function _confirmarLista(i){
   saveAllInputs();
   const a=acq(); const l=_listasEquip(a)[i];
   if(!l)return;
-  if(!(l.arquivos&&l.arquivos.length)){ showAlertModal('Anexe o arquivo da lista de equipamentos.','⚠️'); return; }
+  // Anexo já enviado conta. A lista recuperada do servidor traz só o NOME do
+  // arquivo em `_nomes` — o File em si não atravessa a sessão. Exigir
+  // `arquivos` obrigava a reanexar um documento que já estava na planilha só
+  // porque a pessoa clicou em "Editar" e desistiu da alteração.
+  const temAnexo=(l.arquivos&&l.arquivos.length)||(l._nomes&&l._nomes.length);
+  if(!temAnexo){ showAlertModal('Anexe o arquivo da lista de equipamentos.','⚠️'); return; }
   if(!(parseBRL(l.valor||'')>0)){ showAlertModal('Informe o valor da lista.','⚠️'); return; }
   l.confirmado=true; delete l._recuperada;
   _marcarTocado(a); salvarListaServidor(l); saveSession(); renderAll(true);
@@ -6379,6 +6698,26 @@ function totalListasEquip(a){
 // sessão do bimestre em que ela foi anexada faria o acompanhamento se perder:
 // quem abrisse o período seguinte não veria a lista, ou veria um estado velho.
 // A planilha é a fonte de verdade — igual às atividades de custeio.
+// Nomes dos anexos de NF, tolerando as três formas em que o dado aparece:
+// arquivos recém-selecionados (objetos File), nomes já persistidos (array) ou
+// a string separada por vírgula que volta da planilha. Nomes em branco são
+// descartados — era o que produzia um "Anexo:" sem nada depois.
+function _nomesAnexoNF(l){
+  if(!l)return [];
+  if(l.arquivos_nf&&l.arquivos_nf.length){
+    return l.arquivos_nf.map(function(f){return (f&&f.name)||'';})
+                        .filter(function(n){return String(n).trim();});
+  }
+  const bruto=l._nomesNF||l.nomes_nf||[];
+  const arr=Array.isArray(bruto)?bruto:String(bruto).split(',');
+  return arr.map(function(n){return String(n||'').trim();}).filter(Boolean);
+}
+// Lista sem arquivo anexado precisa de um nome estável. "Lista N" pela posição
+// mudava de número quando outra lista era incluída ou removida antes dela.
+function _rotuloLista(l,i){
+  if(l&&l.bimestre)return 'Lista do '+l.bimestre+(l.ano?' / '+l.ano:'');
+  return 'Lista '+(i+1);
+}
 function _listaParaServidor(l){
   return {
     id:l.id, nomes:(l.arquivos&&l.arquivos.length?l.arquivos.map(function(f){return f.name;}):(l._nomes||[])),
@@ -6387,7 +6726,7 @@ function _listaParaServidor(l){
     situacao_entrega:l.situacao_entrega||'', data_recebimento:l.data_recebimento||'',
     justificativa:l.justificativa||'', obs:l.obs||'',
     num_nf:l.num_nf||'', data_nf:l.data_nf||'', valor_nf:l.valor_nf||'',
-    nomes_nf:(l.arquivos_nf&&l.arquivos_nf.length?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[])),
+    nomes_nf:_nomesAnexoNF(l),
     historico_status:JSON.stringify(l.historico_status||[])
   };
 }
@@ -6453,7 +6792,7 @@ async function carregarListasHistorico(acqObj){
         if(r[k]&&local[k]!==r[k]){local[k]=r[k];mudou=true;}
       });
       if(!local._nomes||!local._nomes.length){local._nomes=r.nomes||[];}
-      if(!local._nomesNF||!local._nomesNF.length){local._nomesNF=r.nomes_nf||[];}
+      if(!_nomesAnexoNF(local).length){local._nomesNF=r.nomes_nf||[];}
       // O histórico é cumulativo: o servidor tem a versão mais completa,
       // exceto pelo que acabou de ser marcado nesta tela.
       if(r.historico_status){
@@ -6504,7 +6843,7 @@ function renderListasStatusCards(fase){
       +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'
         +'<div style="width:26px;height:26px;border-radius:50%;background:var(--g700);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'
         +'<div style="flex:1;min-width:0">'
-          +'<div style="font-size:13.5px;font-weight:700;color:var(--ink)">'+(nomes.length?esc(nomes[0]):'Lista '+(i+1))+(nomes.length>1?' +'+(nomes.length-1):'')+'</div>'
+          +'<div style="font-size:13.5px;font-weight:700;color:var(--ink)">'+(nomes.length?esc(nomes[0]):_rotuloLista(l,i))+(nomes.length>1?' +'+(nomes.length-1):'')+'</div>'
           +'<div style="font-size:11.5px;color:var(--ink3);margin-top:2px">'+(l.bimestre||'—')+(l.ano?' / '+l.ano:'')+'</div>'
         +'</div>'
         +'<div style="font-size:13.5px;font-weight:700;color:var(--g800);white-space:nowrap">'+fmt(parseBRL(l.valor||''))+'</div>'
@@ -6567,7 +6906,7 @@ function renderListasStatusCards(fase){
       if(l.status!=='Recebido'){
         html+='<div style="font-size:12px;color:var(--ink3);font-style:italic">Marque esta lista como <strong>Recebido</strong> na etapa de Contratação, anexando a nota fiscal.</div>';
       }else{
-        const nfNomes=(l.arquivos_nf&&l.arquivos_nf.length)?l.arquivos_nf.map(function(f){return f.name;}):(l._nomesNF||[]);
+        const nfNomes=_nomesAnexoNF(l);
         html+='<div style="font-size:12.5px;color:var(--ink2);line-height:1.7">'
           +'<div>Recebida'+(l.data_recebimento?' em '+new Date(l.data_recebimento+'T00:00').toLocaleDateString('pt-BR'):'')+'.</div>'
           +(l.num_nf?'<div>NF '+esc(l.num_nf)+(l.data_nf?' · '+new Date(l.data_nf+'T00:00').toLocaleDateString('pt-BR'):'')+(l.valor_nf?' · R$ '+esc(l.valor_nf):'')+'</div>':'')
@@ -6867,11 +7206,6 @@ function _buildAtividadeEditCard(editIdx){
     +'</div>'
     : '';
 
-  const pillsHTML=_STAT_ATIV.map(function(s){
-    const sel=at._status===s;
-    return '<button type="button" onclick="_setAtivStatus('+editIdx+',' +"'"+s+"'"+' )" style="padding:4px 10px;font-size:11px;border-radius:20px;border:1.5px solid '+(sel?'var(--g600)':'var(--border)')+';background:'+(sel?'var(--g600)':'#fff')+';color:'+(sel?'#fff':'var(--ink2)')+';cursor:pointer;font-weight:'+(sel?'700':'400')+'">'+s+'</button>';
-  }).join('');
-
   // (Os campos de empresa foram removidos do card de atividade — o valor é
   // informado direto no campo "Valor (R$)" logo abaixo do status.)
 
@@ -6887,11 +7221,11 @@ function _buildAtividadeEditCard(editIdx){
       +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Detalhamento / Descri\u00e7\u00e3o</label>'
       +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'descricao',this.value)\" placeholder=\"Descreva a atividade contratada...\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+(at.descricao||'')+'</textarea>'
     +'</div>'
-    +'<div style="margin-bottom:12px">'
-      +avisoAnterior
-      +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Status de execu\u00e7\u00e3o</label>'
-      +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+pillsHTML+'</div>'
-    +'</div>'
+    // O status saiu daqui. Esta etapa responde "o que foi feito"; em que pé
+    // está o processo é pergunta da etapa Contratação, que é onde ela já era
+    // feita de novo — a pessoa marcava o status duas vezes, em telas
+    // diferentes, e as duas gravavam no mesmo campo.
+    +avisoAnterior
     +'<div style="margin-bottom:12px">'
       +(function(){
         const esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');};
@@ -6978,9 +7312,6 @@ function _updAtiv(idx,f,v){
   if(f==='unidade_medida')delete a._atividades[idx]._unidadeAuto;
 }
 function _updEmpresaAtiv(idx,ei,f,v){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas[ei])a._atividades[idx].empresas[ei][f]=v;}
-function _addEmpresaAtiv(idx){const a=acq();if(a._atividades&&a._atividades[idx]){a._atividades[idx].empresas.push({nome:'',cnpj:'',valor:'',homologacao:'',prazo:''});_renderAtividadesCardDOM();}}
-function _removeEmpresaAtiv(idx,ei){const a=acq();if(a._atividades&&a._atividades[idx]&&a._atividades[idx].empresas.length>1){a._atividades[idx].empresas.splice(ei,1);_renderAtividadesCardDOM();}}
-
 // Listener delegado (registrado uma única vez) para os campos de empresa do
 // card de custeio (.ativ-emp-field). Evita handlers inline com aspas
 // conflitantes — fonte do bug de HTML quebrado relatado anteriormente.
