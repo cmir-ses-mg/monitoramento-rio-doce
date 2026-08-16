@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Manual do Monitoramento Bimestral · Plano de Ação em Saúde do Rio Doce</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --tinta:#12261E;        /* verde-tinta, quase preto */
+  --mata:#0F4D35;         /* verde institucional Rio Doce */
+  --folha:#2E7D5B;
+  --agua:#E8F1EC;         /* lavagem clara */
+  --papel:#FBFAF6;        /* papel levemente creme */
+  --lama:#A64B2A;         /* terracota do rejeito — só para alertas */
+  --lama-bg:#FCEFE9;
+  --ouro:#8B5E00;
+  --ouro-bg:#FFF8E1;
+  --linha:#D6DED9;
+  --cinza:#5E6B65;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--papel);color:var(--tinta);
+  font-family:'Source Sans 3',system-ui,sans-serif;font-size:16px;line-height:1.62;
+}
+.wrap{max-width:820px;margin:0 auto;padding:0 28px 80px}
+
+/* ── Capa ─────────────────────────────────────────────────────── */
+.capa{
+  background:var(--mata);color:#fff;margin-bottom:52px;
+  padding:64px 0 56px;
+}
+.capa .wrap{padding-bottom:0}
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:#9FD9BE;margin:0 0 20px;
+}
+.capa h1{
+  font-family:'Zilla Slab',Georgia,serif;font-weight:600;
+  font-size:clamp(32px,6vw,52px);line-height:1.06;margin:0 0 18px;letter-spacing:-.01em;
+}
+.capa .sub{font-size:18px;color:#C9E5D6;margin:0;max-width:34em}
+.capa .endereco{
+  margin:30px 0 0;padding:14px 18px;border-radius:9px;
+  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);
+  display:inline-flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+}
+.capa .endereco span{font-size:13.5px;color:#9FD9BE}
+.capa .endereco a{
+  font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;
+  color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.45);
+}
+.capa .meta{
+  margin-top:36px;padding-top:20px;border-top:1px solid rgba(255,255,255,.22);
+  font-size:13.5px;color:#9FD9BE;display:flex;gap:26px;flex-wrap:wrap;
+}
+
+/* ── Tipografia de seção ──────────────────────────────────────── */
+h2{
+  font-family:'Zilla Slab',Georgia,serif;font-weight:600;font-size:27px;
+  line-height:1.2;margin:0 0 6px;letter-spacing:-.01em;
+}
+h3{
+  font-family:'Zilla Slab',Georgia,serif;font-weight:600;font-size:19px;
+  margin:30px 0 8px;
+}
+p{margin:0 0 14px}
+a{color:var(--folha)}
+strong{font-weight:700}
+.intro{font-size:17px;color:var(--cinza);margin:0 0 26px;max-width:38em}
+
+/* ── A trilha: espinha do documento ───────────────────────────── */
+.etapa{
+  position:relative;padding-left:66px;margin:0 0 52px;
+}
+.etapa::before{   /* linha vertical ligando as etapas */
+  content:'';position:absolute;left:21px;top:46px;bottom:-52px;width:2px;background:var(--linha);
+}
+.etapa:last-of-type::before{display:none}
+.num{
+  position:absolute;left:0;top:0;width:44px;height:44px;border-radius:50%;
+  background:var(--mata);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:500;
+}
+.etapa .rot{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--folha);margin:0 0 3px;
+}
+
+/* ── Blocos ───────────────────────────────────────────────────── */
+.nota,.aviso,.dica{
+  border-radius:9px;padding:14px 18px;margin:18px 0;font-size:15px;line-height:1.55;
+}
+.nota{background:var(--agua);border-left:3px solid var(--folha)}
+.aviso{background:var(--lama-bg);border-left:3px solid var(--lama)}
+.dica{background:var(--ouro-bg);border-left:3px solid var(--ouro)}
+.nota p:last-child,.aviso p:last-child,.dica p:last-child{margin-bottom:0}
+.rotulo{
+  display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+  letter-spacing:.13em;text-transform:uppercase;margin-bottom:5px;
+}
+.nota .rotulo{color:var(--folha)}
+.aviso .rotulo{color:var(--lama)}
+.dica .rotulo{color:var(--ouro)}
+
+ul,ol{margin:0 0 16px;padding-left:22px}
+li{margin-bottom:7px}
+li::marker{color:var(--folha)}
+
+/* ── Caminhos por modalidade ──────────────────────────────────── */
+.caminhos{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0 30px}
+.caminho{
+  border:1.5px solid var(--linha);border-radius:11px;padding:16px 16px 18px;background:#fff;
+}
+.caminho h4{
+  font-family:'Zilla Slab',serif;font-size:16px;margin:0 0 4px;color:var(--mata);
+}
+.caminho .quando{font-size:13px;color:var(--cinza);margin:0 0 12px;line-height:1.45}
+.caminho ol{padding-left:17px;margin:0;font-size:13.5px;line-height:1.45}
+.caminho li{margin-bottom:5px}
+
+/* ── Situações da lista ───────────────────────────────────────── */
+.pills{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0 18px}
+.pill{
+  padding:5px 13px;border-radius:20px;font-size:13px;font-weight:600;
+  background:var(--agua);color:var(--mata);
+}
+.pill.fim{background:var(--mata);color:#fff}
+
+table{width:100%;border-collapse:collapse;margin:16px 0 22px;font-size:14.5px}
+th{
+  text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--cinza);
+  padding:0 12px 7px 0;border-bottom:1.5px solid var(--linha);font-weight:500;
+}
+td{padding:10px 12px 10px 0;border-bottom:1px solid var(--linha);vertical-align:top}
+td:first-child{font-weight:600;white-space:nowrap}
+
+.divisor{height:1px;background:var(--linha);margin:44px 0}
+
+/* ── Dúvidas ──────────────────────────────────────────────────── */
+.duvida{margin-bottom:22px}
+.duvida .q{font-weight:700;margin:0 0 4px;font-size:16px}
+.duvida p{margin:0;color:var(--cinza)}
+
+footer{
+  margin-top:56px;padding-top:22px;border-top:2px solid var(--mata);
+  font-size:14px;color:var(--cinza);
+}
+
+@media(max-width:640px){
+  .caminhos{grid-template-columns:1fr}
+  .etapa{padding-left:54px}
+  .num{width:38px;height:38px;font-size:15px}
+  .etapa::before{left:18px;top:40px}
+}
+/* ── Botão de impressão ───────────────────────────────────────── */
+.acoes-doc{
+  position:fixed;top:18px;right:18px;z-index:50;display:flex;gap:8px;
+}
+.btn-doc{
+  font-family:'Source Sans 3',system-ui,sans-serif;font-size:13.5px;font-weight:600;
+  padding:9px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.28);
+  background:rgba(18,38,30,.82);color:#fff;cursor:pointer;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  box-shadow:0 2px 10px rgba(18,38,30,.18);
+  display:inline-flex;align-items:center;gap:7px;transition:background .15s;
+}
+.btn-doc:hover{background:var(--mata)}
+@media(max-width:640px){
+  .acoes-doc{top:auto;bottom:14px;right:14px}
+  .btn-doc{font-size:13px;padding:10px 15px}
+}
+
+@media print{
+  /* O botão não vai para o papel nem para o PDF. */
+  .acoes-doc{display:none !important}
+  body{background:#fff;font-size:11.5pt}
+  .capa{padding:38px 0 32px}
+  .wrap{max-width:100%;padding:0 14mm}
+  .etapa{break-inside:avoid;margin-bottom:34px}
+  .caminho,.nota,.aviso,.dica,table{break-inside:avoid}
+  h2,h3{break-after:avoid}
+  a{color:var(--tinta);text-decoration:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Impressão e "Salvar como PDF" usam o mesmo diálogo do navegador: em
+     "Destino", a pessoa escolhe a impressora ou "Salvar como PDF". Por isso um
+     botão só, com os dois nomes — evita prometer um gerador de PDF que não
+     existe e que precisaria de biblioteca extra só para repetir o que o
+     navegador já faz bem. -->
+<div class="acoes-doc">
+  <button class="btn-doc" onclick="window.print()" title="Abre o diálogo de impressão — escolha a impressora ou 'Salvar como PDF'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Imprimir / Salvar PDF
+  </button>
+</div>
+
+<header class="capa">
+  <div class="wrap">
+    <p class="eyebrow">Secretaria de Estado de Saúde de Minas Gerais · CMIR</p>
+    <h1>Como preencher o<br/>Monitoramento Bimestral</h1>
+    <p class="sub">Manual do município para o acompanhamento das ações do Plano de Ação em Saúde do Rio Doce.</p>
+    <p class="endereco"><span>O sistema fica em</span>
+      <a href="https://cmir-ses-mg.github.io/monitoramento-rio-doce/">cmir-ses-mg.github.io/monitoramento-rio-doce</a>
+    </p>
+    <div class="meta">
+      <span>Coordenação de Monitoramento e Integração Regional</span>
+      <span>Subsecretaria de Regionalização</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<p class="intro">A cada bimestre, o município informa como andaram as ações do plano: o que foi contratado, o que foi entregue, quanto foi gasto. O formulário divide isso em cinco etapas e guarda o que você já preencheu, para você não recomeçar do zero no bimestre seguinte.</p>
+
+<div class="nota">
+  <span class="rotulo">Antes de começar</span>
+  <p>O acesso é criado pela CMIR — não há cadastro pelo site. Se ainda não tem login, use o botão <strong>Suporte</strong>, na própria tela de entrada, e escolha o assunto <em>Solicitar acesso</em>. O chamado chega direto na coordenação, que responde no e-mail que você informar.</p>
+  <p>Ao entrar, o município já vem definido pelo seu acesso e não pode ser trocado: você só enxerga e preenche as ações do seu município. No primeiro acesso, o sistema pede a troca da senha.</p>
+</div>
+
+<h2>O caminho, de ponta a ponta</h2>
+<p class="intro">Entrar &rarr; conferir o período &rarr; escolher uma ação no menu da esquerda &rarr; percorrer as cinco etapas &rarr; enviar. Repetir para cada ação do plano.</p>
+
+<div class="etapa">
+  <div class="num">0</div>
+  <p class="rot">Tela de início</p>
+  <h3 style="margin-top:0">Confirme o período e o responsável</h3>
+  <p>Escolha o <strong>bimestre</strong> e o <strong>ano</strong> que está informando, e confirme nome, cargo, telefone e e-mail de quem está preenchendo. É esse contato que a CMIR procura se houver dúvida sobre o que foi informado.</p>
+  <p>Ainda nesta tela, informe os <strong>rendimentos do bimestre</strong>, separados em custeio e investimento, e anexe o extrato. São as duas contas específicas, lançadas separadamente.</p>
+</div>
+
+<div class="etapa">
+  <div class="num">1</div>
+  <p class="rot">Etapa 1</p>
+  <h3 style="margin-top:0">Instrumento</h3>
+  <p>Você escolhe a ação no menu da esquerda e o sistema mostra o valor previsto no plano e o tipo de monitoramento — <strong>obra</strong>, <strong>equipamento</strong> ou <strong>serviço</strong>. Esse tipo é definido automaticamente e é ele que determina o que aparece nas etapas seguintes.</p>
+  <p>Se for obra, informe aqui o <strong>endereço</strong> e a <strong>data de início</strong>. São dados da obra, não do bimestre: uma vez preenchidos, voltam prontos nos períodos seguintes e só precisam ser tocados se estiverem errados.</p>
+  <p>Logo abaixo aparece o quadro <strong>“O que já foi informado em bimestres anteriores”</strong>. É só leitura, para situar quem está preenchendo agora. Não é preciso reenviar nada que já esteja ali.</p>
+</div>
+
+<div class="etapa">
+  <div class="num">2</div>
+  <p class="rot">Etapa 2 · o caminho se divide</p>
+  <h3 style="margin-top:0">Contratação</h3>
+  <p>A partir daqui, cada tipo de ação pede uma coisa diferente:</p>
+
+  <div class="caminhos">
+    <div class="caminho">
+      <h4>Obra</h4>
+      <p class="quando">Construção, ampliação ou reforma.</p>
+      <ol>
+        <li>Diga em que pé está o processo: <em>Planejamento</em> ou <em>Processo aberto</em>.</li>
+        <li>Cadastre a empresa contratada — razão social, CNPJ, valor e data de assinatura.</li>
+        <li>Se houver mais de uma empresa, use “Adicionar outra empresa”.</li>
+      </ol>
+    </div>
+    <div class="caminho">
+      <h4>Equipamento</h4>
+      <p class="quando">Aquisição de equipamentos e materiais permanentes.</p>
+      <ol>
+        <li>Anexe a <strong>lista de equipamentos</strong> e informe o valor dela.</li>
+        <li>Marque a situação daquela lista.</li>
+        <li>Listas de bimestres anteriores continuam aqui, só para você atualizar a situação.</li>
+      </ol>
+    </div>
+    <div class="caminho">
+      <h4>Serviço</h4>
+      <p class="quando">Custeio e atividades contratadas.</p>
+      <ol>
+        <li>Cadastre cada atividade de custeio.</li>
+        <li>Informe as empresas e valores de cada uma.</li>
+        <li>Atualize a situação da atividade.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="nota">
+    <span class="rotulo">Obra</span>
+    <p>Não existe botão “Contratado”. Assim que você cadastra a primeira empresa, a ação passa a Contratado sozinha — a empresa cadastrada <em>é</em> o contrato. E o total contratado aparece comparado ao valor da ação no plano, avisando se passou do previsto.</p>
+  </div>
+
+  <h3>As quatro situações de uma lista de equipamentos</h3>
+  <div class="pills">
+    <span class="pill">Aguardando aquisição</span>
+    <span class="pill">Processo aberto</span>
+    <span class="pill">Contratado</span>
+    <span class="pill fim">Recebido</span>
+  </div>
+  <p>Cada lista anda no seu próprio ritmo: uma pode estar em processo enquanto outra já foi recebida. Por isso a situação é por lista, e não da ação inteira.</p>
+  <div class="aviso">
+    <span class="rotulo">Atenção</span>
+    <p>Para marcar uma lista como <strong>Recebido</strong>, a nota fiscal precisa ser anexada. Sem ela o sistema não deixa concluir — é a nota que comprova o recebimento.</p>
+  </div>
+</div>
+
+<div class="etapa">
+  <div class="num">3</div>
+  <p class="rot">Etapa 3</p>
+  <h3 style="margin-top:0">Execução Física <span style="font-weight:400;color:var(--cinza);font-size:15px">(obra)</span> ou Entrega <span style="font-weight:400;color:var(--cinza);font-size:15px">(equipamento e serviço)</span></h3>
+
+  <p><strong>Na obra</strong>, registre os <strong>boletins de medição</strong> do período. Um bimestre pode ter mais de um, inclusive de empresas diferentes. Para cada boletim: número, data, fiscal responsável e valor medido.</p>
+  <p>Você não digita percentual. O sistema calcula o percentual de cada boletim sobre o contrato da empresa, soma tudo no <strong>% medido no período</strong> e acrescenta ao <strong>% acumulado</strong> dos bimestres anteriores. O <strong>valor executado no bimestre</strong> também sai da soma dos boletins, e aparece no rodapé do quadro.</p>
+
+  <div class="dica">
+    <span class="rotulo">Se não houve medição</span>
+    <p>Bimestre sem boletim formal? Deixe o quadro de medições vazio e informe o valor do bimestre no campo que aparece ali mesmo. Nenhum período fica sem onde lançar o valor.</p>
+  </div>
+
+  <p><strong>Em equipamento e serviço</strong>, esta etapa mostra a situação da entrega, as notas fiscais e a incorporação patrimonial de cada lista já marcada como recebida.</p>
+</div>
+
+<div class="etapa">
+  <div class="num">4</div>
+  <p class="rot">Etapa 4</p>
+  <h3 style="margin-top:0">Execução finalística</h3>
+  <p>Aqui entram metas, resultados alcançados, pendências e comprovações da ação. É o espaço para explicar o que os números sozinhos não contam — um atraso na licitação, uma obra parada por chuva, uma entrega parcial.</p>
+</div>
+
+<div class="etapa">
+  <div class="num">5</div>
+  <p class="rot">Etapa 5</p>
+  <h3 style="margin-top:0">Revisão e Envio</h3>
+  <p>Confira tudo o que foi preenchido, ação por ação, antes de enviar. Depois do envio, o registro fica gravado para aquele bimestre. Precisando corrigir, procure a CMIR.</p>
+</div>
+
+<div class="divisor"></div>
+
+<h2>Coisas que evitam retrabalho</h2>
+
+<table>
+  <tr><th style="width:34%">Situação</th><th>O que fazer</th></tr>
+  <tr>
+    <td>Valores</td>
+    <td>Digite só os números. A vírgula dos centavos e os pontos de milhar entram sozinhos: <em>1500000</em> vira <em>15.000,00</em>.</td>
+  </tr>
+  <tr>
+    <td>Preenchimento em andamento</td>
+    <td>O sistema salva conforme você digita. Pode fechar e voltar depois — ao reabrir, aparece “Continuar” com a data e a hora do último salvamento.</td>
+  </tr>
+  <tr>
+    <td>Duas pessoas no mesmo município</td>
+    <td>Funciona, e o que uma preenche aparece para a outra. Combinem quem preenche o quê, para não sobrescreverem o trabalho uma da outra.</td>
+  </tr>
+  <tr>
+    <td>Dado que já informei antes</td>
+    <td>Endereço, data de início da obra, empresas e listas voltam preenchidos. Só altere se estiver errado — não é para redigitar a cada bimestre.</td>
+  </tr>
+  <tr>
+    <td>Ação sem novidade no bimestre</td>
+    <td>Percorra as etapas mesmo assim e envie. Bimestre sem movimento também é informação: mostra que a ação está parada.</td>
+  </tr>
+  <tr>
+    <td>Anexos</td>
+    <td>PDF, imagem, Word e Excel. Anexe a nota fiscal na lista correspondente, e não no campo geral de arquivos.</td>
+  </tr>
+</table>
+
+<h2>Quando algo dá errado</h2>
+<p class="intro">Na tela de entrada há um botão <strong>Suporte</strong>, ao lado de Entrar. Ele funciona sem login — justamente porque quem não consegue entrar é quem mais precisa dele.</p>
+
+<table>
+  <tr><th style="width:40%">Assunto do chamado</th><th>Quando usar</th></tr>
+  <tr><td>Solicitar acesso</td><td>Você ainda não tem login no sistema.</td></tr>
+  <tr><td>Problema com a senha</td><td>Esqueceu a senha ou ela parou de funcionar.</td></tr>
+  <tr><td>Não recebi o e-mail de acesso</td><td>A CMIR criou seu cadastro, mas o e-mail não chegou. Confira antes a caixa de spam.</td></tr>
+  <tr><td>Dúvida sobre o preenchimento</td><td>Não sabe onde informar alguma coisa, ou o manual não respondeu.</td></tr>
+  <tr><td>Reportar erro no sistema</td><td>Alguma tela travou, não salvou ou mostrou mensagem de erro.</td></tr>
+</table>
+
+<div class="dica">
+  <span class="rotulo">Para o chamado ser resolvido de primeira</span>
+  <p>Diga <strong>em qual etapa</strong> você estava, <strong>qual ação</strong> estava preenchendo e <strong>qual mensagem</strong> apareceu na tela. Se der, anexe um print. Chamado com essas três informações costuma ser resolvido na primeira resposta.</p>
+</div>
+
+<h2>Perguntas que sempre aparecem</h2>
+
+<div class="duvida">
+  <p class="q">A lista de equipamentos do bimestre passado sumiu?</p>
+  <p>Não. Ela continua na etapa de Contratação, com a situação que ficou, esperando atualização. Só anexe listas <em>novas</em> deste bimestre.</p>
+</div>
+
+<div class="duvida">
+  <p class="q">A obra tem duas empresas. Como faço?</p>
+  <p>Cadastre as duas na etapa de Contratação. Depois, cada boletim de medição aponta a qual empresa se refere, e o percentual é calculado sobre o contrato daquela empresa.</p>
+</div>
+
+<div class="duvida">
+  <p class="q">O % acumulado está diferente do que eu esperava.</p>
+  <p>Ele soma o que já foi medido nos bimestres anteriores com o medido agora. O quadro mostra a conta: quanto veio de trás e quanto entrou neste período.</p>
+</div>
+
+<div class="duvida">
+  <p class="q">Gastei também com recurso próprio ou com rendimento. Entra onde?</p>
+  <p>Entra no valor executado do bimestre, junto com o restante. O sistema separa depois, a partir dos rendimentos informados na tela de início.</p>
+</div>
+
+<div class="duvida">
+  <p class="q">Errei um dado e já enviei.</p>
+  <p>Abra um chamado no Suporte, com o assunto <em>Reportar erro no sistema</em>, dizendo o município, a ação e o que precisa mudar. A correção é feita pela CMIR, para o histórico do bimestre não ficar inconsistente.</p>
+</div>
+
+<div class="duvida">
+  <p class="q">E depois de enviar, acabou?</p>
+  <p>Falta uma coisa: o PDF gerado pelo sistema deve ser encaminhado <strong>por ofício</strong> à URS adscrita, com cópia para cmir@saude.mg.gov.br. É o registro formal do que foi informado.</p>
+</div>
+
+<footer>
+  <p><strong>Coordenação de Monitoramento e Integração Regional — CMIR</strong><br/>
+  Subsecretaria de Regionalização · Secretaria de Estado de Saúde de Minas Gerais</p>
+  <p style="margin-top:12px">
+    Sistema: <a href="https://cmir-ses-mg.github.io/monitoramento-rio-doce/">cmir-ses-mg.github.io/monitoramento-rio-doce</a><br/>
+    Suporte: <a href="mailto:cmir@saude.mg.gov.br">cmir@saude.mg.gov.br</a> — ou o botão <strong>Suporte</strong> na tela de entrada.
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
