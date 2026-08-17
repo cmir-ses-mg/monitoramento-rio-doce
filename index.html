@@ -1471,17 +1471,18 @@ function _sincronizarEnderecoObra(a){
   if(_enderecosObras)_enderecosObras[chave]=end;
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
   try{
-    fetch(APPS_SCRIPT_URL,{
-      method:'POST',mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
+    postAppsScript({
         acao:'salvarEnderecoObra',
         municipio:municipio.municipio||'',
         acao_instrumento:a.acao_instrumento||'',
         acao_tipo:a.acao_tipo||'',
         endereco:end,
         editado_por:(_sessaoUsuario&&(_sessaoUsuario.nome||_sessaoUsuario.email))||municipio.responsavel||''
-      })
+    }).catch(function(e){
+      // Endereço é dado de conveniência (vem pré-preenchido no bimestre
+      // seguinte): logamos, mas não interrompemos o preenchimento.
+      console.warn('salvarEnderecoObra:',e);
+      _ultimoEnderecoEnviado[chave]=null;
     });
   }catch(e){ console.warn('salvarEnderecoObra:',e); }
 }
@@ -2120,7 +2121,10 @@ const DOCS_CUSTEIO=[
   {key:'contrato',label:'Contrato'},
   {key:'edital',label:'Edital'},
   {key:'ordem_servico',label:'Ordem de serviço'},
-  {key:'comprovante_pagamento',label:'Comprovante de pagamento'},
+  // A lista de serviços não tinha onde anexar a nota fiscal. A chave segue
+  // 'comprovante_pagamento' para não perder o que já foi marcado/anexado —
+  // só o rótulo passou a nomear a NF explicitamente.
+  {key:'comprovante_pagamento',label:'Nota fiscal / comprovante de pagamento'},
   // O registro fotográfico virou um documento como os outros: ele comprova a
   // execução tanto quanto uma ordem de serviço, e como card separado ficava
   // solto no fim da página, fora da atividade a que se refere.
@@ -2932,6 +2936,33 @@ function alertModalClose(){
 
 // ── ENVIO PARA O GOOGLE DRIVE ────────────────────────────────────────────────
 
+// Fala com o Apps Script no MESMO padrão que já funciona no resto do arquivo:
+// Content-Type text/plain (aceito sem preflight) e modo cors, para que a
+// resposta possa ser LIDA. Rejeita quando o Apps Script devolve status:'erro',
+// para que quem chama possa avisar quem está preenchendo.
+async function postAppsScript(payload){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')){
+    throw new Error('URL do Apps Script nao configurada');
+  }
+  const resp=await fetch(APPS_SCRIPT_URL,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(payload)
+  });
+  if(!resp.ok) throw new Error('HTTP '+resp.status+' '+resp.statusText);
+  const txt=await resp.text();
+  let data=null;
+  try{ data=JSON.parse(txt); }
+  catch(e){
+    // Resposta em HTML = tela de login do Google. Quase sempre significa que a
+    // implantacao do Apps Script nao esta como "Quem pode acessar: Qualquer
+    // pessoa" — nesse caso nada chega ao Drive e nenhum erro aparecia antes.
+    throw new Error('Resposta inesperada do servidor (a implantacao do Apps Script pode estar restrita a usuarios logados).');
+  }
+  if(data&&data.status==='erro') throw new Error(data.mensagem||'erro no servidor');
+  return data;
+}
+
 // Converte File para base64
 function fileToBase64(file){
   return new Promise(function(resolve, reject){
@@ -2977,30 +3008,48 @@ async function enviarAnexosDrive(a){
 
   if(!arquivosAcao.length)return;
 
-  // Enviar em lote
-  const uploads = await Promise.all(arquivosAcao.map(async function(item){
+  // Um arquivo por requisição. Em lote, um único anexo grande estourava o
+  // limite do POST e levava todos os outros com ele — e, com o catch vazio de
+  // antes, sem nenhum sinal de que isso havia acontecido.
+  const falhas = [];
+  const enviados = [];
+  for (let i = 0; i < arquivosAcao.length; i++){
+    const item = arquivosAcao[i];
+    if(item.file._enviadoDrive) continue;
     try{
       const b64 = await fileToBase64(item.file);
-      return { nome: item.file.name, tipo: item.file.type, b64: b64, subpasta: item.subpasta };
-    }catch(e){ return null; }
-  }));
+      await postAppsScript({
+        acao: 'uploadAnexos',
+        municipio: municipio.municipio || '',
+        bimestre: municipio.bimestre || '',
+        ano: municipio.ano || '',
+        acao_tipo: nomePastaAcao(a),
+        arquivos: [{ nome: item.file.name, tipo: item.file.type, b64: b64, subpasta: item.subpasta }]
+      });
+      item.file._enviadoDrive = true;
+      enviados.push(item.file.name);
+    }catch(e){
+      console.error('Drive anexo falhou:', item.file.name, e);
+      falhas.push(item.file.name + ' (' + (e.message||e) + ')');
+    }
+  }
+  if(falhas.length){
+    _avisarFalhaDrive('Anexos que não subiram para o Drive', falhas);
+  }
+  return { enviados: enviados, falhas: falhas };
+}
 
-  const payload = {
-    acao: 'uploadAnexos',
-    municipio: municipio.municipio || '',
-    bimestre: municipio.bimestre || '',
-    ano: municipio.ano || '',
-    acao_tipo: nomePastaAcao(a),
-    arquivos: uploads.filter(Boolean)
-  };
-
-  try{
-    await fetch(APPS_SCRIPT_URL, {
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-  }catch(e){ console.warn('Drive anexos:', e); }
+// Falha de upload não pode ser silenciosa: quem preencheu precisa saber que o
+// arquivo não está no Drive, senão o formulário é enviado achando que está.
+function _avisarFalhaDrive(titulo, lista){
+  const corpo = lista.slice(0,8).join('\n')
+    + (lista.length>8 ? '\n... e mais ' + (lista.length-8) : '');
+  if(typeof showAlertModal === 'function'){
+    showAlertModal(titulo + ':\n\n' + corpo
+      + '\n\nTente anexar novamente. Se persistir, avise a CMIR — o restante do formulário continua salvo.', '\u26A0\uFE0F');
+  }else{
+    alert(titulo + ':\n\n' + corpo);
+  }
 }
 
 // Envia os extratos bancários do município (capa) ao Drive.
@@ -3010,31 +3059,37 @@ async function enviarAnexosMunicipioDrive(){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
   const arquivosMun = (arquivos['mun_extratos_municipio'] || []).filter(function(f){return !f._enviadoDrive;});
   if(!arquivosMun.length)return;
-  const uploads = await Promise.all(arquivosMun.map(async function(f){
+  // Um extrato por requisição: cada um é marcado como enviado individualmente,
+  // então uma falha isolada não impede o reenvio só do que faltou.
+  const okNomes = [];
+  const falhas = [];
+  for (let i = 0; i < arquivosMun.length; i++){
+    const f = arquivosMun[i];
     try{
       const b64 = await fileToBase64(f);
-      return { nome: f.name, tipo: f.type, b64: b64, subpasta: 'extratos_municipio' };
-    }catch(e){ return null; }
-  }));
-  const payload = {
-    acao: 'uploadAnexos',
-    municipio: municipio.municipio || '',
-    bimestre: municipio.bimestre || '',
-    ano: municipio.ano || '',
-    acao_tipo: 'Capa_Municipio',
-    arquivos: uploads.filter(Boolean)
-  };
-  try{
-    await fetch(APPS_SCRIPT_URL, {
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    // Só agora o registro é gravado — o arquivo está no Drive.
-    arquivosMun.forEach(function(f){f._enviadoDrive=true;});
-    registrarExtratosEnviados(arquivosMun.map(function(f){return f.name;}));
+      await postAppsScript({
+        acao: 'uploadAnexos',
+        municipio: municipio.municipio || '',
+        bimestre: municipio.bimestre || '',
+        ano: municipio.ano || '',
+        acao_tipo: 'Capa_Municipio',
+        arquivos: [{ nome: f.name, tipo: f.type, b64: b64, subpasta: 'extratos_municipio' }]
+      });
+      f._enviadoDrive = true;
+      okNomes.push(f.name);
+    }catch(e){
+      console.error('Drive extrato falhou:', f.name, e);
+      falhas.push(f.name + ' (' + (e.message||e) + ')');
+    }
+  }
+  // O registro só é gravado para os extratos que de fato chegaram ao Drive.
+  if(okNomes.length){
+    registrarExtratosEnviados(okNomes);
     _atualizarAvisoExtrato();
-  }catch(e){ console.warn('Drive extratos município:', e); }
+  }
+  if(falhas.length){
+    _avisarFalhaDrive('Extratos que não subiram para o Drive', falhas);
+  }
 }
 
 // Gera o PDF como base64 e envia ao Drive (substitui se existir)
@@ -3056,12 +3111,13 @@ async function enviarPDFDrive(){
       nomePDF: nomePDF,
       pdfB64: pdfB64
     };
-    await fetch(APPS_SCRIPT_URL, {
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-  }catch(e){ console.warn('Drive PDF:', e); }
+    const r = await postAppsScript(payload);
+    console.log('PDF no Drive:', r && r.url);
+    return r;
+  }catch(e){
+    console.error('Drive PDF:', e);
+    _avisarFalhaDrive('O PDF do formulário não subiu para o Drive', [String(e.message||e)]);
+  }
 }
 
 // Gera o PDF e retorna como string base64 (sem fazer download)
@@ -3192,6 +3248,7 @@ function gerarPDFBase64(){
           doc.text((at._status||'Planejamento')+'  \u00b7  R$ '+vlrAt.toLocaleString('pt-BR',{minimumFractionDigits:2}),186,y+1,{align:'right'});
           y+=10;
           row('Descri\u00e7\u00e3o do servi\u00e7o:',at.descricao);
+          row('Detalhamento:',_detalhamentoDe(at));
           row('Quantidade:',at.quantidade);
           row('Unidade de medida:',at.unidade_medida);
           row('CNES:',at.cnes);
@@ -3516,8 +3573,11 @@ async function enviarAcaoSheet(a, tipoRegistro){
       aquisicao_numero:1,total_aquisicoes:1,
       timestamp:new Date().toISOString()
     });
-    await fetch(APPS_SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  }catch(e){console.warn('Sheets enviarAcaoSheet:',e);}
+    await postAppsScript(payload);
+  }catch(e){
+    console.error('Sheets enviarAcaoSheet:',e);
+    throw e;
+  }
 }
 
 
@@ -4498,6 +4558,10 @@ function _recalcPctMedicoes(a){
     m.pct=Math.min(100,(v/base.valor)*100).toFixed(2).replace('.',',');
   });
 }
+// OBSOLETA para o percentual da obra: soma percentuais de bases diferentes
+// (cada boletim é medido contra o contrato da sua empresa). Mantida apenas
+// porque código de leitura de registros antigos ainda a chama. Para o % do
+// período e o acumulado, use _recalcResumoObra.
 function totalPctMedicoes(a){
   return _medicoesObra(a).reduce(function(s,m){return s+_pctDaMedicao(m);},0);
 }
@@ -4539,7 +4603,8 @@ function _sincPctMedido(){
   const elV=document.getElementById('med-total-valor');
   if(elV)elV.textContent='R$ '+totalMedidoObra(a).toLocaleString('pt-BR',{minimumFractionDigits:2});
   const elF=document.getElementById('med-resumo-frase');
-  if(elF)elF.innerHTML=_fraseResumoMedicoes({soma:atual,anterior:ant,acumulado:tot});
+  if(elF)elF.innerHTML=_fraseResumoMedicoes({soma:atual,anterior:ant,acumulado:tot,
+    base:r.base,baseOrigem:r.baseOrigem,medido:r.medido});
   // Trocar a empresa de um boletim muda quem executou no período — o card
   // "Informações do projeto" precisa acompanhar sem esperar um re-render.
   _sincEmpresaExecutora();
@@ -4607,14 +4672,36 @@ async function _excluirMedicao(i){
 // boletim. Antes o % do período era campo manual quando não havia medição e
 // virava calculado quando havia — o mesmo rótulo mudando de comportamento no
 // meio do preenchimento, em outro card. Agora só existe um caminho.
+// Denominador do percentual da OBRA: o valor da ação no plano. É o mesmo
+// critério de calcPctExecucaoAuto — o contrato de uma empresa pode cobrir só
+// parte da ação, então usar contrato como base faz o percentual estourar antes
+// de a obra estar pronta. Só cai para o total contratado quando a ação não tem
+// valor no plano.
+function _baseAcaoObra(a){
+  const plano=parseValorSheet(a&&a.acao_valor)||0;
+  if(plano>0)return {valor:plano, origem:'valor da ação no plano'};
+  const totalEmp=_empresasObra(a).reduce(function(s,x){return s+parseBRL(x.valor||'');},0);
+  if(totalEmp>0)return {valor:totalEmp, origem:'total contratado'};
+  return {valor:0, origem:''};
+}
+
 function _recalcResumoObra(a){
   _recalcPctMedicoes(a);
-  const soma=totalPctMedicoes(a);
+  // O percentual do período era a SOMA dos percentuais dos boletins. Cada
+  // boletim, porém, é medido contra o contrato da sua própria empresa: dois
+  // boletins de R$ 500.000, cada um sobre um contrato de R$ 2.000.000, davam
+  // 25% + 25% = 50% — quando o que foi executado é R$ 1.000.000 de uma obra de
+  // R$ 5.500.000, ou seja 18,18%. Somar frações de denominadores diferentes não
+  // dá percentual de coisa nenhuma. Agora divide-se o valor medido total pela
+  // base única da ação, que é o que a prestação de contas cobra.
+  const base=_baseAcaoObra(a);
+  const medido=totalMedidoObra(a);
+  const soma=(base.valor>0&&medido>0)?Math.min(100,(medido/base.valor)*100):0;
   a.pct_medido_periodo=soma?soma.toFixed(2).replace('.',','):'';
   const ant=_pctAcumuladoAnterior(a);
   const tot=Math.min(100,ant+soma);
   a.pct_acumulado_periodo=tot?tot.toFixed(2).replace('.',','):'';
-  return {soma:soma, anterior:ant, acumulado:tot};
+  return {soma:soma, anterior:ant, acumulado:tot, base:base.valor, baseOrigem:base.origem, medido:medido};
 }
 function renderMedicoesObraCard(){
   const a=acq();
@@ -4627,7 +4714,7 @@ function renderMedicoesObraCard(){
 
   let html='<div class="card" id="card-financeiro-obra">'
     +'<div class="card-title">Medições do período</div>'
-    +'<p class="hint" style="margin-bottom:12px">Um bimestre pode ter mais de um boletim de medição. Informe o valor de cada um — o percentual é calculado sobre o contrato da empresa, e o % do período é a soma deles.</p>';
+    +'<p class="hint" style="margin-bottom:12px">Um bimestre pode ter mais de um boletim de medição. Informe o valor de cada um. O <strong>% ao lado de cada boletim</strong> é quanto ele representa do contrato daquela empresa; o <strong>% acumulado</strong> lá embaixo é outra conta: o total executado sobre o valor da ação no plano.</p>';
 
   _recalcPctMedicoes(a);
   meds.forEach(function(m,i){
@@ -4714,10 +4801,18 @@ function renderMedicoesObraCard(){
 // congelada no valor de antes — a tela dizia "0,05% deste bimestre" enquanto o
 // acumulado ao lado já contava 0,55%.
 function _fraseResumoMedicoes(resumo){
-  return 'Tudo calculado a partir dos boletins acima. O valor executado é a soma deles, e é ele que vai para a planilha.'
-    +(resumo.anterior
-      ? ' O acumulado soma '+resumo.soma.toFixed(2).replace('.',',')+'% deste bimestre com '+resumo.anterior.toFixed(2).replace('.',',')+'% já medidos antes.'
-      : (resumo.soma?' Todo o percentual acumulado vem deste bimestre — não há medição registrada antes.':''));
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  let s='Tudo calculado a partir dos boletins acima. O valor executado é a soma deles, e é ele que vai para a planilha.';
+  // O denominador aparece escrito: sem ele, não há como conferir o percentual
+  // de cabeça — e era justamente aí que o número errado passava despercebido.
+  if(resumo.base>0&&resumo.medido>0){
+    s+=' O percentual deste bimestre é '+fmt(resumo.medido)+' sobre '+fmt(resumo.base)
+      +' ('+(resumo.baseOrigem||'valor da ação no plano')+').';
+  }
+  s+=(resumo.anterior
+    ? ' O acumulado soma '+resumo.soma.toFixed(2).replace('.',',')+'% deste bimestre com '+resumo.anterior.toFixed(2).replace('.',',')+'% já medidos antes.'
+    : (resumo.soma?' Todo o percentual acumulado vem deste bimestre — não há medição registrada antes.':''));
+  return s;
 }
 
 function renderEmpresasObraCard(){
@@ -7145,6 +7240,22 @@ function renderNotasFiscaisCard(ref,opts){
   return html+'</div>';
 }
 
+// Detalhamento a exibir. Registros anteriores a este campo guardaram o texto
+// livre em `descricao`; quando há item de lista e a descricao não bate com o
+// texto do item, o que está ali é detalhamento antigo — recuperamos em vez de
+// deixar sumir da tela.
+function _detalhamentoDe(at){
+  if(!at) return '';
+  if(at.detalhamento) return at.detalhamento;
+  if(!at.item_num||at.item_num==='outra') return '';
+  const lista=(typeof _getListaCusteioAtual==='function')?_getListaCusteioAtual():[];
+  const item=(lista||[]).find(function(it){return it.num==at.item_num;});
+  if(item&&String(at.descricao||'').trim()&&String(at.descricao||'').trim()!==String(item.descricao||'').trim()){
+    return at.descricao;
+  }
+  return '';
+}
+
 function _resumoServicoAtiv(at){
   const p=[];
   if(at.quantidade)p.push(String(at.quantidade)+(at.unidade_medida?' '+at.unidade_medida:''));
@@ -7172,6 +7283,9 @@ function _renderAtividadesCardDOM(){
       +'<div style="flex:1;min-width:0">'
         +(at.item_num?'<div style="font-size:12px;color:var(--ink3);margin-bottom:2px">'+('Item '+at.item_num)+'</div>':'')
         +'<div style="font-size:13px;font-weight:700;color:var(--g800)">'+(at.descricao||'Atividade '+(realIdx+1))+'</div>'
+        // O detalhamento é o que a pessoa escreveu sobre ESTA execução —
+        // precisa aparecer no card fechado, senão só reabrindo para editar.
+        +(function(){const d=_detalhamentoDe(at);return d?'<div style="font-size:11.5px;color:var(--ink2);margin-top:3px;line-height:1.45">'+String(d).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>':'';})()
         +'<div style="font-size:11px;color:var(--ink3);margin-top:2px">'+(function(){const r=_resumoServicoAtiv(at);return r?r+'&nbsp;&middot;&nbsp;':'';})()+'<span style="color:'+cor+';font-weight:600">'+at._status+'</span></div>'
       +'</div>'
       +'<div style="font-size:13px;font-weight:700;color:var(--g700);flex-shrink:0">R$ '+vlr.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
@@ -7240,7 +7354,17 @@ function _buildAtividadeEditCard(editIdx){
     +selectorHTML
     +'<div style="margin-bottom:12px">'
       +'<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);display:block;margin-bottom:6px">Detalhamento / Descri\u00e7\u00e3o</label>'
-      +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'descricao',this.value)\" placeholder=\"Descreva a atividade contratada...\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+(at.descricao||'')+'</textarea>'
+      // Campo livre: qualquer detalhe da atividade cabe aqui. Ele grava em
+      // `detalhamento`, e NÃO mais em `descricao` — que é a identidade da
+      // atividade (nome do item da lista) e serve de chave no servidor.
+      // Escrever nos dois trocava o nome do item pelo texto digitado, criava
+      // linha duplicada na planilha e fazia o texto sumir quando a atividade
+      // voltava do servidor. Com "Outra", não há item de lista: aí o
+      // detalhamento É a atividade, e _updAtiv espelha para a descricao.
+      +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'detalhamento',this.value)\" placeholder=\""+(at.item_num==='outra'?'Descreva a atividade — este texto identifica a atividade...':'Detalhe o que foi executado, o local, o período, o que for relevante...')+"\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+_detalhamentoDe(at)+'</textarea>'
+      +(at.item_num&&at.item_num!=='outra'
+        ? '<div style="font-size:10.5px;color:var(--ink3);margin-top:4px">Opcional. O nome do item da lista fica preservado; o que voc\u00ea escrever aqui \u00e9 acrescentado a ele.</div>'
+        : '')
     +'</div>'
     // O status saiu daqui. Esta etapa responde "o que foi feito"; em que pé
     // está o processo é pergunta da etapa Contratação, que é onde ela já era
@@ -7291,8 +7415,13 @@ function _onSelecionarAtividade(idx, sel){
   // "Outra": mantém a marcação e libera a descrição livre (obrigatória).
   if(sel.value==='outra'){
     const at=a._atividades[idx];
+    // Antes de virar "Outra", recupera qualquer detalhamento que estivesse
+    // guardado no formato antigo (dentro da descricao).
+    if(!at.detalhamento){ const _d=_detalhamentoDe(at); if(_d) at.detalhamento=_d; }
     at.item_num='outra';
-    if(at._descAuto){ at.descricao=''; delete at._descAuto; }
+    // Em "Outra" a descricao passa a ser o próprio detalhamento.
+    at.descricao=at.detalhamento||'';
+    if(at._descAuto){ delete at._descAuto; }
     if(at._unidadeAuto){ at.unidade_medida=''; delete at._unidadeAuto; }
     _renderAtividadesCardDOM();
     return;
@@ -7307,6 +7436,10 @@ function _onSelecionarAtividade(idx, sel){
   const item=lista.find(function(it){return it.num===num;});
   if(item){
     const at=a._atividades[idx];
+    // Saindo de "Outra" para um item da lista: o que era descricao livre passa
+    // a ser detalhamento, e a descricao recebe o nome oficial do item.
+    if(at.item_num==='outra'&&at.descricao&&!at.detalhamento){ at.detalhamento=at.descricao; }
+    if(!at.detalhamento){ const _d=_detalhamentoDe(at); if(_d) at.detalhamento=_d; }
     at.item_num=item.num;
     at.descricao=item.descricao;
     // Itens de contratação de equipe sugerem a unidade "Pessoa" — é onde o
@@ -7329,6 +7462,12 @@ function _updAtiv(idx,f,v){
   const a=acq();
   if(!a._atividades||!a._atividades[idx])return;
   a._atividades[idx][f]=v;
+  // Com "Outra" não existe item de lista para dar nome à atividade: o
+  // detalhamento é a própria atividade, então ele alimenta a descricao (que é
+  // a chave usada no servidor e na mesclagem entre bimestres).
+  if(f==='detalhamento'&&a._atividades[idx].item_num==='outra'){
+    a._atividades[idx].descricao=v;
+  }
   // Digitar na unidade de medida tira a marca de "sugerido pelo sistema".
   if(f==='unidade_medida')delete a._atividades[idx]._unidadeAuto;
 }
@@ -7408,10 +7547,15 @@ function confirmarAtividade(idx){
   // pré-definida (ex: "Custeio para o Hospital Vital Brazil") só têm o campo
   // livre — exigir item da lista ali travava a confirmação para sempre.
   // Com "Outra" selecionada, a descrição é obrigatória por definição.
+  // Com "Outra", a identidade da atividade vem do detalhamento — garantimos
+  // que a descricao esteja espelhada antes de validar e de gerar a chave.
+  if(at.item_num==='outra'&&at.detalhamento&&!String(at.descricao||'').trim()){
+    at.descricao=at.detalhamento;
+  }
   if(!String(at.descricao||'').trim()){
     showAlertModal(at.item_num==='outra'
       ? 'Descreva a atividade no campo "Detalhamento / Descrição" antes de confirmar.'
-      : 'Descreva a atividade antes de confirmar.','⚠️');
+      : 'Selecione a atividade na lista ou descreva-a antes de confirmar.','⚠️');
     return;
   }
   const STATUS_EXIGE_VALOR=['Contratado','Em execução','Concluído'];
@@ -7507,7 +7651,7 @@ function salvarAtividadeCusteioServidor(at){
       acao_tipo:a.acao_tipo||'',
       bimestre:a.bimestre||municipio.bimestre||'',
       ano:a.ano||municipio.ano||'',
-      atividade:{item_num:at.item_num||'', descricao:at.descricao||'', status:at._status||'Planejamento', quantidade:at.quantidade||'', unidade_medida:at.unidade_medida||'', cnes:at.cnes||'', empresas:at.empresas||[]}
+      atividade:{item_num:at.item_num||'', descricao:at.descricao||'', detalhamento:at.detalhamento||'', status:at._status||'Planejamento', quantidade:at.quantidade||'', unidade_medida:at.unidade_medida||'', cnes:at.cnes||'', empresas:at.empresas||[]}
     })}).catch(function(){});
   }catch(e){}
 }
@@ -7552,6 +7696,7 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
     const ch=(r.item_num||'')+'|'+(r.descricao||'').substring(0,30);
     novasConfirmadas.push({
       descricao:r.descricao||'',
+      detalhamento:r.detalhamento||'',
       item_num:r.item_num||'',
       quantidade:r.quantidade||'',
       unidade_medida:r.unidade_medida||'',
