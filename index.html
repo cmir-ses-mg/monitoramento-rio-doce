@@ -904,7 +904,7 @@ function onMoneyInput(el){
 }
 function onMoneyBlur(el){
   el.value=fmtBRL(el.value);sv(el);validateField(el);
-  if(el.name==='valor_executado'||el.name==='valor_proprio'){
+  if(el.name==='valor_executado'){
     if(acq().modalidade_objeto==='servico'){
       calcAtividades();
     } else {
@@ -4136,7 +4136,6 @@ function registroParaAcq(reg){
     descricao_item:        reg.descricao_item   || '',
     quantidade:            String(reg.quantidade || ''),
     valor_executado:       _fmtNumParaCampoBRL(reg.valor_executado),
-    valor_proprio:         _fmtNumParaCampoBRL(reg.valor_proprio),
     valor_total_utilizado: _fmtNumParaCampoBRL(reg.valor_total_utilizado),
     fonte_recurso:         reg.fonte_recurso    || '',
     saldo_conta:           reg.saldo_conta      || '',
@@ -5274,26 +5273,23 @@ function calcPctExecucaoAuto(a){
 // ultrapassar, deixa o número em vermelho e mostra um banner de aviso no
 // topo do card financeiro correspondente. Reutilizado por obra, equipamento
 // e custeio (cada um chama com o elemento/cartão certo).
-// Compara o valor utilizado (SEM contar recurso próprio) com o valor do plano.
-// Se ultrapassar, verifica se o recurso próprio já preenchido cobre a
-// diferença: se sim, mostra confirmação verde (coberto); se não, mostra alerta
-// vermelho com o quanto ainda falta cobrir. Reutilizado por obra, equipamento
-// e custeio (cada um chama com o valor-base certo, sem incluir o próprio).
-function _verificarEstouroOrcamento(a,valorBase,proprio,elResumo,cardId,corPadrao){
+// Compara o valor utilizado com o valor previsto no plano e, se ultrapassar,
+// deixa o número em vermelho e mostra um aviso no topo do card financeiro.
+// Reutilizado por obra, equipamento e custeio.
+//
+// O campo "recurso próprio" foi removido do formulário. Enquanto a checagem
+// continuou consultando `valor_proprio`, ela lia sempre 0 — e todo estouro
+// aparecia como não coberto, mandando a pessoa preencher um campo inexistente.
+// O aviso agora só constata o estouro, que é o fato que o formulário conhece;
+// a origem do recurso complementar não é informada aqui.
+function _verificarEstouroOrcamento(a,valorBase,elResumo,cardId,corPadrao){
   if(!elResumo)return;
   const valorPlano=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
   const excedente=valorPlano>0?(valorBase-valorPlano):0;
   const estourou=excedente>0;
-  const coberto=estourou&&(proprio||0)>=excedente;
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
-  const cor=estourou&&!coberto?'#C0392B':corPadrao;
-  elResumo.style.color=cor;
-  // "recurso próprio", sem citar rendimentos: quem cobre o excedente é o campo
-  // `valor_proprio` da AÇÃO. O rendimento é um valor informado da conta do
-  // município no bimestre — não custeia ação nem entra em nenhuma conta de
-  // execução. Citar os dois juntos sugeria que o rendimento poderia cobrir o
-  // estouro, que é exatamente o que não pode acontecer na prestação de contas.
-  elResumo.title=estourou&&!coberto?'⚠️ Valor utilizado ultrapassa o valor total da ação no plano':(coberto?'✓ Excedente coberto com recurso próprio':'');
+  elResumo.style.color=estourou?'#C0392B':corPadrao;
+  elResumo.title=estourou?'⚠️ Valor utilizado ultrapassa o valor total da ação no plano':'';
   const cardEl=document.getElementById(cardId);
   const avisoId='aviso-estouro-'+cardId;
   document.getElementById(avisoId)?.remove();
@@ -5301,22 +5297,15 @@ function _verificarEstouroOrcamento(a,valorBase,proprio,elResumo,cardId,corPadra
     const aviso=document.createElement('div');
     aviso.id=avisoId;
     const titleEl=cardEl.querySelector('.card-title');
-    if(coberto){
-      aviso.style.cssText='background:#E8F5E9;border:1.5px solid var(--g500);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--g800);font-weight:600;line-height:1.5';
-      aviso.innerHTML='✓ O valor ultrapassou o plano ('+fmt(valorBase)+' > '+fmt(valorPlano)+'), mas o excedente de '+fmt(excedente)+' já está coberto pelo recurso próprio informado ('+fmt(proprio||0)+').';
-    }else{
-      const falta=excedente-(proprio||0);
-      aviso.style.cssText='background:#FDEDEC;border:1.5px solid #C0392B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:#C0392B;font-weight:600;line-height:1.5';
-      aviso.innerHTML='⚠️ O valor utilizado ('+fmt(valorBase)+') ultrapassa o valor total da ação no plano ('+fmt(valorPlano)+'). Faltam <u>'+fmt(falta)+'</u> pra cobrir o excedente com recurso próprio.';
-    }
+    aviso.style.cssText='background:#FDEDEC;border:1.5px solid #C0392B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:#C0392B;font-weight:600;line-height:1.5';
+    aviso.innerHTML='⚠️ O valor utilizado ('+fmt(valorBase)+') ultrapassa em <u>'+fmt(excedente)+'</u> o valor total da ação no plano ('+fmt(valorPlano)+'). Confira os valores lançados; se estiverem corretos, registre em Execução finalística que o excedente é coberto por recurso próprio.';
     if(titleEl)titleEl.insertAdjacentElement('afterend',aviso);else cardEl.prepend(aviso);
   }
 }
 function calcTotalUtilizado(){
-  const proprio=parseBRL(acq().valor_proprio||'');
   const executado=parseBRL(acq().valor_executado||''); // executado NESTE bimestre
   const historico=parseBRL(acq()._executado_historico||0); // acumulado dos bimestres anteriores
-  const totalUtilizado=executado+historico; // recurso próprio já está DENTRO do executado (é um detalhamento, não um valor extra)
+  const totalUtilizado=executado+historico;
   const formatted=totalUtilizado>0?totalUtilizado.toLocaleString('pt-BR',{minimumFractionDigits:2}):'';
   acq().valor_total_utilizado=formatted;
   const elAuto=document.getElementById('val_total_auto')||document.getElementById('val_total_auto_equip')||document.getElementById('val_total_auto_obra');
@@ -5325,7 +5314,7 @@ function calcTotalUtilizado(){
     else elAuto.textContent='R$ '+(formatted||'0,00');
   }
   const cardId=isAcqObra()?'card-financeiro-obra':'card-financeiro-custeio';
-  _verificarEstouroOrcamento(acq(),executado+historico,proprio,elAuto,cardId,'var(--g700)');
+  _verificarEstouroOrcamento(acq(),executado+historico,elAuto,cardId,'var(--g700)');
   const elHist=document.getElementById('val_executado_historico');
   if(elHist&&acq()._executado_historico!==undefined)elHist.textContent='R$ '+historico.toLocaleString('pt-BR',{minimumFractionDigits:2});
 }
@@ -6127,10 +6116,26 @@ function _medidoAnteriorPorEmpresa(registros){
   return porEmpresa;
 }
 
+// Identidade de uma lista de equipamentos, estável entre bimestres. Usada para
+// não contar a mesma lista duas vezes: `id` quando existe; senão o período de
+// origem da lista + os anexos + o valor, que é o que a distingue de outra.
+function _chaveLista(l){
+  if(!l) return '';
+  if(l.id) return 'id:'+l.id;
+  const nomes=[].concat(l.nomes||l._nomes||[]).join('|');
+  return [ (l.bimestre||''), (l.ano||''), nomes, String(l.valor||'') ].join('~');
+}
+
 function _montarResumoAnterior(registros){
   const periodos=[];
   let totalListas=0, totalNotasAnt=0;
   let execAcumulado=0, pctAcumulado=0;
+  // As listas de equipamentos atravessam os bimestres: CADA registro carrega
+  // todas as listas da ação até ali, não só as novas do período. Somando um
+  // registro por vez, a mesma lista entrava uma vez por bimestre — cartilha.png
+  // de R$ 1.200 aparecia 6 vezes e virava R$ 7.200. Este conjunto garante que
+  // cada lista conte exatamente uma vez no acumulado.
+  const listasVistas={};
   _consolidarRegistros(registros).forEach(function(r){
     // O valor do bimestre sai das listas detalhadas sempre que elas existem:
     // um mesmo bimestre pode ter várias listas, e a coluna agregada
@@ -6138,10 +6143,21 @@ function _montarResumoAnterior(registros){
     // daquele período — listas incluídas depois não entram nela. O agregado
     // fica como reserva para registros antigos, anteriores ao detalhamento.
     const detalhadas=_listasDoRegistro(r).filter(function(l){return parseValorSheet(l.valor||0)>0;});
-    const somaDetalhada=detalhadas.reduce(function(s,l){return s+parseValorSheet(l.valor||0);},0);
-    const vAgregado=parseValorSheet(r.valor_lista_equipamentos||0);
+    // Só as listas que ESTREIAM neste período entram na conta. As repetidas são
+    // o mesmo item reaparecendo por causa do carry-over.
+    const novas=detalhadas.filter(function(l){
+      const k=_chaveLista(l);
+      if(!k||listasVistas[k])return false;
+      listasVistas[k]=true;
+      return true;
+    });
+    const somaDetalhada=novas.reduce(function(s,l){return s+parseValorSheet(l.valor||0);},0);
+    // O agregado só serve para registros antigos, sem detalhamento por lista.
+    // Onde há detalhamento, ele é ignorado: além de não permitir deduplicação,
+    // ele já vem cumulativo, e usá-lo aqui reintroduziria a soma dobrada.
+    const vAgregado=detalhadas.length?0:parseValorSheet(r.valor_lista_equipamentos||0);
     const vLista=somaDetalhada>0?somaDetalhada:vAgregado;
-    const qtdListas=detalhadas.length||(vAgregado>0?1:0);
+    const qtdListas=novas.length||(vAgregado>0?1:0);
     const vNotas=parseValorSheet(r.valor_notas||0);
     // Valor e percentual DO PERÍODO; o acumulado é a soma corrente da série.
     const vExec=_executadoDoPeriodo(r);
@@ -7701,10 +7717,9 @@ function calcAtividades(){
   const SPAG=['Em execução','Concluído'];
   const vlrC=ativConf.reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
   const pago=ativConf.filter(function(at){return SPAG.includes(at._status);}).reduce(function(s,at){return s+(at.empresas||[]).reduce(function(ss,e){return ss+parseBRL(e.valor||'');},0);},0);
-  const hist=a._executado_historico||0;const prop=parseBRL(a.valor_proprio||'');
+  const hist=a._executado_historico||0;
   // Valor Total Utilizado = o que já foi de fato executado/pago (histórico +
-  // atividades pagas) — o recurso próprio NÃO é somado aqui: ele é uma fonte
-  // de financiamento do MESMO valor contratado, não um gasto adicional.
+  // atividades pagas).
   const total=pago+hist;
   const fmt=function(v){return 'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2});};
   const el1=document.getElementById('val_custeio_contratado');
@@ -7713,9 +7728,9 @@ function calcAtividades(){
   const elFin=document.getElementById('val_financiamento_custeio');
   if(el1){
     el1.textContent=fmt(vlrC);
-    _verificarEstouroOrcamento(a,vlrC,prop,el1,'card-financeiro-custeio','var(--g700)');
+    _verificarEstouroOrcamento(a,vlrC,el1,'card-financeiro-custeio','var(--g700)');
   }
-  if(el3){el3.textContent=fmt(total);_verificarEstouroOrcamento(a,pago+hist,prop,el3,'card-financeiro-custeio','var(--g700)');}
+  if(el3){el3.textContent=fmt(total);_verificarEstouroOrcamento(a,pago+hist,el3,'card-financeiro-custeio','var(--g700)');}
   if(elH)elH.textContent=fmt(hist+pago);if(elG)elG.textContent=fmt(vlrC);
   if(elFin){
     const valorPlano=Number(a.acao_valor||(typeof _dadosPlanoParaAcq==='function'&&(_dadosPlanoParaAcq(a)||{}).valor)||0);
@@ -7732,8 +7747,10 @@ function calcAtividades(){
       elFin.innerHTML='✓ Totalmente financiado pelo Plano: <strong>'+fmt(vlrParaChecagem)+'</strong>';
     }else{
       const excedente=vlrParaChecagem-valorPlano;
-      const coberto=prop>=excedente;
-      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>Recurso próprio/rendimentos: <strong style="color:'+(coberto?'var(--g700)':'#C0392B')+'">'+fmt(prop)+'</strong> de '+fmt(excedente)+' necessários'+(coberto?' ✓':'');
+      // A linha "Recurso próprio/rendimentos" saiu junto com o campo: ela
+      // mostrava sempre R$ 0,00 e cobrava um valor que não há onde informar.
+      elFin.innerHTML='Plano: <strong>'+fmt(valorPlano)+'</strong><br>'
+        +'<span style="color:#C0392B">Contratado excede o plano em <strong>'+fmt(excedente)+'</strong></span>';
     }
   }
   a.valor_executado=vlrC.toLocaleString('pt-BR',{minimumFractionDigits:2});
