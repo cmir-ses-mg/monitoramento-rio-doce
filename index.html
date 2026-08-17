@@ -1089,6 +1089,47 @@ function renderPhaseBar(){
 }
 function navToPhase(i){saveAllInputs();phase=i;renderAll();}
 
+// ── QUANDO UMA AÇÃO ESTÁ DE FATO CONCLUÍDA ───────────────────────────────────
+// Duas condições, juntas. Ter as etapas preenchidas não é conclusão: numa ação
+// que atravessa vários bimestres, quase tudo já vem preenchido pelo carry-over
+// do período anterior, e isso sozinho pintava a ação de verde com a meta ainda
+// "Em andamento" e uma fração do valor executado.
+//
+//   1. Status da meta = "Concluída" (declaração de quem preenche)
+//   2. Executado acumulado >= valor da ação no plano (o fato financeiro)
+//
+// Devolve as duas separadas para quem precisa explicar o que falta.
+function _acaoConcluidaDeFato(a){
+  if(!a) return {ok:false, metaOk:false, valorOk:false, executado:0, plano:0};
+
+  const metaOk = String(a.status_meta||'').trim().toLowerCase()==='concluída'
+              || String(a.status_meta||'').trim().toLowerCase()==='concluida';
+
+  const plano = parseValorSheet(a.acao_valor)||0;
+
+  // Executado acumulado = o que veio dos bimestres anteriores + o que esta ação
+  // já registra neste período. Para obra, os boletins de medição são a fonte
+  // mais precisa e já vêm somados em calcPctExecucaoAuto.
+  const historico = parseBRL(a._executado_historico||0)
+    || ((a._resumoAnterior&&a._resumoAnterior.executadoAcumulado)||0);
+  let doPeriodo = parseBRL(a.valor_executado||'');
+  if(!doPeriodo){
+    doPeriodo = ((a._listasEquip||[]).filter(function(l){return l.confirmado;})
+      .reduce(function(s,l){return s+parseBRL(l.valor||'');},0));
+  }
+  const executado = historico + doPeriodo;
+
+  let valorOk;
+  if(isAcqObra(a) && typeof calcPctExecucaoAuto==='function'){
+    valorOk = calcPctExecucaoAuto(a)>=100 || (plano>0 && executado>=plano);
+  }else{
+    valorOk = plano>0 && executado>=plano;
+  }
+
+  return {ok:(metaOk&&valorOk), metaOk:metaOk, valorOk:valorOk,
+          executado:executado, plano:plano};
+}
+
 // ── STATUS DE PREENCHIMENTO DA AÇÃO ──────────────────────────────────────────
 function calcAcqStatus(a){
   if(!a||!a._key)return'empty';
@@ -1131,7 +1172,12 @@ function calcAcqStatus(a){
   ];
   const done=steps.filter(Boolean).length;
   if(done===0)return'empty';
-  if(done===steps.length)return'complete';
+  // 'complete' pinta o 🟢 rotulado "Concluída" no menu lateral. Ter as quatro
+  // etapas com algum conteúdo não é conclusão — numa ação plurianual, boa parte
+  // desse conteúdo veio do bimestre anterior. Verde só com meta concluída E
+  // valor executado alcançando o valor da ação; fora isso, segue amarelo
+  // ("Em andamento"), que é o que a situação realmente é.
+  if(done===steps.length&&_acaoConcluidaDeFato(a).ok)return'complete';
   return'partial';
 }
 
@@ -1143,7 +1189,7 @@ async function unlockAcq(idx){
     const vl=v>0?(v+' correção'+(v>1?'ões':'')):'1 envio anterior';
     const ok=await showConfirmModal(
       'Reabrir ação já enviada?',
-      'Esta ação já foi enviada à planilha ('+vl+'). Se alterar e concluir novamente, o registro anterior será substituído automaticamente pelo novo.',
+      'Esta ação já foi enviada ('+vl+'). Se alterar e concluir novamente, o registro anterior será substituído automaticamente pelo novo.',
       'Reabrir para edição','⚠️'
     );
     if(!ok)return;
@@ -2307,7 +2353,7 @@ function contentHTML(){
   const obra=isAcqObra();const servico=acq().modalidade_objeto==='servico';
   const isLocked=!!(acq()._locked);
   const lockedBanner=isLocked?`<div class="locked-banner">
-    <div class="locked-banner-text">🔒 <strong>${acq()._autoConcluida?'Ação concluída automaticamente'+(acq()._autoConcluidaBimestre?' no '+acq()._autoConcluidaBimestre:'')+' — o valor acumulado atingiu 100% do valor total da ação.':'Ação concluída.'}</strong> Os campos estão bloqueados para edição.</div>
+    <div class="locked-banner-text">🔒 <strong>${acq()._autoConcluida?'Ação concluída automaticamente'+(acq()._autoConcluidaBimestre?' no '+acq()._autoConcluidaBimestre:'')+' — a meta foi registrada como concluída e o valor acumulado alcançou o valor total da ação.':'Ação concluída.'}</strong> Os campos estão bloqueados para edição.</div>
     <button class="btn-reopen" onclick="unlockAcq(${acqIdx})">✏️ Reabrir para edição</button>
   </div>`:'';
   const modeBadge=acq().modalidade_objeto?`<span class="mode-badge mode-equip">${obra?'🏗️ Obra':servico?'🛠️ Serviço':'📦 Aquisição'}</span>`:'' ;
@@ -3449,7 +3495,7 @@ async function concludeAction(){
     icone='📊'; okLabel='Concluir ação'; okColor='var(--g600)';
   } else {
     const vl=vezes>0?(vezes+' correção'+(vezes>1?'ões':'')):'1 envio anterior';
-    titulo='Ação já enviada à planilha';
+    titulo='Ação já enviada';
     corpo='Esta ação já foi registrada ('+vl+'). O registro anterior será substituído automaticamente pelo novo.'
       +'\n\nApós concluir, os campos ficam bloqueados para edição.';
     icone='⚠️'; okLabel='Enviar correção'; okColor='#E64A19';
@@ -3545,12 +3591,27 @@ async function enviarAcaoSheet(a, tipoRegistro){
       // Empresas contratadas da obra: uma linha por empresa, com contrato e
       // valor. O campo empresa_executora continua indo junto (nomes
       // concatenados) para não quebrar quem já lê aquela coluna.
-      empresas_contratadas:JSON.stringify((a._empresas||[])
-        .filter(function(e){return (e.nome||'').trim();})
-        .map(function(e){
+      // Rede de segurança: nunca gravar lista vazia por cima de empresas que já
+      // existem no histórico. Um envio feito antes de o histórico chegar
+      // apagava o cadastro na planilha, e o bimestre seguinte abria a
+      // Contratação como se a obra nunca tivesse sido contratada.
+      empresas_contratadas:JSON.stringify((function(){
+        const atuais=(a._empresas||[]).filter(function(e){return (e.nome||'').trim();});
+        if(atuais.length) return atuais.map(function(e){
           return {nome:e.nome||'',cnpj:e.cnpj||'',valor:e.valor||'',
                   data_assinatura:e.data_assinatura||'',obs:e.obs||''};
-        })),
+        });
+        let doHist=[];
+        try{ doHist=_empresasDoHistorico([].concat(a._registrosHistorico||[])); }catch(e){ doHist=[]; }
+        if(doHist.length){
+          console.warn('empresas_contratadas: lista vazia na tela; preservando '
+            +doHist.length+' empresa(s) do histórico para não apagar o cadastro.');
+        }
+        return doHist.map(function(e){
+          return {nome:e.nome||'',cnpj:e.cnpj||'',valor:e.valor||'',
+                  data_assinatura:e.data_assinatura||'',obs:e.obs||''};
+        });
+      })()),
       valor_contratado_empresas:(a._empresas||[])
         .reduce(function(s,e){return s+parseBRL(e.valor||'');},0)
         .toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
@@ -3601,7 +3662,7 @@ function saveSession(){
       // bimestre — e, quando o formato do resumo mudava numa versão nova, a
       // cópia velha continuava sendo lida e as colunas novas apareciam vazias.
       // Sai daqui: é sempre recalculado a partir da planilha.
-      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_docs:undefined,_historicoCarregado:undefined,_resumoAnterior:undefined,_empresas:a._empresas||[]})),
+      aquisicoes:aquisicoes.map(a=>({...a,_nfs:undefined,_docs:undefined,_historicoCarregado:undefined,_resumoAnterior:undefined,_registrosHistorico:undefined,_empresas:a._empresas||[]})),
       phase,acqIdx,
       savedAt:new Date().toISOString()
     };
@@ -3641,6 +3702,7 @@ function _acqParaPayload(a){
   // empresa vinha do histórico atual. Daí um dizer 83,34% e o outro "—".
   return JSON.stringify({...a,_nfs:undefined,_docs:undefined,
     _resumoAnterior:undefined,_historicoCarregado:undefined,_executado_historico:undefined,
+    _registrosHistorico:undefined,
     _empresas:a._empresas||[]});
 }
 
@@ -4317,12 +4379,34 @@ function _temEmpresaObra(a){
 }
 // Ações preenchidas antes desta tela têm a empresa no campo de texto antigo.
 // Ela vira o primeiro registro, para ninguém precisar redigitar.
+// Converte o texto legado `empresa_executora` em cadastro de empresa. Só serve
+// para registros anteriores ao JSON `empresas_contratadas` — e é destrutiva se
+// rodar cedo demais, porque o cadastro que ela cria não tem CNPJ nem valor de
+// contrato, e é ELE que vai para a planilha no envio seguinte.
 function _migrarEmpresaExecutora(a){
+  if(!a)return;
   if(_empresasObra(a).length)return;
-  const nome=(a.empresa_executora||'').trim();
-  if(!nome)return;
-  a._empresas.push({nome:nome,cnpj:'',valor:'',
-                    data_assinatura:'',obs:'',confirmado:true});
+
+  // O histórico chega por fetch assíncrono: até ele voltar, `_empresas` está
+  // vazio por não ter carregado ainda, não por não existir empresa. Migrar
+  // nesse intervalo criava uma empresa falsa que depois sobrescrevia as reais
+  // na planilha. Se a ação tem histórico a carregar, espera.
+  if(a._historicoCarregado===false||a._historicoCarregado===undefined){
+    if(!a._sent&&(a.acao_instrumento||a.acao_tipo))return;
+  }
+
+  const bruto=(a.empresa_executora||'').trim();
+  if(!bruto)return;
+
+  // `empresa_executora` guarda os nomes unidos por " / " (ver join em
+  // _sincEmpresaExecutora). Migrar o texto inteiro como um nome só transformava
+  // duas empresas em uma — exatamente o "Empresa 2 / Empresa 1" gravado na
+  // planilha. Desmembra de volta em uma empresa por nome.
+  const nomes=bruto.split(/\s+\/\s+/).map(function(s){return s.trim();}).filter(Boolean);
+  (nomes.length?nomes:[bruto]).forEach(function(nome){
+    a._empresas.push({nome:nome,cnpj:'',valor:'',
+                      data_assinatura:'',obs:'',confirmado:true});
+  });
 }
 // A planilha, a tela de revisão e os boletins ainda leem "empresa_executora"
 // como texto único. Com várias empresas na mesma obra, o campo guarda a que
@@ -4802,7 +4886,7 @@ function renderMedicoesObraCard(){
 // acumulado ao lado já contava 0,55%.
 function _fraseResumoMedicoes(resumo){
   const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
-  let s='Tudo calculado a partir dos boletins acima. O valor executado é a soma deles, e é ele que vai para a planilha.';
+  let s='Tudo calculado a partir dos boletins acima. O valor executado é a soma deles.';
   // O denominador aparece escrito: sem ele, não há como conferir o percentual
   // de cabeça — e era justamente aí que o número errado passava despercebido.
   if(resumo.base>0&&resumo.medido>0){
@@ -5061,7 +5145,7 @@ async function doSubmit(){
   const iS=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
   const btn=document.querySelector('.btn-send-nav');
   if(btn){btn.disabled=true;btn.innerHTML='Enviando...';}
-  showLoading('Enviando dados para a planilha...');
+  showLoading('Enviando dados...');
   try{
     if(APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('COLE_AQUI')){
       for(const[i,a]of aquisicoes.entries()){
@@ -5807,7 +5891,7 @@ async function carregarExecutadoHistorico(){
   const r=await buscarExecutadoHistoricoDetalhado(a.acao_instrumento,a.acao_tipo);
   if(r.valor>0){
     a._executado_historico=r.valor;
-    if(elHist){elHist.textContent='R$ '+r.valor.toLocaleString('pt-BR',{minimumFractionDigits:2});elHist.title=r.registros+' registro(s) "Concluído" encontrado(s) na planilha para esta ação.';}
+    if(elHist){elHist.textContent='R$ '+r.valor.toLocaleString('pt-BR',{minimumFractionDigits:2});elHist.title=r.registros+' registro(s) "Concluído" encontrado(s) para esta ação.';}
   }else{
     a._executado_historico=0;
     if(elHist){elHist.textContent='R$ 0,00';elHist.title='Nenhum registro "Concluído" encontrado para esta ação.';}
@@ -5840,7 +5924,12 @@ async function carregarHistoricoBimestreAnterior(instrumento, tipo){
     // (aplicarHistoricoNaAcao usa o último elemento do array, então invertemos
     // aqui para manter compatibilidade: o mais recente precisa ficar por último).
     return data.registros.slice().reverse();
-  }catch(e){ return null; }
+  }catch(e){
+    // Silenciosa, esta falha faz a ação abrir como se nunca tivesse sido
+    // contratada: sem histórico, não há empresas, nem lotes, nem acumulado.
+    console.error('carregarHistoricoBimestreAnterior falhou para '+instrumento+' / '+tipo+':', e);
+    return null;
+  }
 }
 
 // Lê as listas de equipamentos de um registro CRU da planilha. O histórico
@@ -6145,6 +6234,30 @@ function renderResumoAnterior(){
   +'</div>';
 }
 
+// Diagnóstico do carry-over. Nada que atravessa bimestre deveria sumir em
+// silêncio: se sumir, este log diz em qual etapa se perdeu — quantos períodos
+// vieram da planilha, quantas empresas foram remontadas e de quais períodos.
+// Abra o console (F12) ao entrar na ação para ler.
+function _logCarryover(acqObj, registros){
+  try{
+    const regs=registros||[];
+    const periodos=regs.map(function(r){return (r.bimestre||'?')+'/'+(r.ano||'?');});
+    const comEmpresa=regs.filter(function(r){
+      try{ return (JSON.parse(r.empresas_contratadas||'[]')||[]).length>0; }catch(e){ return false; }
+    }).map(function(r){return (r.bimestre||'?')+'/'+(r.ano||'?');});
+    console.log('[carry-over] '+(acqObj.acao_tipo||'?')
+      +' | períodos no histórico: '+(periodos.join(', ')||'nenhum')
+      +' | períodos com empresa gravada: '+(comEmpresa.join(', ')||'nenhum')
+      +' | empresas na tela agora: '+((acqObj._empresas||[]).length)
+      +' | atividades: '+((acqObj._atividades||[]).length)
+      +' | lotes: '+((acqObj._lotes||[]).length));
+    if(periodos.length&&!comEmpresa.length){
+      console.warn('[carry-over] Há histórico, mas nenhum período trouxe "empresas_contratadas". '
+        +'A empresa foi cadastrada antes dessa coluna existir, ou o envio daquele bimestre não a gravou.');
+    }
+  }catch(e){ console.warn('[carry-over] diagnóstico falhou:', e); }
+}
+
 async function aplicarHistoricoNaAcao(registros, acqObj){
   if(!registros || !registros.length) return;
   const reg = registros[registros.length-1];
@@ -6154,6 +6267,9 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // executado, listas de equipamentos enviadas e situação de cada período.
   // Guardado na própria ação para o card "O que já foi informado antes".
   acqObj._resumoAnterior = _montarResumoAnterior(registros);
+  // Guardado para o envio poder conferir o que já existe antes de gravar uma
+  // lista de empresas vazia por cima (ver empresas_contratadas em enviarAcaoSheet).
+  acqObj._registrosHistorico = registros;
 
   // 1. Dados FIXOS da obra: endereço, empresa, fiscal e data de início não
   // mudam de um bimestre para o outro — pedir de novo a cada período só gera
@@ -6176,7 +6292,13 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   try{
     const doHist=_empresasDoHistorico(registros);
     if(doHist.length)acqObj._empresas=_mesclarEmpresas(acqObj._empresas,doHist);
-  }catch(e){}
+  }catch(e){
+    // Um JSON malformado numa linha antiga derrubava a lista inteira sem
+    // deixar rastro — e a contratação reaparecia como "Planejamento".
+    console.error('Empresas do histórico não puderam ser mescladas em "'
+      +(acqObj.acao_tipo||'?')+'":', e);
+  }
+  _logCarryover(acqObj, registros);
 
   // As notas fiscais e os boletins de medição são do PERÍODO — não são copiados
   // para o bimestre novo. O que atravessa é o total já lançado antes, exibido
@@ -6220,10 +6342,12 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
     delete acqObj._autoConcluidaBimestre;
   }
   if(!acqObj._locked){
-    const valorPlano=parseValorSheet(acqObj.acao_valor)||0;
-    const acumuladoPorBoletins=(acqObj.modalidade_objeto==='obra'&&typeof calcPctExecucaoAuto==='function')?calcPctExecucaoAuto(acqObj):0;
-    const atingiu100=(acumuladoPorBoletins>=100)||(valorPlano>0&&valHist>=valorPlano);
-    if(atingiu100){
+    // O bloqueio automático olhava só o dinheiro. Faltava a outra metade da
+    // regra: a meta precisa estar declarada como concluída. Sem isso, uma ação
+    // que atingiu o valor mas continua com pendências físicas nascia travada,
+    // e quem preenche tinha de reabrir para poder informar o que faltava.
+    const chk=_acaoConcluidaDeFato(acqObj);
+    if(chk.ok){
       acqObj._locked=true;
       acqObj._autoConcluida=true;
       acqObj._autoConcluidaBimestre=(reg.bimestre||'')+(reg.ano?' / '+reg.ano:'');
@@ -6264,7 +6388,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
           if(lotesAnteriores || listasAnteriores || poolAnterior || atividadesAnteriores) break;
         }
       }
-    }catch(e){}
+    }catch(e){ console.warn('Sessão anterior ilegível em '+k+':', e); }
   }
 
   // Fallback: buscar em TODAS as chaves do localStorage
