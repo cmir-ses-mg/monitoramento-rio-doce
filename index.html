@@ -1560,11 +1560,16 @@ function saveAllInputs(){
   // Salvar chips marcados — garantir sincronia DOM → objeto
   if(phase>=1&&phase<=4){
     document.querySelectorAll('.chip-group').forEach(function(group){
-      const onChip=group.querySelector('.chip.on input[type=radio]');
-      if(onChip&&onChip.name&&onChip.value){
-        if(_difere(acq()[onChip.name],onChip.value))mudou=true;
-        acq()[onChip.name]=onChip.value;
-      }
+      const chipOn=group.querySelector('.chip.on');
+      if(!chipOn)return;
+      const radio=chipOn.querySelector('input[type=radio]');
+      if(!radio||!radio.name)return;
+      // A opção vem do data-attribute do chip, não do `value` do rádio: é a
+      // fonte que nenhum outro código reescreve.
+      const valor=chipOn.getAttribute('data-chip-value')||radio.value;
+      if(!valor)return;
+      if(_difere(acq()[radio.name],valor))mudou=true;
+      acq()[radio.name]=valor;
     });
   }
   if(mudou&&phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
@@ -2355,7 +2360,7 @@ function chipsHTML(label,key,opts,required){
   const rStar=required?'<span class="req">*</span>':'';
   const rAttr=required?' data-chip-required="'+key+'"':'';
   const errDiv=required?`<div class="err-msg" id="err_${key}">Campo obrigatório</div>`:'';
-  return`<div class="field"${rAttr}><label>${label}${rStar}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur===o?' on':''}" onclick="pickChip('${key}','${o}',this)"><input type="radio" name="${key}" value="${o}">${o}</label>`).join('')}</div>${errDiv}</div>`;
+  return`<div class="field"${rAttr}><label>${label}${rStar}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur===o?' on':''}" data-chip-value="${o}" onclick="pickChip('${key}','${o}',this)"><input type="radio" name="${key}" value="${o}">${o}</label>`).join('')}</div>${errDiv}</div>`;
 }
 
 // Grupos de chip obrigatórios. A varredura de [data-required] só alcança
@@ -3738,6 +3743,32 @@ async function concludeAction(){
   });
   if(semNF.length){
     showAlertModal('Anexe a nota fiscal da(s) lista(s) marcada(s) como "Recebido" antes de concluir.','⚠️');
+    return;
+  }
+
+  // Mesma exigência das listas, aplicada às atividades de custeio: marcar a
+  // execução como "Total / Concluído" é declarar que o serviço foi prestado e
+  // pago. Sem execução lançada, não há valor nem nota fiscal para comprovar —
+  // e a comprovação documental é cobrada pelas resoluções.
+  const _ativsSemComprovacao=[];
+  (a._atividades||[]).forEach(function(at,idx){
+    if(!at||!at.confirmado)return;
+    if(String(at.situacao_execucao||'')!=='Total / Concluído')return;
+    const ref='ativ_'+idx;
+    const temExecucao=(a._notas||[]).some(function(n){
+      return (n.ref||'')===ref && n.confirmado && parseBRL(n.valor||'')>0;
+    });
+    if(!temExecucao){
+      _ativsSemComprovacao.push(at.descricao||('Atividade '+(idx+1)));
+    }
+  });
+  if(_ativsSemComprovacao.length){
+    const lista=_ativsSemComprovacao.map(function(nome){
+      return '<br>&bull; '+String(nome).slice(0,70);
+    }).join('');
+    showAlertModal('Atividade marcada como <strong>Total / Concluído</strong> precisa da execução lançada, com valor e nota fiscal, em <strong>Entrega/Serv.</strong>:'
+      +lista
+      +'<br><br>Se o serviço ainda não foi pago, marque como <em>Parcial</em> em vez de concluído.','⚠️');
     return;
   }
 
@@ -5397,6 +5428,10 @@ function renderMain(){
 function restoreInputs(){
   const store=phase===0?municipio:acq();
   document.querySelectorAll('input,select,textarea').forEach(el=>{
+    // Rádio e checkbox ficam de fora: neles `value` identifica a OPÇÃO, não o
+    // valor do campo. Sobrescrever fazia as três opções de um chip passarem a
+    // valer a mesma coisa, e a escolha da pessoa era perdida na gravação.
+    if(el.type==='radio'||el.type==='checkbox')return;
     if(el.name&&store[el.name]!==undefined&&el.type!=='file')el.value=store[el.name];
   });
   if(phase===5){
@@ -7692,6 +7727,17 @@ function renderNotasFiscaisCard(ref,opts){
   });
 
   const vazio=a._notas.filter(_daqui).length===0;
+
+  // Aviso na própria tela: sem ele, a exigência só apareceria ao tentar
+  // concluir, depois de a pessoa já achar que terminou.
+  if(vazio&&_ref.indexOf('ativ_')===0){
+    const _at=(a._atividades||[])[parseInt(_ref.slice(5),10)];
+    if(_at&&String(_at.situacao_execucao||'')==='Total / Concluído'){
+      html+='<div style="margin:8px 0 4px;padding:9px 11px;background:#FDEDEC;border:1.5px solid #C0392B;border-radius:7px;font-size:11.5px;color:#C0392B;line-height:1.5;font-weight:600">'
+        +'⚠️ Esta atividade está marcada como <strong>Total / Concluído</strong>. Lance a execução com valor e nota fiscal — sem isso a ação não pode ser concluída.'
+      +'</div>';
+    }
+  }
   html+=(vazio?'<div style="font-size:12px;color:var(--ink3);font-style:italic;padding:12px 0 10px;text-align:center">Nenhuma '+(servico?'execução':'nota fiscal')+' registrada ainda.</div>':'')
     +'<button type="button" onclick="_addNota(\''+_ref+'\')" style="width:100%;padding:10px;font-size:12.5px;font-weight:600;border:1.5px dashed var(--g400);border-radius:8px;background:#fff;color:var(--g700);cursor:pointer">+ Adicionar '+(vazio?(servico?'execução':'nota fiscal'):'outra')+'</button>';
 
