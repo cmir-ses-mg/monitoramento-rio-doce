@@ -3238,7 +3238,16 @@ function confirmModalResolve(val){
   if(_confirmResolve){_confirmResolve(val);_confirmResolve=null;}
 }
 function showAlertModal(msg, icon){
-  document.getElementById('alert-modal-body').textContent=msg;
+  // O corpo era preenchido com textContent, então qualquer marcação aparecia
+  // crua na tela ("<strong>Status da meta</strong>"). Aqui o texto é escapado
+  // primeiro e só então uma lista curta de tags de ênfase é reabilitada — as
+  // mensagens incluem dados digitados pelo município (nome de arquivo, nome de
+  // atividade), que não podem ser injetados como HTML.
+  const esc=String(msg==null?'':msg)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/&lt;(\/?(?:strong|b|em|i|u|br)\s*\/?)&gt;/gi,'<$1>')
+    .replace(/\n/g,'<br>');
+  document.getElementById('alert-modal-body').innerHTML=esc;
   document.getElementById('alert-modal-icon').textContent=icon||'⚠️';
   document.getElementById('alert-modal').style.display='flex';
 }
