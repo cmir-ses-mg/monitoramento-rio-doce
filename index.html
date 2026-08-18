@@ -1611,6 +1611,17 @@ function _restaurarCapaDoPeriodo(bim,ano){
   }catch(e){console.warn('restaurarCapa:',e);}
 }
 
+// Correspondência bimestre -> meses. Fica numa constante só: o mesmo par
+// aparece na colinha da tela inicial e pode ser reaproveitado em avisos.
+const BIMESTRE_MESES=[
+  {rot:'1º', meses:'Jan/Fev'},
+  {rot:'2º', meses:'Mar/Abr'},
+  {rot:'3º', meses:'Mai/Jun'},
+  {rot:'4º', meses:'Jul/Ago'},
+  {rot:'5º', meses:'Set/Out'},
+  {rot:'6º', meses:'Nov/Dez'}
+];
+
 // Trocar bimestre/ano invalida o que estava carregado do período anterior.
 function onTrocarPeriodo(el){
   // O período ANTES da troca precisa ser lido antes de qualquer coisa: o select
@@ -2396,7 +2407,19 @@ function contentHTML(){
           +'<option value="">Selecione...</option>'
           +[2026,2027,2028,2029,2030,2031,2032].map(function(a){return '<option value="'+a+'"'+(municipio.ano==a?' selected':'')+'>'+a+'</option>';}).join('')
         +'</select></div>'
-    +'</div></div>'
+    +'</div>'
+    // Colinha de referência. O select diz "3º Bimestre", mas quem preenche
+    // pensa nos meses que viveu — sem a correspondência à vista, a conferência
+    // do período depende de contar nos dedos, e é o tipo de erro que só
+    // aparece bimestres depois, quando o dado já está na série.
+    +'<div style="margin-top:2px;font-size:11px;color:var(--ink3);line-height:1.6">'
+      +BIMESTRE_MESES.map(function(b){
+          return '<span style="display:inline-block;margin-right:14px;white-space:nowrap">'
+            +'<strong style="font-weight:600;color:var(--ink2)">'+b.rot+'</strong> · '+b.meses
+          +'</span>';
+        }).join('')
+    +'</div>'
+    +'</div>'
     +'<div class="card"><div class="card-title">Responsável</div>'
     +fld('Nome completo','responsavel','text','Nome do responsável')
     +'<div class="row2">'+fld('Cargo / Função','cargo','text','Ex: Secretário de Saúde')+fld('Telefone','telefone','phone','(31) 99999-9999')+'</div>'
@@ -5144,7 +5167,7 @@ async function doSubmit(){
   const iS=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
   const btn=document.querySelector('.btn-send-nav');
   if(btn){btn.disabled=true;btn.innerHTML='Enviando...';}
-  showLoading('Enviando dados...');
+  showLoading('Enviando dados para...');
   try{
     if(APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('COLE_AQUI')){
       for(const[i,a]of aquisicoes.entries()){
