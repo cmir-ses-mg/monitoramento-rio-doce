@@ -1005,6 +1005,7 @@ function validateStep(){
   if(isAdmin(_sessaoUsuario))return true;
   let ok=true;
   document.querySelectorAll('[data-required=true]').forEach(el=>{if(!validateField(el))ok=false;});
+  if(!validarChipsObrigatorios())ok=false;
   if(!ok){const fe=document.querySelector('.error');if(fe)fe.scrollIntoView({behavior:'smooth',block:'center'});}
   return ok;
 }
@@ -1172,13 +1173,22 @@ function calcAcqStatus(a){
   ];
   const done=steps.filter(Boolean).length;
   if(done===0)return'empty';
-  // 'complete' pinta o 🟢 rotulado "Concluída" no menu lateral. Ter as quatro
-  // etapas com algum conteúdo não é conclusão — numa ação plurianual, boa parte
-  // desse conteúdo veio do bimestre anterior. Verde só com meta concluída E
-  // valor executado alcançando o valor da ação; fora isso, segue amarelo
-  // ("Em andamento"), que é o que a situação realmente é.
-  if(done===steps.length&&_acaoConcluidaDeFato(a).ok)return'complete';
+  // 'complete' aqui significa PREENCHIMENTO completo: as quatro etapas foram
+  // respondidas neste bimestre. Não significa que a ação acabou — para isso
+  // existe _acaoConcluidaDeFato, consultada separadamente por quem precisa
+  // saber de conclusão (o 🟢 do menu e o bloqueio automático).
+  //
+  // Misturar as duas ideias nesta função fazia o modal de envio acusar
+  // "parcialmente preenchida" numa ação com todos os campos respondidos, só
+  // porque a meta seguia "Em andamento" — que é o estado normal de uma ação
+  // plurianual, não uma pendência de preenchimento.
+  if(done===steps.length)return'complete';
   return'partial';
+}
+
+// Preenchimento completo: todas as etapas respondidas neste bimestre.
+function _preenchimentoCompleto(a){
+  return calcAcqStatus(a)==='complete';
 }
 
 async function unlockAcq(idx){
@@ -1218,8 +1228,16 @@ function renderAcqBar(){
   }
 
   const ILBL={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
-  const STATUS_DOT={'empty':'🔴','partial':'🟡','complete':'🟢','locked':'✅'};
-  const STATUS_LABEL={'empty':'Não iniciada','partial':'Em andamento','complete':'Concluída','locked':'Concluída ✓'};
+  const STATUS_DOT={'empty':'🔴','partial':'🟡','complete':'🟢','locked':'✅','preenchida':'🟡'};
+  const STATUS_LABEL={'empty':'Não iniciada','partial':'Em andamento','complete':'Concluída','locked':'Concluída ✓','preenchida':'Em andamento'};
+
+  // O menu diz se a AÇÃO acabou, não se o formulário foi preenchido. Uma ação
+  // com tudo respondido mas meta em andamento continua amarela: verde só com
+  // meta concluída e valor executado alcançando o valor da ação.
+  function _statusMenu(a,st){
+    if(st!=='complete')return st;
+    return (typeof _acaoConcluidaDeFato==='function'&&_acaoConcluidaDeFato(a).ok)?'complete':'preenchida';
+  }
 
   function stepDone(a,s){
     if(!a)return false;
@@ -1246,7 +1264,8 @@ function renderAcqBar(){
     html+=`<div class="sidebar-section-title">${ILBL[inst]||inst}</div>`;
     groups[inst].forEach(item=>{
       const agg=calcAcqStatusAgregado(ben,item);
-      const status=agg.status;
+      // Preenchimento completo != ação concluída (ver _statusMenu).
+      const status=agg.multi?agg.status:_statusMenu(agg.a,agg.status);
       const isActive=agg.multi?(agg.idxs.includes(acqIdx)):(agg.aIdx===acqIdx&&acqIdx>=0);
       const a=agg.multi?null:agg.a;
       const locked=status==='locked';
@@ -1763,6 +1782,14 @@ function pickChip(key,val,el){
   acq()[key]=val;
   el.closest('.chip-group').querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
   el.classList.add('on');
+  // Escolher o chip limpa o aviso na hora — deixar o "Campo obrigatório"
+  // aceso depois de respondido faria a pessoa procurar erro onde não há.
+  const campo=el.closest('[data-chip-required]');
+  if(campo){
+    campo.classList.remove('error');
+    const err=document.getElementById('err_'+key);
+    if(err)err.style.display='none';
+  }
   handleConditional(key,val);
 }
 
@@ -2144,9 +2171,114 @@ else
   return`<div class="field"><label>${label} ${rStar}</label>${inp}${errDiv}</div>`;
 }
 
-function chipsHTML(label,key,opts){
+// Os dados do responsável vêm da conta e não são redigitados a cada bimestre.
+// Redigitando, a mesma pessoa era gravada de formas diferentes ao longo da
+// série, e não havia como saber qual versão era a correta.
+function _cardResponsavelLeitura(){
+  const esc=function(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');};
+  const linha=function(rot,val,vazio){
+    return '<div style="flex:1;min-width:150px">'
+      +'<div style="font-size:11px;color:var(--ink3);margin-bottom:3px">'+rot+'</div>'
+      +'<div style="font-size:13.5px;font-weight:600;color:'+(val?'var(--ink)':'var(--ink3)')+'">'
+        +(val?esc(val):(vazio||'—'))
+      +'</div></div>';
+  };
+  return '<div class="card"><div class="card-title">Responsável</div>'
+    +'<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">'
+      +linha('Nome completo',municipio.responsavel)
+      +linha('Cargo / Função',municipio.cargo,'não informado')
+    +'</div>'
+    +'<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;align-items:flex-start">'
+      +linha('E-mail institucional',municipio.email)
+      +linha('Telefone',municipio.telefone,'não informado')
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border2);flex-wrap:wrap">'
+      +'<div style="font-size:11px;color:var(--ink3);line-height:1.5;flex:1;min-width:200px">Vêm do seu acesso. Corrigindo aqui, valem para os próximos bimestres; o que já foi registrado guarda o que era verdade na época.</div>'
+      +'<button type="button" class="btn" onclick="abrirEditarMeusDados()" style="white-space:nowrap">Editar meus dados</button>'
+    +'</div>'
+  +'</div>';
+}
+
+function abrirEditarMeusDados(){
+  const esc=function(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');};
+  const inp='width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);box-sizing:border-box';
+  const lbl='font-size:11px;color:var(--ink3);display:block;margin-bottom:4px';
+  const wrap=document.createElement('div');
+  wrap.id='modal-meus-dados';
+  wrap.style.cssText='position:fixed;inset:0;background:rgba(15,40,32,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:18px';
+  wrap.innerHTML='<div style="background:#fff;border-radius:12px;max-width:430px;width:100%;padding:22px;box-shadow:0 18px 45px rgba(0,0,0,.22)">'
+    +'<div style="font-size:16px;font-weight:700;color:var(--g800);margin-bottom:4px">Meus dados</div>'
+    +'<div style="font-size:12px;color:var(--ink3);line-height:1.5;margin-bottom:16px">A correção passa a valer para os próximos bimestres. O e-mail identifica sua conta e não muda aqui.</div>'
+    +'<div style="margin-bottom:12px"><label style="'+lbl+'">Nome completo</label>'
+      +'<input id="md-nome" type="text" value="'+esc(municipio.responsavel)+'" style="'+inp+'"/></div>'
+    +'<div style="margin-bottom:12px"><label style="'+lbl+'">Cargo / Função</label>'
+      +'<input id="md-cargo" type="text" value="'+esc(municipio.cargo)+'" placeholder="Ex: Referência Técnica" style="'+inp+'"/></div>'
+    +'<div style="margin-bottom:6px"><label style="'+lbl+'">Telefone</label>'
+      +'<input id="md-telefone" type="text" value="'+esc(municipio.telefone)+'" placeholder="(31) 99999-9999" style="'+inp+'"/></div>'
+    +'<div id="md-erro" style="font-size:12px;color:#C0392B;min-height:17px;margin:6px 0 10px"></div>'
+    +'<div style="display:flex;gap:9px;justify-content:flex-end">'
+      +'<button type="button" class="btn" onclick="document.getElementById(\'modal-meus-dados\').remove()">Cancelar</button>'
+      +'<button type="button" class="btn btn-primary" id="md-salvar" onclick="salvarMeusDados()">Salvar</button>'
+    +'</div>'
+  +'</div>';
+  document.body.appendChild(wrap);
+  const n=document.getElementById('md-nome'); if(n)n.focus();
+}
+
+async function salvarMeusDados(){
+  const nome=(document.getElementById('md-nome')||{}).value||'';
+  const cargo=(document.getElementById('md-cargo')||{}).value||'';
+  const telefone=(document.getElementById('md-telefone')||{}).value||'';
+  const erro=document.getElementById('md-erro');
+  const btn=document.getElementById('md-salvar');
+  if(!String(nome).trim()){ if(erro)erro.textContent='Informe o nome completo.'; return; }
+  if(btn){btn.disabled=true;btn.textContent='Salvando...';}
+  try{
+    const r=await postAppsScript({acao:'atualizarMeusDados',
+      email:(_sessaoUsuario&&_sessaoUsuario.email)||municipio.email||'',
+      nome:nome, cargo:cargo, telefone:telefone});
+    // A sessão local acompanha o cadastro: sem isso, o próximo bimestre abriria
+    // com o dado antigo e a correção pareceria não ter pegado.
+    municipio.responsavel=(r&&r.nome)||nome;
+    municipio.cargo=(r&&r.cargo)||cargo;
+    municipio.telefone=(r&&r.telefone)||telefone;
+    if(_sessaoUsuario){
+      _sessaoUsuario.nome=municipio.responsavel;
+      _sessaoUsuario.cargo=municipio.cargo;
+      _sessaoUsuario.telefone=municipio.telefone;
+      try{ localStorage.setItem('rdoce_sessao',JSON.stringify(_sessaoUsuario)); }catch(e){}
+    }
+    const m=document.getElementById('modal-meus-dados'); if(m)m.remove();
+    renderAll();
+  }catch(e){
+    console.error('salvarMeusDados:',e);
+    if(erro)erro.textContent='Não foi possível salvar: '+(e.message||e);
+    if(btn){btn.disabled=false;btn.textContent='Salvar';}
+  }
+}
+
+function chipsHTML(label,key,opts,required){
   const cur=acq()[key]||'';
-  return`<div class="field"><label>${label}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur===o?' on':''}" onclick="pickChip('${key}','${o}',this)"><input type="radio" name="${key}" value="${o}">${o}</label>`).join('')}</div></div>`;
+  const rStar=required?'<span class="req">*</span>':'';
+  const rAttr=required?' data-chip-required="'+key+'"':'';
+  const errDiv=required?`<div class="err-msg" id="err_${key}">Campo obrigatório</div>`:'';
+  return`<div class="field"${rAttr}><label>${label}${rStar}</label><div class="chip-group">${opts.map(o=>`<label class="chip${cur===o?' on':''}" onclick="pickChip('${key}','${o}',this)"><input type="radio" name="${key}" value="${o}">${o}</label>`).join('')}</div>${errDiv}</div>`;
+}
+
+// Grupos de chip obrigatórios. A varredura de [data-required] só alcança
+// campos de digitação; um chip é um conjunto de <label>, e sem esta checagem
+// a etapa passava com o Status da meta em branco.
+function validarChipsObrigatorios(){
+  let ok=true;
+  document.querySelectorAll('[data-chip-required]').forEach(function(campo){
+    const key=campo.getAttribute('data-chip-required');
+    const preenchido=!!String((acq()||{})[key]||'').trim();
+    campo.classList.toggle('error',!preenchido);
+    const err=document.getElementById('err_'+key);
+    if(err)err.style.display=preenchido?'none':'block';
+    if(!preenchido)ok=false;
+  });
+  return ok;
 }
 
 
@@ -2350,12 +2482,12 @@ function renderCapaMunicipio(modoResumo){
     // repasse é do plano e não muda com o monitoramento, e a barra dava a
     // impressão de progresso de execução, que é outra coisa.
     +'<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
-      +'<div class="r-lbl">Valor executado neste bimestre <span style="font-weight:400">(somado automaticamente do que já foi preenchido em cada ação)</span></div>'
+      +'<div class="r-lbl">Valor executado neste bimestre <span style="font-weight:400">(somado do que já foi preenchido em cada ação)</span></div>'
       +'<div class="r-val" style="color:var(--g700);font-weight:700">R$ '+_bimestreVal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'
     +'</div>'
     +'<div class="resumo-item" style="margin-top:14px;border:1.5px solid var(--border2);border-radius:8px;padding:12px">'
       +'<div class="r-lbl" style="margin-bottom:8px">Rendimentos informados em '+(municipio.ano||'—')
-        +' <span style="font-weight:400">(valor rendido nas contas; não é execução e não abate o valor das ações)</span></div>'
+        +' <span style="font-weight:400">(valor rendido nas contas; não é execução)</span></div>'
       +renderRendimentosHistorico()
     +'</div>'
   +'</div>';
@@ -2420,11 +2552,15 @@ function contentHTML(){
         }).join('')
     +'</div>'
     +'</div>'
-    +'<div class="card"><div class="card-title">Responsável</div>'
-    +fld('Nome completo','responsavel','text','Nome do responsável')
-    +'<div class="row2">'+fld('Cargo / Função','cargo','text','Ex: Secretário de Saúde')+fld('Telefone','telefone','phone','(31) 99999-9999')+'</div>'
-    +fld('E-mail institucional','email','email','exemplo@municipio.mg.gov.br')
-    +'</div>'
+    // Para o administrador os campos seguem livres: ele preenche em nome de
+    // terceiros, e travá-los no cadastro DELE gravaria o responsável errado.
+    +(_admin
+      ? '<div class="card"><div class="card-title">Responsável</div>'
+        +fld('Nome completo','responsavel','text','Nome do responsável')
+        +'<div class="row2">'+fld('Cargo / Função','cargo','text','Ex: Secretário de Saúde')+fld('Telefone','telefone','phone','(31) 99999-9999')+'</div>'
+        +fld('E-mail institucional','email','email','exemplo@municipio.mg.gov.br')
+        +'</div>'
+      : _cardResponsavelLeitura())
     // O card de rendimentos saiu daqui. Esta tela é de conferência: escolher o
     // período e confirmar quem responde. Rendimento e extrato são preenchimento
     // de fato, e ficavam duplicados — o mesmo card aparecia aqui e na etapa
@@ -2669,7 +2805,7 @@ function contentHTML(){
             um mesmo estado não são escolha, são dúvida: dois municípios
             marcavam rótulos diferentes para a mesma situação e o relatório
             saía com a meta repartida entre dois status sem diferença real. */''}
-      ${chipsHTML('Status da meta','status_meta',['Não iniciada','Em andamento','Concluída'])}
+      ${chipsHTML('Status da meta','status_meta',['Não iniciada','Em andamento','Concluída'],true)}
     </div>    <div class="card">
       <div class="card-title">Pendências e riscos</div>
       ${fld('Dificuldades, riscos ou pendências','problemas','textarea','Descreva os principais problemas...')}
@@ -4617,6 +4753,38 @@ function _tabelaMedidoPorEmpresa(a){
         +'<th style="'+th+';text-align:right">Total</th>'
       +'</tr>'+linhas
     +'</table>'
+    +_notaAnterioresSemEmpresa(a,hist,contratadas)
+  +'</div>';
+}
+
+// A coluna "Bimestres anteriores" é reconstruída dos BOLETINS dos períodos
+// passados; o "já medidos antes" da frase acima vem do percentual gravado em
+// cada bimestre. As duas fontes divergem quando o histórico tem execução mas
+// não tem boletim detalhado por empresa — registros anteriores ao detalhamento,
+// ou medições de empresa que não está mais na lista.
+//
+// Quando isso acontece, a tela dizia "16,36% já medidos antes" com a coluna
+// toda em "—", e não havia como saber se era erro ou dado faltando. Esta linha
+// explica a diferença em vez de deixar a contradição no ar.
+function _notaAnterioresSemEmpresa(a,hist,contratadas){
+  const r=a&&a._resumoAnterior;
+  const execAntes=(r&&r.executadoAcumulado)||0;
+  if(!(execAntes>0))return '';
+
+  let somaIdentificada=0;
+  (contratadas||[]).forEach(function(e){
+    const k=String(e.nome).trim().toLowerCase().replace(/\s+/g,' ');
+    somaIdentificada+=((hist&&hist[k]&&hist[k].valor)||0);
+  });
+
+  const semEmpresa=execAntes-somaIdentificada;
+  if(semEmpresa<=0.01)return '';
+
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  return '<div style="padding:7px 9px;font-size:10.5px;color:var(--ink3);line-height:1.5;background:var(--g50);border-top:1px solid var(--border2)">'
+    +(somaIdentificada>0
+      ? 'Mais <strong>'+fmt(semEmpresa)+'</strong> executados em bimestres anteriores sem boletim detalhado por empresa — por isso não aparecem na coluna acima.'
+      : 'Os <strong>'+fmt(execAntes)+'</strong> já executados em bimestres anteriores não têm boletim detalhado por empresa, então a coluna acima fica vazia. Eles continuam somados no acumulado.')
   +'</div>';
 }
 
@@ -5167,7 +5335,7 @@ async function doSubmit(){
   const iS=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
   const btn=document.querySelector('.btn-send-nav');
   if(btn){btn.disabled=true;btn.innerHTML='Enviando...';}
-  showLoading('Enviando dados para...');
+  showLoading('Enviando dados...');
   try{
     if(APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('COLE_AQUI')){
       for(const[i,a]of aquisicoes.entries()){
@@ -5321,7 +5489,7 @@ function _verificarEstouroOrcamento(a,valorBase,elResumo,cardId,corPadrao){
     aviso.id=avisoId;
     const titleEl=cardEl.querySelector('.card-title');
     aviso.style.cssText='background:#FDEDEC;border:1.5px solid #C0392B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:#C0392B;font-weight:600;line-height:1.5';
-    aviso.innerHTML='⚠️ O valor utilizado ('+fmt(valorBase)+') ultrapassa em <u>'+fmt(excedente)+'</u> o valor total da ação no plano ('+fmt(valorPlano)+'). Confira os valores lançados; se estiverem corretos, registre em Execução finalística que o excedente é coberto por recurso próprio.';
+    aviso.innerHTML='⚠️ <u>'+fmt(excedente)+'</u> excedem o valor da ação.';
     if(titleEl)titleEl.insertAdjacentElement('afterend',aviso);else cardEl.prepend(aviso);
   }
 }
