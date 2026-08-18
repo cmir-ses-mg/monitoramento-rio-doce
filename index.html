@@ -1194,15 +1194,12 @@ function calcAcqStatus(a){
   const done=steps.filter(Boolean).length;
   if(done===0)return'empty';
 
-  // Num bimestre novo, o carry-over já traz tipo, atividades/listas e valor
-  // dos períodos anteriores: as quatro etapas nascem "preenchidas" sem que
-  // nada tenha sido informado AGORA. Ficando verde só de abrir, quem preenche
-  // conclui que já respondeu o período — e envia um bimestre vazio.
-  //
-  // `_touchedAt` é marcado a cada campo mexido (já existia para a
-  // sincronização entre máquinas) e zera ao trocar de período.
-  const tocouAgora=!!(a._touchedAt||a._sent||a._locked);
-  if(done===steps.length&&!tocouAgora)return'partial';
+  // Decisão de produto: o farol reflete o ESTADO da ação, incluindo o que veio
+  // do carry-over. Um município abrindo um bimestre já iniciado vê o card
+  // inteiro verde, que é a leitura mais útil para quem chega pela primeira vez.
+  // Houve uma versão que exigia interação no período (`_touchedAt`) para
+  // liberar o verde; foi revertida por deixar a tela vermelha/amarela demais
+  // num plano que corre até 2032.
   // 'complete' aqui significa PREENCHIMENTO completo: as quatro etapas foram
   // respondidas neste bimestre. Não significa que a ação acabou — para isso
   // existe _acaoConcluidaDeFato, consultada separadamente por quem precisa
@@ -1214,6 +1211,44 @@ function calcAcqStatus(a){
   // plurianual, não uma pendência de preenchimento.
   if(done===steps.length)return'complete';
   return'partial';
+}
+
+// ── RASTREADOR DE CAMPO ──────────────────────────────────────────────────────
+// Diagnóstico sob demanda. O Status da meta estava chegando ao servidor como
+// "Não iniciada" mesmo depois de marcado como "Concluída", e o valor já estava
+// errado ANTES do envio — ou seja, alguma coisa sobrescreve o campo entre o
+// clique e a gravação. Como o carregamento do histórico e da sessão parcial é
+// assíncrono, o suspeito é uma resposta que chega atrasada e reescreve o que a
+// pessoa acabou de responder.
+//
+// Adivinhar qual dos caminhos é o culpado, num arquivo deste tamanho, custa
+// mais que medir. Digite no Console:
+//
+//     rastrear('status_meta')
+//
+// A partir daí, toda escrita no campo é registrada com o valor antigo, o novo
+// e a pilha de chamadas — a linha logo abaixo de "rastrear" é quem escreveu.
+// Para acompanhar a atividade de custeio, use rastrear('situacao_execucao').
+function rastrear(campo){
+  const a=(typeof acq==='function')&&acq();
+  if(!a){ console.warn('[rastrear] abra uma ação primeiro.'); return; }
+  if(a['__rastreando_'+campo]){ console.log('[rastrear] já ativo para',campo); return; }
+
+  let valor=a[campo];
+  Object.defineProperty(a,campo,{
+    configurable:true,
+    enumerable:true,
+    get:function(){ return valor; },
+    set:function(novo){
+      if(novo!==valor){
+        console.warn('[rastrear] '+campo+': '+JSON.stringify(valor)+' -> '+JSON.stringify(novo));
+        console.trace('quem escreveu');
+      }
+      valor=novo;
+    }
+  });
+  Object.defineProperty(a,'__rastreando_'+campo,{value:true,enumerable:false});
+  console.log('[rastrear] observando "'+campo+'" nesta ação. Valor atual:',JSON.stringify(valor));
 }
 
 // Preenchimento completo: todas as etapas respondidas neste bimestre.
@@ -3708,6 +3743,22 @@ async function concludeAction(){
 
   if(status==='empty'){
     showAlertModal('Preencha pelo menos o tipo de monitoramento e o status da contratação antes de concluir.','⚠️');
+    return;
+  }
+
+  // Concluir a ação nunca passou pela validação dos campos obrigatórios: ela
+  // roda em validateStep, chamada ao AVANÇAR de etapa. Quem já estava na etapa
+  // 4 clicava direto em "Concluir ação" e o asterisco do Status da meta não
+  // segurava nada. Como este é o último ponto antes de gravar, é aqui que a
+  // exigência precisa valer.
+  if(typeof validarChipsObrigatorios==='function'&&!validarChipsObrigatorios()){
+    const campo=document.querySelector('[data-chip-required].error');
+    if(campo)campo.scrollIntoView({behavior:'smooth',block:'center'});
+    showAlertModal('Marque o <strong>Status da meta</strong> antes de concluir a ação.','⚠️');
+    return;
+  }
+  if(typeof validateStep==='function'&&!validateStep()){
+    showAlertModal('Há campos obrigatórios em branco nesta etapa. Confira os campos marcados em vermelho.','⚠️');
     return;
   }
 
