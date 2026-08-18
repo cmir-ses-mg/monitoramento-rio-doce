@@ -67,6 +67,12 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
 .sacq-item.s-empty:hover{background:#FFEDED}
 .sacq-item.s-partial{border-left-color:#F9A825;background:#FFFDE7}
 .sacq-item.s-partial:hover{background:#FFF8D6}
+/* Preenchida mas ainda não concluída: tudo respondido neste bimestre, meta em
+   andamento ou valor abaixo do previsto. Visualmente é "em andamento" — o
+   verde fica reservado para ação encerrada. Sem esta regra a classe ficava sem
+   estilo e o item aparecia branco, sem tarja, como se fosse outro estado. */
+.sacq-item.s-preenchida{border-left-color:#F9A825;background:#FFFDE7}
+.sacq-item.s-preenchida:hover{background:#FFF8D6}
 .sacq-item.s-complete{border-left-color:var(--g400);background:var(--g50)}
 .sacq-item.s-complete:hover{background:var(--g100)}
 .sacq-item.s-locked{border-left-color:var(--g500);background:var(--g100);opacity:.85}
@@ -74,6 +80,7 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
 .sacq-item.active{outline:2px solid var(--g400);outline-offset:-2px;z-index:1}
 .sacq-item.active.s-empty{outline-color:#E57373}
 .sacq-item.active.s-partial{outline-color:#F9A825}
+.sacq-item.active.s-preenchida{outline-color:#F9A825}
 .sacq-lock-badge{font-size:9px;color:var(--g600);margin-top:3px;display:flex;align-items:center;gap:3px;font-weight:600}
 .sacq-top{display:flex;align-items:flex-start;gap:6px}
 .sacq-steps{display:flex;gap:3px;margin-top:5px}
