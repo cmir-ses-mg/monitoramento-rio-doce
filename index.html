@@ -6645,14 +6645,27 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // mudam de um bimestre para o outro — pedir de novo a cada período só gera
   // retrabalho e divergência entre bimestres. Só preenche o que estiver vazio,
   // então uma correção feita neste bimestre nunca é sobrescrita.
-  // `status_meta` entrou nesta lista: ele descreve a AÇÃO, não o período. Sem
-  // ele, uma ação com a meta já concluída e 100% do valor executado voltava com
-  // a meta em branco no bimestre seguinte e deixava de aparecer como alcançada
-  // — que é justamente quando a informação "não precisa mais monitorar" importa.
   ['endereco_obra','empresa_executora','fiscal_responsavel','data_inicio_obra',
-   'unidade_medida','cnes','meta_prevista','status_meta'].forEach(function(campo){
+   'unidade_medida','cnes','meta_prevista'].forEach(function(campo){
     if(!acqObj[campo] && reg[campo]) acqObj[campo] = reg[campo];
   });
+
+  // 1a. STATUS DA META — só "Concluída" atravessa o bimestre.
+  //
+  // Meta alcançada é fato consumado: ela precisa voltar marcada, senão a ação
+  // encerrada reaparece pedindo monitoramento. Mas herdar TODOS os status anula
+  // a obrigatoriedade do campo: o chip já vinha marcado com o valor do período
+  // anterior, a validação passava sem ninguém responder nada, e "Não iniciada"
+  // ia para o registro bimestre após bimestre — foi o que apareceu na planilha.
+  //
+  // Os demais status são uma declaração sobre ESTE período e precisam ser
+  // reafirmados a cada envio.
+  if(!acqObj.status_meta){
+    const _metaAnterior=String(reg.status_meta||'').trim().toLowerCase();
+    if(_metaAnterior==='concluída'||_metaAnterior==='concluida'){
+      acqObj.status_meta=reg.status_meta;
+    }
+  }
 
   // 1b. EMPRESAS CONTRATADAS — o contrato da obra não acaba no fim do bimestre.
   // Só o campo de texto "empresa_executora" atravessava; o cadastro em si
@@ -8161,7 +8174,11 @@ function salvarAtividadeCusteioServidor(at){
       acao_tipo:a.acao_tipo||'',
       bimestre:a.bimestre||municipio.bimestre||'',
       ano:a.ano||municipio.ano||'',
-      atividade:{item_num:at.item_num||'', descricao:at.descricao||'', detalhamento:at.detalhamento||'', status:at._status||'Planejamento', quantidade:at.quantidade||'', unidade_medida:at.unidade_medida||'', cnes:at.cnes||'', empresas:at.empresas||[]}
+      atividade:{item_num:at.item_num||'', descricao:at.descricao||'', detalhamento:at.detalhamento||'', status:at._status||'Planejamento', quantidade:at.quantidade||'', unidade_medida:at.unidade_medida||'', cnes:at.cnes||'', empresas:at.empresas||[],
+        // Execução da atividade: sem estes campos no envio, a situação marcada
+        // em Entrega/Serv. se perdia ao reabrir o bimestre.
+        situacao_execucao:at.situacao_execucao||'', periodo_execucao:at.periodo_execucao||'',
+        houve_atraso:at.houve_atraso||'', justificativa_atraso:at.justificativa_atraso||''}
     })}).catch(function(){});
   }catch(e){}
 }
@@ -8207,6 +8224,10 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
     novasConfirmadas.push({
       descricao:r.descricao||'',
       detalhamento:r.detalhamento||'',
+      situacao_execucao:r.situacao_execucao||'',
+      periodo_execucao:r.periodo_execucao||'',
+      houve_atraso:r.houve_atraso||'',
+      justificativa_atraso:r.justificativa_atraso||'',
       item_num:r.item_num||'',
       quantidade:r.quantidade||'',
       unidade_medida:r.unidade_medida||'',
