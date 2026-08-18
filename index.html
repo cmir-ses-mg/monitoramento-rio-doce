@@ -1573,7 +1573,22 @@ function saveAllInputs(){
     });
   }
   if(mudou&&phase>=1&&aquisicoes[acqIdx])_marcarTocado(aquisicoes[acqIdx]);
-  if(mudou)_sincronizarEnderecoObra(aquisicoes[acqIdx]);
+  // A sincronização do endereço NÃO pode depender de `mudou`.
+  //
+  // O campo é gravado no objeto pelo `sv()` a cada tecla. Quando o
+  // saveAllInputs roda (ao navegar), o objeto já está igual ao DOM, então
+  // `mudou` é falso e a gravação na aba EnderecosObras nunca acontecia.
+  // Antes isso passava despercebido: a comparação `undefined !== ''` deixava
+  // `mudou` verdadeiro por causa de qualquer campo vazio, e o endereço subia
+  // como efeito colateral. Ao corrigir aquela comparação, o efeito colateral
+  // sumiu — e com ele a gravação. Dos seis endereços informados, só um tinha
+  // chegado à aba.
+  //
+  // Varre TODAS as ações de obra, não só a aberta: as cinco unidades de UBS
+  // são ações distintas, e ao passar de uma para a outra a anterior deixava de
+  // ser sincronizada. A própria função já ignora endereço vazio e repetido
+  // (`_ultimoEnderecoEnviado`), então chamar sempre não gera tráfego extra.
+  (aquisicoes||[]).forEach(function(_a){ _sincronizarEnderecoObra(_a); });
 }
 
 // ── ENDEREÇO DA OBRA: registro permanente por unidade ───────────────────────
@@ -3773,11 +3788,13 @@ async function concludeAction(){
   });
   if(_ativsSemComprovacao.length){
     const lista=_ativsSemComprovacao.map(function(nome){
-      return '<br>&bull; '+String(nome).slice(0,70);
+      // Marcador literal em vez de entidade HTML: o escape do modal converte o
+      // "&" antes de a entidade ser interpretada, e "&bull;" aparecia cru.
+      return '\n\u2022 '+String(nome).slice(0,70);
     }).join('');
-    showAlertModal('Atividade marcada como <strong>Total / Concluído</strong> precisa da execução lançada, com valor e nota fiscal, em <strong>Entrega/Serv.</strong>:'
+    showAlertModal('Atividade marcada como <strong>Total / Concluído</strong> precisa da execução lançada, com valor e nota fiscal, em <strong>Entrega/Serv.</strong>:\n'
       +lista
-      +'<br><br>Se o serviço ainda não foi pago, marque como <em>Parcial</em> em vez de concluído.','⚠️');
+      +'\n\nSe o serviço ainda não foi pago, marque como <em>Parcial</em> em vez de concluído.','⚠️');
     return;
   }
 
@@ -3861,6 +3878,11 @@ async function concludeAction(){
 }
 
 async function enviarAcaoSheet(a, tipoRegistro){
+  // Rede de segurança: o envio é o momento em que o endereço com certeza está
+  // definitivo. Se por qualquer motivo a sincronização durante a digitação não
+  // ocorreu, ela acontece aqui — a função ignora repetição, então não custa.
+  try{ _sincronizarEnderecoObra(a); }catch(e){ console.warn('endereço no envio:',e); }
+
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))return;
   try{
     const docsOk=Object.entries(a._docs||{}).filter(function(e){return e[1];}).map(function(e){return e[0];}).join(', ');
