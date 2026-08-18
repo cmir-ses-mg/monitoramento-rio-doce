@@ -67,12 +67,16 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
 .sacq-item.s-empty:hover{background:#FFEDED}
 .sacq-item.s-partial{border-left-color:#F9A825;background:#FFFDE7}
 .sacq-item.s-partial:hover{background:#FFF8D6}
-/* Preenchida mas ainda não concluída: tudo respondido neste bimestre, meta em
-   andamento ou valor abaixo do previsto. Visualmente é "em andamento" — o
-   verde fica reservado para ação encerrada. Sem esta regra a classe ficava sem
-   estilo e o item aparecia branco, sem tarja, como se fosse outro estado. */
-.sacq-item.s-preenchida{border-left-color:#F9A825;background:#FFFDE7}
-.sacq-item.s-preenchida:hover{background:#FFF8D6}
+/* Preenchida: as quatro etapas respondidas neste bimestre, pronta para envio.
+   Mesmo verde do concluído — sem esta regra a classe ficava sem estilo e o
+   item aparecia branco, como se fosse um estado sem nome. */
+.sacq-item.s-preenchida{border-left-color:var(--g400);background:var(--g50)}
+.sacq-item.s-preenchida:hover{background:var(--g100)}
+/* Bimestre enviado: mesmo visual do concluído. O farol responde "o que já
+   resolvi neste bimestre" — e para essa pergunta os dois são verdes. O que os
+   separa é o texto do selo. */
+.sacq-item.s-enviada{border-left-color:var(--g500);background:var(--g100);opacity:.85}
+.sacq-item.s-enviada:hover{opacity:1;background:var(--g200)}
 .sacq-item.s-complete{border-left-color:var(--g400);background:var(--g50)}
 .sacq-item.s-complete:hover{background:var(--g100)}
 .sacq-item.s-locked{border-left-color:var(--g500);background:var(--g100);opacity:.85}
@@ -80,7 +84,8 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
 .sacq-item.active{outline:2px solid var(--g400);outline-offset:-2px;z-index:1}
 .sacq-item.active.s-empty{outline-color:#E57373}
 .sacq-item.active.s-partial{outline-color:#F9A825}
-.sacq-item.active.s-preenchida{outline-color:#F9A825}
+.sacq-item.active.s-preenchida{outline-color:var(--g400)}
+.sacq-item.active.s-enviada{outline-color:var(--g500)}
 .sacq-lock-badge{font-size:9px;color:var(--g600);margin-top:3px;display:flex;align-items:center;gap:3px;font-weight:600}
 .sacq-top{display:flex;align-items:flex-start;gap:6px}
 .sacq-steps{display:flex;gap:3px;margin-top:5px}
@@ -1235,15 +1240,23 @@ function renderAcqBar(){
   }
 
   const ILBL={RES_Investimento:'Investimento',RES_Custeio:'Custeio',Convenio:'Convênio',Contrato:'Contrato'};
-  const STATUS_DOT={'empty':'🔴','partial':'🟡','complete':'🟢','locked':'✅','preenchida':'🟡'};
-  const STATUS_LABEL={'empty':'Não iniciada','partial':'Em andamento','complete':'Concluída','locked':'Concluída ✓','preenchida':'Em andamento'};
+  const STATUS_DOT={'empty':'🔴','partial':'🟡','complete':'🟢','locked':'✅','preenchida':'🟢','enviada':'✅'};
+  const STATUS_LABEL={'empty':'Não iniciada','partial':'Em andamento','complete':'Meta alcançada','locked':'Meta alcançada ✓','preenchida':'Preenchida','enviada':'Bimestre enviado'};
 
-  // O menu diz se a AÇÃO acabou, não se o formulário foi preenchido. Uma ação
-  // com tudo respondido mas meta em andamento continua amarela: verde só com
-  // meta concluída e valor executado alcançando o valor da ação.
+  // O menu diz se a AÇÃO acabou, não se este bimestre foi preenchido ou
+  // enviado. Duas conversões acontecem aqui:
+  //
+  //   complete -> preenchida : tudo respondido, mas a ação não terminou.
+  //   locked   -> enviada    : bimestre enviado, mas a ação não terminou.
+  //
+  // A segunda é a que mais confundia: `_locked` é ligado ao enviar o período,
+  // e mostrava ✅ "Concluída" numa ação com R$ 15 mil lançados de R$ 69 mil
+  // previstos. A meta é usar 100% do recurso, e isso pode levar bimestres.
   function _statusMenu(a,st){
-    if(st!=='complete')return st;
-    return (typeof _acaoConcluidaDeFato==='function'&&_acaoConcluidaDeFato(a).ok)?'complete':'preenchida';
+    const acabou=(typeof _acaoConcluidaDeFato==='function')&&_acaoConcluidaDeFato(a).ok;
+    if(st==='complete')return acabou?'complete':'preenchida';
+    if(st==='locked')  return acabou?'locked':'enviada';
+    return st;
   }
 
   function stepDone(a,s){
@@ -1275,7 +1288,8 @@ function renderAcqBar(){
       const status=agg.multi?agg.status:_statusMenu(agg.a,agg.status);
       const isActive=agg.multi?(agg.idxs.includes(acqIdx)):(agg.aIdx===acqIdx&&acqIdx>=0);
       const a=agg.multi?null:agg.a;
-      const locked=status==='locked';
+      // Travado para edição vale para os dois: o que muda é o que se escreve.
+      const locked=(status==='locked'||status==='enviada');
       const safeType=item.tipo.replace(/'/g,"\'").replace(/\n/g,' ');
       const displayType=item.tipo.replace(/\n.*/,'');
       const dots=agg.multi?'':[2,3,4,5].map(s=>{
@@ -1297,7 +1311,9 @@ function renderAcqBar(){
         <div style="font-size:10px;color:var(--ink3);margin-top:2px">${item.eixo}</div>
         ${multiBadge}
         ${(!agg.multi&&a&&a.modalidade_objeto)?`<div class="sacq-steps" style="margin-top:4px">${dots}</div>`:''}
-        ${locked?`<div class="sacq-lock-badge">🔒 Concluída — clique para reabrir</div>`:''}
+        ${locked?`<div class="sacq-lock-badge">${status==='locked'
+            ? '✔ Meta alcançada — não precisa mais ser monitorada'
+            : '🔒 Bimestre enviado — clique para reabrir'}</div>`:''}
       </div>`;
     });
   });
@@ -2503,7 +2519,17 @@ function contentHTML(){
   const obra=isAcqObra();const servico=acq().modalidade_objeto==='servico';
   const isLocked=!!(acq()._locked);
   const lockedBanner=isLocked?`<div class="locked-banner">
-    <div class="locked-banner-text">🔒 <strong>${acq()._autoConcluida?'Ação concluída automaticamente'+(acq()._autoConcluidaBimestre?' no '+acq()._autoConcluidaBimestre:'')+' — a meta foi registrada como concluída e o valor acumulado alcançou o valor total da ação.':'Ação concluída.'}</strong> Os campos estão bloqueados para edição.</div>
+    <div class="locked-banner-text">${(function(){
+      // Dentro da ação vale a mesma distinção do menu: enviar o bimestre trava
+      // os campos, mas não encerra a ação. A meta é usar 100% do recurso, e
+      // isso pode levar vários bimestres.
+      const _fim=(typeof _acaoConcluidaDeFato==='function')&&_acaoConcluidaDeFato(acq()).ok;
+      if(_fim){
+        return '✔ <strong>Meta alcançada'+(acq()._autoConcluidaBimestre?' no '+acq()._autoConcluidaBimestre:'')
+          +' — esta ação não precisa mais ser monitorada.</strong> A meta foi registrada como concluída e o valor executado alcançou o valor total da ação. Os campos estão bloqueados para edição.';
+      }
+      return '🔒 <strong>Bimestre enviado.</strong> Os campos estão bloqueados para edição. A ação continua em andamento — informe os próximos bimestres até a meta ser alcançada.';
+    })()}</div>
     <button class="btn-reopen" onclick="unlockAcq(${acqIdx})">✏️ Reabrir para edição</button>
   </div>`:'';
   const modeBadge=acq().modalidade_objeto?`<span class="mode-badge mode-equip">${obra?'🏗️ Obra':servico?'🛠️ Serviço':'📦 Aquisição'}</span>`:'' ;
@@ -5957,7 +5983,16 @@ function calcAcqStatusAgregado(benef,item){
   // verde enquanto as ações de unidade única já apareciam com ✅ e o selo
   // "Concluída — clique para reabrir". Agora o critério é o mesmo que o do
   // contador "4/4 concluídas" logo abaixo, e os três concordam entre si.
-  if(statuses.length&&concluidas===statuses.length)status='locked';
+  if(statuses.length&&concluidas===statuses.length){
+    // Mesmo critério das ações de unidade única: só é "concluída" se TODAS as
+    // unidades tiverem de fato terminado; caso contrário o bimestre foi
+    // enviado, mas a ação segue em andamento.
+    const todasAcabaram=idxs.every(function(i){
+      const a=i>=0?aquisicoes[i]:null;
+      return a&&typeof _acaoConcluidaDeFato==='function'&&_acaoConcluidaDeFato(a).ok;
+    });
+    status=todasAcabaram?'locked':'enviada';
+  }
   else if(iniciadas>0)status='partial';
   return{multi:true,status:status,total:statuses.length,concluidas:concluidas,iniciadas:iniciadas,idxs:idxs};
 }
