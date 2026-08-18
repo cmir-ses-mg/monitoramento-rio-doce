@@ -1123,8 +1123,16 @@ function _acaoConcluidaDeFato(a){
   // Executado acumulado = o que veio dos bimestres anteriores + o que esta ação
   // já registra neste período. Para obra, os boletins de medição são a fonte
   // mais precisa e já vêm somados em calcPctExecucaoAuto.
-  const historico = parseBRL(a._executado_historico||0)
-    || ((a._resumoAnterior&&a._resumoAnterior.executadoAcumulado)||0);
+  // `_executado_historico` e `executadoAcumulado` vêm como NÚMERO puro (ex:
+  // 26315.79), não no formato brasileiro digitado nos campos. parseBRL apaga o
+  // ponto decimal e infla o valor ~100x — o próprio arquivo alerta para isso
+  // logo abaixo da função. Aqui só se converte o que é texto.
+  const _num = function(v){
+    if(typeof v === 'number') return v;
+    return parseBRL(v||0);
+  };
+  const historico = _num(a._executado_historico)
+    || _num((a._resumoAnterior&&a._resumoAnterior.executadoAcumulado)||0);
   let doPeriodo = parseBRL(a.valor_executado||'');
   if(!doPeriodo){
     doPeriodo = ((a._listasEquip||[]).filter(function(l){return l.confirmado;})
@@ -1185,6 +1193,16 @@ function calcAcqStatus(a){
   ];
   const done=steps.filter(Boolean).length;
   if(done===0)return'empty';
+
+  // Num bimestre novo, o carry-over já traz tipo, atividades/listas e valor
+  // dos períodos anteriores: as quatro etapas nascem "preenchidas" sem que
+  // nada tenha sido informado AGORA. Ficando verde só de abrir, quem preenche
+  // conclui que já respondeu o período — e envia um bimestre vazio.
+  //
+  // `_touchedAt` é marcado a cada campo mexido (já existia para a
+  // sincronização entre máquinas) e zera ao trocar de período.
+  const tocouAgora=!!(a._touchedAt||a._sent||a._locked);
+  if(done===steps.length&&!tocouAgora)return'partial';
   // 'complete' aqui significa PREENCHIMENTO completo: as quatro etapas foram
   // respondidas neste bimestre. Não significa que a ação acabou — para isso
   // existe _acaoConcluidaDeFato, consultada separadamente por quem precisa
@@ -1493,10 +1511,15 @@ function renderBadge(){
 function saveAllInputs(){
   const store=phase===0?municipio:acq();
   let mudou=false;
+  // Ausente e vazio são a mesma coisa: sem isto, abrir a ação já contava como
+  // preenchimento (ver comentário acima).
+  const _difere=function(antes,depois){
+    return String(antes===undefined||antes===null?'':antes)!==String(depois===undefined||depois===null?'':depois);
+  };
   document.querySelectorAll('input,select,textarea').forEach(el=>{
     if(el.name&&el.dataset.store&&el.type!=='file'){
-      if(el.dataset.store==='mun'){if(municipio[el.name]!==el.value)mudou=true;municipio[el.name]=el.value;}
-      else{if(acq()[el.name]!==el.value)mudou=true;acq()[el.name]=el.value;}
+      if(el.dataset.store==='mun'){if(_difere(municipio[el.name],el.value))mudou=true;municipio[el.name]=el.value;}
+      else{if(_difere(acq()[el.name],el.value))mudou=true;acq()[el.name]=el.value;}
     }
   });
   // Salvar chips marcados — garantir sincronia DOM → objeto
@@ -1504,7 +1527,7 @@ function saveAllInputs(){
     document.querySelectorAll('.chip-group').forEach(function(group){
       const onChip=group.querySelector('.chip.on input[type=radio]');
       if(onChip&&onChip.name&&onChip.value){
-        if(acq()[onChip.name]!==onChip.value)mudou=true;
+        if(_difere(acq()[onChip.name],onChip.value))mudou=true;
         acq()[onChip.name]=onChip.value;
       }
     });
@@ -1577,6 +1600,9 @@ function _sincronizarEnderecoObra(a){
 function _marcarTocado(a){
   if(!a)return;
   a._touchedAt=Date.now();
+  // O toque pertence ao período em que aconteceu: é assim que a troca de
+  // bimestre sabe qual descartar.
+  a._touchedPeriodo=String(municipio.bimestre||'').trim()+'|'+String(municipio.ano||'').trim();
   // "Editado por" registra QUEM mexeu — não cai no responsável, senão as duas
   // colunas ficariam sempre iguais e a informação perderia utilidade. Fica
   // vazio quando não há sessão identificada.
@@ -1695,6 +1721,15 @@ function onTrocarPeriodo(el){
       // a impressão de que o preenchimento anterior tinha sumido.
       if(a._sent && a._sentPeriodo && a._sentPeriodo!==_novoPer){
         a._sent=false; a._locked=false; a._autoConcluida=false;
+      }
+      // `_touchedAt` diz que ALGUÉM MEXEU NESTA AÇÃO NESTE PERÍODO — é o que
+      // impede o farol de ficar verde só porque o carry-over trouxe tudo
+      // preenchido. Sem zerar aqui, o toque do bimestre anterior valeria para
+      // o novo e a ação abriria verde de novo, que é o problema que ele existe
+      // para evitar. O período do último toque fica registrado para o caso de
+      // a pessoa voltar ao bimestre onde estava trabalhando.
+      if(a._touchedAt && a._touchedPeriodo !== _novoPer){
+        delete a._touchedAt;
       }
     });
   }
@@ -6524,8 +6559,12 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
   // mudam de um bimestre para o outro — pedir de novo a cada período só gera
   // retrabalho e divergência entre bimestres. Só preenche o que estiver vazio,
   // então uma correção feita neste bimestre nunca é sobrescrita.
+  // `status_meta` entrou nesta lista: ele descreve a AÇÃO, não o período. Sem
+  // ele, uma ação com a meta já concluída e 100% do valor executado voltava com
+  // a meta em branco no bimestre seguinte e deixava de aparecer como alcançada
+  // — que é justamente quando a informação "não precisa mais monitorar" importa.
   ['endereco_obra','empresa_executora','fiscal_responsavel','data_inicio_obra',
-   'unidade_medida','cnes','meta_prevista'].forEach(function(campo){
+   'unidade_medida','cnes','meta_prevista','status_meta'].forEach(function(campo){
     if(!acqObj[campo] && reg[campo]) acqObj[campo] = reg[campo];
   });
 
