@@ -3854,15 +3854,22 @@ async function concludeAction(){
 
   const ben=municipio.municipio||'';
   const planActions=getAllPlanActions(ben);
+  // 'enviada' entrou depois desta busca e não estava na lista: uma ação já
+  // enviada passava a contar como pendente, então concluir a ÚLTIMA ação
+  // devolvia para ela mesma em vez de seguir para Revisão e Envio.
+  // Resolvido é resolvido, independentemente de a ação ter ou não terminado.
+  const _resolvida=function(st){
+    return st==='locked'||st==='enviada'||st==='complete';
+  };
   let nextIdx=-1;
   for(let i=0;i<planActions.length;i++){
     const agg=calcAcqStatusAgregado(ben,planActions[i]);
-    if(agg.status!=='locked'&&agg.status!=='complete'){nextIdx=i;break;}
+    if(!_resolvida(agg.status)){nextIdx=i;break;}
   }
   if(nextIdx>=0){
     const nextItem=planActions[nextIdx];
     const nIdxs=getOrCreateAcqsParaItem(ben,nextItem);
-    const nIdx=nIdxs.find(function(i){var st=calcAcqStatus(aquisicoes[i]);return st!=='locked'&&st!=='complete';});
+    const nIdx=nIdxs.find(function(i){return !_resolvida(calcAcqStatus(aquisicoes[i]));});
     acqIdx=nIdx!==undefined?nIdx:nIdxs[0];phase=1;
   } else {
     phase=5;
