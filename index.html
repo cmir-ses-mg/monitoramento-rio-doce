@@ -1290,7 +1290,19 @@ function renderAcqBar(){
   const planActions=getAllPlanActions(ben);
 
   if(!ben||planActions.length===0){
-    container.innerHTML=`<div style="padding:10px 12px;font-size:11px;color:var(--ink3)">Selecione um município na Identificação.</div>`;
+    // "0 ações no plano" tinha duas causas muito diferentes e a mesma tela:
+    // não ter escolhido nada ainda, ou o nome cadastrado não existir no plano
+    // (foi o caso de uma conta gravada como "Carantinga" em vez de Caratinga).
+    // Sem distinguir as duas, a pessoa fica olhando uma tela vazia sem saber
+    // se errou algo ou se o sistema quebrou.
+    const _conhecido=!ben||((PLANO_DATA&&PLANO_DATA.all_beneficiarios)||[]).indexOf(ben)>=0;
+    container.innerHTML = _conhecido
+      ? `<div style="padding:10px 12px;font-size:11px;color:var(--ink3)">Selecione um município na Identificação.</div>`
+      : `<div style="padding:11px 12px;font-size:11px;line-height:1.55;color:#C0392B;background:#FDEDEC;border:1px solid #F0B7B1;border-radius:7px;margin:8px">`
+          +`<strong>"${String(ben).replace(/&/g,'&amp;').replace(/</g,'&lt;')}" não consta no plano.</strong><br>`
+          +`Nenhuma ação foi encontrada com esse nome. Provavelmente há um erro de digitação no cadastro do seu acesso. `
+          +`Abra um chamado no <strong>Suporte</strong> para a CMIR corrigir.`
+        +`</div>`;
     return;
   }
 
