@@ -2013,7 +2013,12 @@ function _ordemPeriodoAtual(){
 function renderRendimentosHistorico(){
   if(_rendHistorico===null)return '<div style="font-size:11px;color:var(--ink3)">Carregando bimestres anteriores…</div>';
 
-  const fmt=function(v){return v?('R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})):'—';};
+  // Bimestre JÁ ENVIADO mostra o valor, inclusive R$ 0,00: informar zero é uma
+  // resposta, e o travessão a apagava — a linha ficava igual à de um período
+  // sem envio. O travessão fica reservado para o que ainda não foi informado,
+  // que é o caso da linha "em preenchimento".
+  const fmt=function(v){return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  const fmtAberto=function(v){return v?('R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})):'—';};
   // Registros antigos não têm a divisão por conta — o total entra como custeio.
   const cust=function(p){return (p.custeio||p.investimento)?(p.custeio||0):(p.valor||0);};
   const inv=function(p){return p.investimento||0;};
@@ -2067,8 +2072,8 @@ function renderRendimentosHistorico(){
           +'<td style="'+cel+';text-align:right;color:var(--ink2)">'+fmt(inv(p))+'</td></tr>';
       }).join('')
       +'<tr><td style="'+cel+';color:var(--ink3);font-style:italic">'+(municipio.bimestre||'Este bimestre')+' (em preenchimento)</td>'
-        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualC)+'</td>'
-        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmt(atualI)+'</td></tr>'
+        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmtAberto(atualC)+'</td>'
+        +'<td style="'+cel+';text-align:right;color:var(--ink3);font-style:italic">'+fmtAberto(atualI)+'</td></tr>'
     +'</table>'
   +'</div>';
 }
