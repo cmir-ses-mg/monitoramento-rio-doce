@@ -8132,10 +8132,18 @@ function renderNotasFiscaisCard(ref,opts){
 // livre em `descricao`; quando há item de lista e a descricao não bate com o
 // texto do item, o que está ali é detalhamento antigo — recuperamos em vez de
 // deixar sumir da tela.
+// Atividade SEM item de lista: "Outra" escolhida, ou ação que nem tem lista
+// pré-definida (ex.: contratos da SES). Nesses casos o texto digitado É a
+// atividade — precisa ir também para `descricao`, que é o que o servidor usa
+// como identidade. Antes só "Outra" era tratada assim: nas ações sem lista o
+// texto ficava só no detalhamento, a confirmação travava ("Selecione a
+// atividade na lista...") e nada subia para a planilha.
+function _atividadeLivre(at){ return !!at && (!at.item_num || at.item_num==='outra'); }
+
 function _detalhamentoDe(at){
   if(!at) return '';
   if(at.detalhamento) return at.detalhamento;
-  if(!at.item_num||at.item_num==='outra') return '';
+  if(!at.item_num||at.item_num==='outra') return at.descricao||'';
   const lista=(typeof _getListaCusteioAtual==='function')?_getListaCusteioAtual():[];
   const item=(lista||[]).find(function(it){return it.num==at.item_num;});
   if(item&&String(at.descricao||'').trim()&&String(at.descricao||'').trim()!==String(item.descricao||'').trim()){
@@ -8249,7 +8257,7 @@ function _buildAtividadeEditCard(editIdx){
       // linha duplicada na planilha e fazia o texto sumir quando a atividade
       // voltava do servidor. Com "Outra", não há item de lista: aí o
       // detalhamento É a atividade, e _updAtiv espelha para a descricao.
-      +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'detalhamento',this.value)\" placeholder=\""+(at.item_num==='outra'?'Descreva a atividade — este texto identifica a atividade...':'Detalhe o que foi executado, o local, o período, o que for relevante...')+"\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+_detalhamentoDe(at)+'</textarea>'
+      +'<textarea rows="3" oninput="_updAtiv('+editIdx+",'detalhamento',this.value)\" placeholder=\""+(_atividadeLivre(at)?'Descreva a atividade — este texto identifica a atividade...':'Detalhe o que foi executado, o local, o período, o que for relevante...')+"\" style=\"width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:var(--font);resize:vertical;box-sizing:border-box\">"+_detalhamentoDe(at)+'</textarea>'
       +(at.item_num&&at.item_num!=='outra'
         ? '<div style="font-size:10.5px;color:var(--ink3);margin-top:4px">Opcional. O nome do item da lista fica preservado; o que voc\u00ea escrever aqui \u00e9 acrescentado a ele.</div>'
         : '')
@@ -8353,7 +8361,7 @@ function _updAtiv(idx,f,v){
   // Com "Outra" não existe item de lista para dar nome à atividade: o
   // detalhamento é a própria atividade, então ele alimenta a descricao (que é
   // a chave usada no servidor e na mesclagem entre bimestres).
-  if(f==='detalhamento'&&a._atividades[idx].item_num==='outra'){
+  if(f==='detalhamento'&&_atividadeLivre(a._atividades[idx])){
     a._atividades[idx].descricao=v;
   }
   // Digitar na unidade de medida tira a marca de "sugerido pelo sistema".
@@ -8393,7 +8401,12 @@ if(!window._ativEmpListenersBound){
   }, true);
 }
 
-function _addAtividade(){const a=acq();if(!a._atividades)a._atividades=[];a._atividades.push({descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});_renderAtividadesCardDOM();}
+// Cada atividade tem um id próprio, para que duas atividades iguais (mesmo item
+// da lista, ou textos que começam igual) virem DUAS linhas na planilha, e não
+// uma sobrescrevendo a outra — o mesmo que já acontece com as listas de
+// equipamentos.
+function _novoIdAtividade(){return 'AT-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);}
+function _addAtividade(){const a=acq();if(!a._atividades)a._atividades=[];a._atividades.push({id:_novoIdAtividade(),descricao:'',item_num:'',quantidade:'',unidade_medida:'',cnes:'',empresas:[{nome:'',cnpj:'',valor:'',homologacao:'',prazo:''}],_status:'Planejamento',confirmado:false});_renderAtividadesCardDOM();}
 function _setAtivStatus(idx,status){
   const a=acq();
   if(a._atividades&&a._atividades[idx]){
@@ -8422,7 +8435,7 @@ function excluirAtividade(idx){
   const at=a._atividades[idx];
   showConfirmModal('Excluir atividade?','Esta ação não pode ser desfeita.','Excluir','🗑️','#C94040').then(function(ok){
     if(!ok)return;
-    if(at.confirmado) excluirAtividadeCusteioServidor(at);
+    if(at.confirmado||at._descSalva!==undefined) excluirAtividadeCusteioServidor(at.id?at:(at._descSalva!==undefined?{item_num:at._itemSalvo||'',descricao:at._descSalva}:at));
     a._atividades.splice(idx,1);
     _renderAtividadesCardDOM();
   });
@@ -8437,11 +8450,11 @@ function confirmarAtividade(idx){
   // Com "Outra" selecionada, a descrição é obrigatória por definição.
   // Com "Outra", a identidade da atividade vem do detalhamento — garantimos
   // que a descricao esteja espelhada antes de validar e de gerar a chave.
-  if(at.item_num==='outra'&&at.detalhamento&&!String(at.descricao||'').trim()){
+  if(_atividadeLivre(at)&&at.detalhamento&&!String(at.descricao||'').trim()){
     at.descricao=at.detalhamento;
   }
   if(!String(at.descricao||'').trim()){
-    showAlertModal(at.item_num==='outra'
+    showAlertModal(_atividadeLivre(at)
       ? 'Descreva a atividade no campo "Detalhamento / Descrição" antes de confirmar.'
       : 'Selecione a atividade na lista ou descreva-a antes de confirmar.','⚠️');
     return;
@@ -8531,7 +8544,18 @@ function salvarAtividadeCusteioServidor(at){
   if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER')) return;
   const a=acq();
   if(!a.acao_instrumento||!a.acao_tipo) return;
+  if(_atividadeLivre(at)&&at.detalhamento&&!String(at.descricao||'').trim()) at.descricao=at.detalhamento;
   if(!at.descricao&&!at.item_num) return; // nada relevante para salvar ainda
+  // No servidor a atividade é identificada por item + descrição. Se um dos dois
+  // mudou depois de salvo (texto livre editado, ou item escolhido na lista
+  // depois), a linha antiga sai antes, para não duplicar na planilha.
+  // Atividade nova, ainda nunca salva: ganha id. (As que já foram salvas sem id,
+  // em versões anteriores, seguem pelo caminho antigo até voltarem do servidor.)
+  if(!at.id&&at._descSalva===undefined) at.id=_novoIdAtividade();
+  if(!at.id&&at._descSalva!==undefined&&(at._descSalva!==(at.descricao||'')||(at._itemSalvo||'')!==(at.item_num||''))){
+    excluirAtividadeCusteioServidor({item_num:at._itemSalvo||'', descricao:at._descSalva});
+  }
+  at._descSalva=at.descricao||''; at._itemSalvo=at.item_num||'';
   try{
     fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({
       acao:'salvarAtividadeCusteio',
@@ -8540,7 +8564,7 @@ function salvarAtividadeCusteioServidor(at){
       acao_tipo:a.acao_tipo||'',
       bimestre:a.bimestre||municipio.bimestre||'',
       ano:a.ano||municipio.ano||'',
-      atividade:{item_num:at.item_num||'', descricao:at.descricao||'', detalhamento:at.detalhamento||'', status:at._status||'Planejamento', quantidade:at.quantidade||'', unidade_medida:at.unidade_medida||'', cnes:at.cnes||'', empresas:at.empresas||[],
+      atividade:{id:at.id||'', item_num:at.item_num||'', descricao:at.descricao||'', detalhamento:at.detalhamento||'', status:at._status||'Planejamento', quantidade:at.quantidade||'', unidade_medida:at.unidade_medida||'', cnes:at.cnes||'', empresas:at.empresas||[],
         // Execução da atividade: sem estes campos no envio, a situação marcada
         // em Entrega/Serv. se perdia ao reabrir o bimestre.
         situacao_execucao:at.situacao_execucao||'', periodo_execucao:at.periodo_execucao||'',
@@ -8560,6 +8584,7 @@ function excluirAtividadeCusteioServidor(at){
       municipio:municipio.municipio||'',
       acao_instrumento:a.acao_instrumento||'',
       acao_tipo:a.acao_tipo||'',
+      id:at.id||'',
       item_num:at.item_num||'',
       descricao:at.descricao||''
     })}).catch(function(){});
@@ -8580,15 +8605,23 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
   const remotas=await buscarAtividadesCusteioServidor(municipio.municipio, inst, tipo);
   if(!remotas.length) return false;
 
-  const chaveDe=function(at){return (at.item_num||'')+'|'+(at.descricao||'').substring(0,30);};
+  // Casamento local x servidor pelo id da atividade (duas atividades iguais não
+  // se confundem). Registros antigos, sem id, casam pelo item + descrição.
+  const chaveDe=function(at){return at.id?('id:'+at.id):((at.item_num||'')+'|'+(at.descricao||'').substring(0,30));};
   const localPorChave={};
-  acqObj._atividades.forEach(function(at){ if(at.confirmado) localPorChave[chaveDe(at)]=at; });
+  acqObj._atividades.forEach(function(at,i){ if(at.confirmado) localPorChave[chaveDe(at)+(at.id?'':'#'+i)]=at; });
 
   const novasConfirmadas=[];
   remotas.forEach(function(r){
-    const ch=(r.item_num||'')+'|'+(r.descricao||'').substring(0,30);
+    const ch='id:'+(r.id||'');
+    Object.keys(localPorChave).forEach(function(k){
+      const l=localPorChave[k];
+      if(k===ch || (!l.id && (l.item_num||'')===(r.item_num||'') && (l.descricao||'').substring(0,30)===(r.descricao||'').substring(0,30))) delete localPorChave[k];
+    });
     novasConfirmadas.push({
+      id:r.id||'',
       descricao:r.descricao||'',
+      _descSalva:r.descricao||'', _itemSalvo:r.item_num||'',
       detalhamento:r.detalhamento||'',
       situacao_execucao:r.situacao_execucao||'',
       periodo_execucao:r.periodo_execucao||'',
@@ -8602,7 +8635,6 @@ async function carregarAtividadesHistoricoCusteio(acqObj){
       _status:r.status||'Planejamento',
       confirmado:true
     });
-    delete localPorChave[ch];
   });
   // Mantém atividades confirmadas que existiam só localmente e ainda não
   // foram sincronizadas com o servidor (ex: acabou de confirmar nesta sessão)
