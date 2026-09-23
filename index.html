@@ -1075,8 +1075,13 @@ function getOrCreateAcq(instrumento, tipo, planItem){
       // editável, para corrigir digitação errada.
       endereco_obra:enderecoRegistrado(instrumento,tipo)||planItem.endereco||'',
       modalidade_objeto:sugerido,
+      // Código fixo da ação no CONSOLIDADO (RD-0001…), gravado junto com a resposta.
+      codigo_acao:planItem.codigo||'',
     });
     idx=aquisicoes.length-1;
+  }else if(planItem&&planItem.codigo&&!aquisicoes[idx].codigo_acao){
+    // Ação restaurada de sessão/bimestre anterior: completa o código que faltava.
+    aquisicoes[idx].codigo_acao=planItem.codigo;
   }
   return idx;
 }
@@ -6419,7 +6424,7 @@ function unidadesDoItem(benef,item){
         Object.keys(porLabel).forEach(function(label){
           const lista=porLabel[label];
           lista.forEach(function(r,i){
-            resultado.push({tipo:label+(lista.length>1?' — Unidade '+(i+1)+' de '+lista.length:''),valor:r.valor,endereco:r.endereco||''});
+            resultado.push({tipo:label+(lista.length>1?' — Unidade '+(i+1)+' de '+lista.length:''),valor:r.valor,endereco:r.endereco||'',codigo:r.codigo||''});
           });
         });
       }else{
@@ -6438,7 +6443,7 @@ function getOrCreateAcqsParaItem(benef,item){
   const unidades=unidadesDoItem(benef,item);
   if(!unidades)return[getOrCreateAcq(item.instrumento,item.tipo,item)];
   return unidades.map(function(u){
-    return getOrCreateAcq(item.instrumento,u.tipo,{tipo:item.tipo,acao:item.acao,eixo:item.eixo,valor:u.valor,endereco:u.endereco||''});
+    return getOrCreateAcq(item.instrumento,u.tipo,{tipo:item.tipo,acao:item.acao,eixo:item.eixo,valor:u.valor,endereco:u.endereco||'',codigo:u.codigo||''});
   });
 }
 // Status agregado de um item do plano para exibição na lista (ETAPA 1):
