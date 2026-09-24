@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Situação das ações de saúde — Rio Doce</title>
+<meta name="description" content="Consulte o que cada município e consórcio tem nas ações de saúde da reparação do Rio Doce e em que situação está cada ação."/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Paleta e fonte alinhadas ao portal mg.gov.br/riodoce */
+:root{
+  --marinho:#1B4F71;   /* títulos */
+  --ardosia:#485C7A;   /* azul-ardósia dos blocos */
+  --coral:#E8554B;     /* faixa do menu */
+  --salmao:#F37D6F;
+  --celeste:#2CA7E5;
+  --vermelho:#AE1917;  /* linha institucional */
+  --texto:#3F3A3A; --cinza:#7B7070; --linha:#E3E0E0; --fundo:#F2F1F1; --cartao:#FFFFFF; --trilho:#EDEDED;
+
+  --s-concluida:#2E8B57;   --s-concluida-bg:#E4F3EA;
+  --s-execucao:#007CAD;    --s-execucao-bg:#E0F1F8;
+  --s-contratacao:#485C7A; --s-contratacao-bg:#E8ECF2;
+  --s-planejamento:#B7791F;--s-planejamento-bg:#FDF3E1;
+  --s-aguardando:#D9483E;  --s-aguardando-bg:#FDEAE8;
+  --s-seminfo:#A8A1A1;     --s-seminfo-bg:#F1EFEF;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--fundo);color:var(--texto);font-family:'Dosis',system-ui,sans-serif;font-size:17px;line-height:1.5}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+button{font:inherit;color:inherit}
+
+/* ── Cabeçalho ───────────────────────────── */
+.capa{background:var(--cartao);border-bottom:4px solid var(--vermelho)}
+.capa .wrap{padding-top:34px;padding-bottom:26px}
+.capa h1{font-weight:600;font-size:clamp(30px,4.6vw,44px);line-height:1.1;margin:0 0 8px;color:var(--marinho)}
+.capa .sub{font-size:19px;color:var(--cinza);margin:0;max-width:40em}
+
+.faixa{font-size:14.5px;color:var(--cinza);padding:14px 0 0;display:flex;gap:8px;align-items:center}
+.ponto{flex:none;width:8px;height:8px;border-radius:50%;background:var(--s-seminfo)}
+.ponto.vivo{background:var(--s-concluida)}
+
+main{padding:22px 0 60px}
+h2{font-weight:600;font-size:32px;line-height:1.15;margin:0;color:var(--marinho)}
+h3{font-weight:600;font-size:23px;margin:0 0 12px;color:var(--marinho)}
+.rot{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--cinza);font-weight:600}
+
+/* ── Legenda ─────────────────────────────── */
+.legenda{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:15px}
+.legenda span{display:inline-flex;align-items:center;gap:7px}
+.legenda b{font-variant-numeric:tabular-nums;font-weight:700}
+.sw{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
+
+/* ── Lista ───────────────────────────────── */
+.filtros{display:flex;flex-direction:column;gap:12px;margin:0 0 14px}
+.filtros input{font:inherit;padding:10px 14px;border-radius:10px;border:1px solid var(--linha);background:var(--cartao);color:var(--texto);max-width:360px}
+.filtros input:focus{outline:2px solid var(--celeste);outline-offset:1px}
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{border:1px solid var(--linha);background:var(--cartao);border-radius:22px;padding:6px 14px;font-size:15px;cursor:pointer;font-weight:500}
+.chip:hover{border-color:var(--ardosia)}
+.chip[aria-pressed="true"]{background:var(--ardosia);border-color:var(--ardosia);color:#fff}
+.leg-lista{margin:0 0 12px}
+.lista{background:var(--cartao);border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.linha{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.7fr) 140px 20px;gap:18px;align-items:center;padding:14px 20px;border:0;border-top:1px solid var(--linha);cursor:pointer;background:none;width:100%;text-align:left}
+.linha:first-child{border-top:0}
+.linha:hover,.linha:focus-visible{background:#FBF4F3;outline:none}
+.linha .nome{font-weight:700;font-size:18px;color:var(--marinho)}
+.linha .urs{font-size:14px;color:var(--cinza)}
+.mini{height:10px;border-radius:5px;background:var(--trilho);display:flex;overflow:hidden;gap:2px}
+.linha .mini-d{font-size:14px;color:var(--cinza);margin-top:5px}
+.linha .val{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:17px;color:var(--marinho)}
+.linha .val small{display:block;font-weight:500;color:var(--cinza);font-size:13.5px}
+.linha .seta{color:var(--salmao);font-size:22px;font-weight:700}
+.vazio{padding:28px 20px;color:var(--cinza);text-align:center}
+
+/* ── Detalhe ─────────────────────────────── */
+.voltar{background:var(--ardosia);color:#fff;border:0;border-radius:8px;cursor:pointer;padding:7px 14px;font-size:15px;margin-bottom:18px;font-weight:600}
+.voltar:hover{background:var(--marinho)}
+.cab-det{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
+.envio{font-size:15px;padding:6px 14px;border-radius:20px;background:var(--cartao);border:1px solid var(--linha)}
+.envio.nao{color:var(--cinza)}
+.numeros{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 16px}
+.num{background:var(--cartao);border-radius:12px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.num .v{font-weight:700;font-size:28px;line-height:1.15;margin:4px 0 2px;color:var(--marinho);font-variant-numeric:tabular-nums}
+.num .d{font-size:15px;color:var(--cinza)}
+.barra{height:8px;border-radius:5px;background:var(--trilho);overflow:hidden;margin-top:10px;display:flex}
+.barra i{display:block;height:100%}
+.sit-box{background:var(--cartao);border-radius:12px;padding:16px 20px;margin-bottom:30px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.sit-box .mini{height:14px;border-radius:7px;margin:10px 0 12px}
+
+.grupo{margin-bottom:32px}
+.grupo-cab{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-bottom:2px solid var(--salmao);padding-bottom:6px;margin-bottom:6px;flex-wrap:wrap}
+.grupo-cab h3{margin:0}
+.grupo-cab .soma{font-size:15.5px;color:var(--cinza);font-variant-numeric:tabular-nums}
+.grupo-nota{font-size:15px;color:var(--cinza);margin:0 0 14px}
+.subgrupo{font-size:15px;font-weight:700;color:var(--ardosia);margin:18px 0 10px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.subgrupo span{font-weight:500;color:var(--cinza)}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{background:var(--cartao);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;border-left:5px solid var(--cor,var(--linha));box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.card h4{margin:0;font-size:19px;line-height:1.25;font-weight:700;color:var(--marinho)}
+.card .det{font-size:15px;color:var(--cinza);margin-top:2px;line-height:1.35}
+.end{display:flex;gap:7px;align-items:flex-start;font-size:15.5px;line-height:1.35;color:var(--texto)}
+.end svg{flex:none;margin-top:3px;color:var(--coral)}
+.end.falta{color:var(--cinza);font-style:italic}
+.end.falta svg{color:var(--s-seminfo)}
+.card .eixo{font-size:14px;color:var(--cinza)}
+.pill{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:4px 12px;border-radius:20px;font-size:14.5px;font-weight:700;color:var(--c);background:var(--bg)}
+.pill::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.card-val{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card-val .v{font-weight:700;font-size:21px;color:var(--marinho);font-variant-numeric:tabular-nums}
+.card-val .x{font-size:15px;color:var(--cinza);font-variant-numeric:tabular-nums}
+.prog{display:flex;align-items:center;gap:10px;font-size:14.5px;color:var(--cinza)}
+.prog .barra{flex:1;margin:0;height:8px}
+.prog b{color:var(--texto);font-variant-numeric:tabular-nums}
+.alerta{font-size:14.5px;color:#D9483E;font-weight:700}
+/* bloco financeiro do cartão */
+.fin{border-top:1px solid var(--linha);padding-top:10px;margin-top:2px}
+.fin .rot{font-size:12px}
+.fin .fv{font-weight:700;font-size:17px;color:var(--marinho);font-variant-numeric:tabular-nums;margin-top:1px}
+.fin .fd{font-size:14px;color:var(--cinza)}
+.fin .barra{margin-top:7px;height:7px}
+.fin.nao .fv{color:#D9483E}
+.fin.info .fv{color:var(--cinza);font-weight:600;font-size:15.5px}
+.fin.espera .fv{color:var(--cinza)}
+.fin .etapa{margin-top:6px;display:inline-flex;align-items:center;gap:7px;font-size:14.5px;font-weight:700;color:#8A5A00;background:#FDF3E1;border-radius:8px;padding:5px 10px;line-height:1.3}
+.fin .etapa::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+
+details.ajuda{background:var(--cartao);border-radius:12px;padding:0 20px;margin-top:30px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+details.ajuda summary{cursor:pointer;padding:15px 0;font-weight:700;color:var(--marinho);list-style:none;font-size:18px}
+details.ajuda summary::-webkit-details-marker{display:none}
+details.ajuda summary::after{content:'+';float:right;color:var(--coral);font-size:24px;line-height:1}
+details.ajuda[open] summary::after{content:'–'}
+.ajuda dl{margin:0 0 16px;display:grid;grid-template-columns:max-content 1fr;gap:10px 16px;align-items:center}
+.ajuda dd{margin:0;font-size:16px;color:var(--texto)}
+.ajuda p{font-size:15.5px;color:var(--cinza)}
+
+footer{background:#3C3C3B;color:#D8D4D4;padding:22px 0 30px;font-size:15px;margin-top:10px}
+
+@media (max-width:760px){
+  .wrap{padding:0 16px}
+  .numeros,.cards{grid-template-columns:1fr}
+  .linha{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:14px 16px}
+  .linha .sit{grid-column:1 / -1;order:3}
+  .linha .seta{display:none}
+  .ajuda dl{grid-template-columns:1fr;gap:4px}
+  .ajuda dd{margin-bottom:10px}
+}
+</style>
+</head>
+<body>
+
+<header class="capa">
+  <div class="wrap">
+    <h1>Situação das ações de saúde</h1>
+    <p class="sub">O que cada município e consórcio tem no plano, quanto já foi repassado e em que etapa está cada ação.</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="faixa"><span class="ponto" id="ponto"></span><span id="faixa-txt">Carregando dados…</span></div>
+  <main id="main"></main>
+
+  <details class="ajuda">
+    <summary>O que significa cada situação?</summary>
+    <dl id="ajuda-dl"></dl>
+    <p>A situação de execução vem do monitoramento bimestral enviado pelo próprio município ou consórcio. Cada obra aparece separada, com o seu endereço.</p>
+    <p>O bloco “Repassado” mostra o que a SES-MG já pagou em cada ação. Quando ainda não houve pagamento, aparece a etapa que falta antes do repasse — por exemplo, documentos da obra em conferência ou plano de trabalho do convênio em ajuste.</p>
+  </details>
+</div>
+
+<footer>
+  <div class="wrap">
+    Secretaria de Estado de Saúde de Minas Gerais · Subsecretaria de Regionalização · Coordenação de Monitoramento e Integração Regional (CMIR).<br>
+    Fontes: controle de repasses da SES-MG e monitoramento bimestral informado pelos municípios e consórcios.
+  </div>
+</footer>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbz_2JO8ehsztuybi47AYOUkBWgBm_ZJcMa7msGLPX6HrwJpU5-42IdayyU8gTFmdPm6/exec";
+const BASE = {"atualizado":"2026-09-22","linhas":[{"m":"Aimorés","bf":"","t":"Construção de 1 Centro de Fisioterapia","i":"Convênio","n":"","eixo":"Atenção Especializada à Saúde","v":1000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Pleito em reavaliação","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Aimorés","bf":"","t":"Construção de 1 Centro de Especialidades Médicas","i":"Convênio","n":"","eixo":"Atenção Especializada à Saúde","v":2000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Aimorés","bf":"Hospital São José São Camilo","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Arco cirúrgico, Sistema de Vídeo Endoscopia Rígida","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":870957.0,"vp":870957.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-18","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Aimorés","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Aimorés","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Alpercata","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":800000.0,"vp":800000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Alpercata","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Alpercata","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Barra Longa","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":1500000.0,"vp":1500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Barra Longa","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Barra Longa","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Belo Oriente","bf":"Centro Integrado de Saúde","t":"> Equipamentos e materiais permanentes para serviços de atenção ambulatorial especializada - Geral\n> Ultrassom, câmara de conservação, mesa ortostática","i":"Resolução - Investimento","n":"5","eixo":"Atenção Especializada à Saúde","v":1000000.0,"vp":1000000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-02","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Belo Oriente","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Belo Oriente","bf":"Hospital Jaques Gonçalves Pereira","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Tomógrafo Computadorizado","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":1468023.0,"vp":1468023.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-18","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Belo Oriente","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Belo Oriente","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Bom Jesus do Galho","bf":"","t":"Reforma de 1 UBS","i":"Convênio","n":"","eixo":"Atenção Primária à Saúde","v":700000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-09-03","urs":"Coronel Fabriciano"},{"m":"Bom Jesus do Galho","bf":"Parque multissensorial","t":"Equipamentos e materiais permantes para parque/sala multissensorial","i":"Resolução - Investimento","n":"5","eixo":"Atenção Especializada à Saúde","v":300000.0,"vp":300000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-02","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Bom Jesus do Galho","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Bom Jesus do Galho","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Bom Jesus do Galho","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Bugre","bf":"AVENIDA JOAQUIM LUCIO, S/N - SÃO JOSE DE BUGRE","t":"1 UBS de Apoio","i":"Resolução - Investimento","n":"2","eixo":"Atenção Primária à Saúde","v":1000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-22","urs":"Coronel Fabriciano"},{"m":"Bugre","bf":"PRACA SÃO LOURENÇO, SN - CENTRO","t":"1 UBS de Apoio","i":"Resolução - Investimento","n":"2","eixo":"Atenção Primária à Saúde","v":1000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-22","urs":"Coronel Fabriciano"},{"m":"Bugre","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Bugre","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"Hospital Nossa Senhora Auxiliadora","t":"Obra no Hospital Nossa Senhora Auxiliadora","i":"Convênio","n":"","eixo":"Atenção Hospitalar","v":5500000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-09-08","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"Casu Irmã Denise","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Plano de Trabalho","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":5500000.0,"vp":5500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-03","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"Rua Francisco Conde de Oliveira, , bairro Dr.\nEduardo, Caratinga/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"Rua Maria Cardoso, S/N, Distrito Santa Efigênia – Caratinga/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"Área Institucional 1, Loteamento Expansão Rio Doce, Caratinga / MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"Rua Francisco Gomes da Luz, S/N, bairro Santo Antônio – Caratinga/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"Área Institucional 2, da quadra 6, localizado na rua E, no Loteamento Residencial Giselia Linhares Cimini, Bairro Esplanada, Caratinga/ MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":69075.14,"vp":69075.14,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Caratinga","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Conselheiro Pena","bf":"","t":"Reforma e equipamento para o Centro de Hemodiálise","i":"Convênio","n":"","eixo":"Atenção Especializada à Saúde","v":2000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Pleito em reavaliação","sct":"","du":"2026-08-10","urs":"Governador Valadares"},{"m":"Conselheiro Pena","bf":"","t":"1 CAPS AD","i":"Resolução - Investimento","n":"6","eixo":"Atenção Especializada à Saúde","v":2506000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Pleito em reavaliação","se":"","sc":"","sct":"","du":"2026-08-10","urs":"Governador Valadares"},{"m":"Conselheiro Pena","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Conselheiro Pena","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Coronel Fabriciano","bf":"Hospital Dr José Maria Morais","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":7000000.0,"vp":7000000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-03","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Coronel Fabriciano","bf":"","t":"1 UBS tipo II","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2542000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Aguardando envio dos documentos","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Coronel Fabriciano","bf":"Centro de Especialidades\nMédicas","t":"> Equipamentos e materiais permanentes para serviços de atenção ambulatorial especializada - Geral\n> Ressonância, vídeo endoscopia, raios X","i":"Resolução - Investimento","n":"5","eixo":"Atenção Especializada à Saúde","v":6000000.0,"vp":6000000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-02","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Coronel Fabriciano","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Coronel Fabriciano","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Córrego Novo","bf":"Praça São João, 04 - Centro","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Envio parcial dos documentos","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Córrego Novo","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Córrego Novo","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Dionísio","bf":"RUA JOSÉ FELIPE DE CASTRO, CENTRO, DIONÍSIO-MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Dionísio","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Dionísio","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Fernandes Tourinho","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Fernandes Tourinho","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Fernandes Tourinho","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Galiléia","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Galiléia","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Galiléia","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":2506000.0,"vp":2506000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Obra do CEAE","i":"Convênio","n":"","eixo":"Atenção Especializada à Saúde","v":4000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-09-09","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Construção de 4 Polos de Fisioterapia","i":"Convênio","n":"","eixo":"Atenção Especializada à Saúde","v":4000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-09-08","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"1 CAPS tipo III Qualificação","i":"Resolução - Investimento","n":"6","eixo":"Atenção Especializada à Saúde","v":1000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"[CAPS] Aguardando PAR da RAPS","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Construção de 1 Centro de Especialidades Odontológicas","i":"Convênio","n":"","eixo":"Atenção Especializada à Saúde","v":2000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-09-16","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Unidade Odontológica Móvel destinada às ações assistenciais de saúde bucal","i":"Resolução - Investimento","n":"4","eixo":"Atenção Primária à Saúde","v":379890.0,"vp":379890.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Contrução de 1 unidade de saúde de Serviço de Atenção Especializada (SAE) ampliado","i":"Convênio","n":"","eixo":"Vigilância em Saúde","v":5000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-09-17","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"1 Farmácia móvel","i":"Convênio","n":"","eixo":"Acesso a Serviços de Saúde","v":600000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Análise área técnica","sct":"","du":"2026-08-25","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Governador Valadares","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Iapu","bf":"","t":"Construção de 1 Base Descentralizada do SAMU","i":"Convênio","n":"","eixo":"Acesso a Serviços de Saúde","v":585000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Análise técnica de engenharia","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Iapu","bf":"Sala multissensorial","t":"Equipamentos e materiais permantes para parque/sala multissensorial","i":"Resolução - Investimento","n":"5","eixo":"Atenção Especializada à Saúde","v":300000.0,"vp":300000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-29","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Iapu","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Iapu","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Iapu","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipaba","bf":"Centro Municipal de Saúde","t":"> Equipamentos e materiais permanentes para serviços de atenção ambulatorial especializada - Geral\n> Foco cirúrgico, impressora, cadeira odontológica","i":"Resolução - Investimento","n":"5","eixo":"Atenção Especializada à Saúde","v":1434006.0,"vp":1434006.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-02","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipaba","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipaba","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipatinga","bf":"Hospital Municipal de Ipatinga","t":"Construção da Unidade 2 do hospital","i":"Convênio","n":"","eixo":"Atenção Hospitalar","v":9000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de cadastro no SIGCON","sct":"","du":"2026-09-16","urs":"Coronel Fabriciano"},{"m":"Ipatinga","bf":"","t":"1 UBS tipo IV","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":5291345.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Aguardando envio dos documentos","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipatinga","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipatinga","bf":"","t":"Equipamentos e mobiliários para os Centros de Referência em Saúde do Trabalhador","i":"Resolução - Investimento","n":"8","eixo":"Vigilância em Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipatinga","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ipatinga","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Itueta","bf":"Vila Neitzel","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-14","urs":"Governador Valadares"},{"m":"Itueta","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Itueta","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Mariana","bf":"Rua Procópio Ferreira, s/nº - Barroca, Cachoeira do Brumado","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-14","urs":"Belo Horizonte"},{"m":"Mariana","bf":"Rua Cônego Amando, nº 372 - São José","t":"1 UBS tipo II","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2542000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-03","urs":"Belo Horizonte"},{"m":"Mariana","bf":"Rua Prefeito João Sampaio, nº 132, nº 134, nº 128 e nº 170 - Distrito de São Gonçalo","t":"1 UBS tipo II","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2542000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-10","urs":"Belo Horizonte"},{"m":"Mariana","bf":"Rua Sumidouro, nº 32 - Santa Rita de Cássia","t":"1 UBS tipo III","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2800000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em análise - DIFE","se":"","sc":"","sct":"","du":"2026-09-22","urs":"Belo Horizonte"},{"m":"Mariana","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"Mariana","bf":"Hospital Monsenhor Horta","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":1161804.0,"vp":640789.0,"sr":"Empenhado","sp":"Liquidado/Pago PARCIAL","dp":"2026-07-03","ta":"Assinado","so":"","se":"Lista parcialmente validada","sc":"","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"Mariana","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"Mariana","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"Marliéria","bf":"Rua 03 - Jardim Recanto","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-17","urs":"Coronel Fabriciano"},{"m":"Marliéria","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.9,"vp":81791.9,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Marliéria","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Naque","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Naque","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.91,"vp":81791.91,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Naque","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ouro Preto","bf":"Rua Desidério de Matos, 769 - Padre Faria","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-08-26","urs":"Belo Horizonte"},{"m":"Ouro Preto","bf":"Rua Antônio Muniz S/N° - Distrito de Santa Rita de Ouro Preto","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-08-17","urs":"Belo Horizonte"},{"m":"Ouro Preto","bf":"Rua Engenheiro Corrêa, s/n° - 35402-105, e ou Rua Rodrigo Silva, 44 - Vila Aparecida","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Documentação em ajuste","se":"","sc":"","sct":"","du":"2026-09-04","urs":"Belo Horizonte"},{"m":"Ipatinga","bf":"","t":"1 Centro de Convivência","i":"Convênio","n":"","eixo":"Atenção Especializada à Saúde","v":1000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-09-15","urs":"Coronel Fabriciano"},{"m":"Ouro Preto","bf":"Santa Casa da Misericórdia","t":"Obras de expansão do Pronto Atendimento e Bloco Cirúrgico","i":"Convênio","n":"","eixo":"Atenção Hospitalar","v":3616275.1,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de adequação do Plano de Trabalho","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"Ouro Preto","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"Ouro Preto","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"Periquito","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Periquito","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.91,"vp":81791.91,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Periquito","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Pingo D'água","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Pingo D'água","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.91,"vp":81791.91,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Pingo D'água","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Ponte Nova","bf":"Hospital Arnaldo Gavazza","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Plano de Trabalho","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":15000000.0,"vp":15000000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-16","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Ponte Nova","bf":"Hospital Nossa Senhora das Dores","t":"Obra no Hospital Nossa Senhora das Dores","i":"Convênio","n":"","eixo":"Atenção Hospitalar","v":15000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Análise área técnica","sct":"","du":"2026-08-31","urs":"Ponte Nova"},{"m":"Ponte Nova","bf":"","t":"5 pontos de apoio","i":"Convênio","n":"","eixo":"Atenção Primária à Saúde","v":1200000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de cadastro no SIGCON","sct":"","du":"2026-09-04","urs":"Ponte Nova"},{"m":"Ponte Nova","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Ponte Nova","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Raul Soares","bf":"Rua Dona Leopoldina Sather, Distrito de Vermelho Velho","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Ponte Nova"},{"m":"Raul Soares","bf":"Hospital São Sebastião","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo HPP","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":1500000.0,"vp":1500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-03","ta":"Assinado","so":"","se":"Pleito em reavaliação","sc":"","sct":"","du":"2026-09-01","urs":"Ponte Nova"},{"m":"Raul Soares","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Raul Soares","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Resplendor","bf":"Rua da Cutieira Distrito de Campo Alegre Resplendor/MG;","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Envio parcial dos documentos","se":"","sc":"","sct":"","du":"2026-08-19","urs":"Governador Valadares"},{"m":"Resplendor","bf":"Hospital Nossa Senhora do Carmo","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":476625.0,"vp":476625.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-29","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Resplendor","bf":"Rua Jacob Schwenck, Resplendor-MG","t":"1 CAPS tipo I","i":"Resolução - Investimento","n":"6","eixo":"Atenção Especializada à Saúde","v":2506000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Envio parcial dos documentos","se":"","sc":"","sct":"","du":"2026-08-28","urs":"Governador Valadares"},{"m":"Resplendor","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.91,"vp":81791.91,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Resplendor","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Rio Casca","bf":"","t":"1 CAPS infantil","i":"Resolução - Investimento","n":"6","eixo":"Atenção Especializada à Saúde","v":2506000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"[CAPS] Aguardando PAR da RAPS","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Rio Casca","bf":"Hospital Nossa Senhora da Conceição","t":"Obra no Hospital Nossa Senhora da Conceição","i":"Convênio","n":"","eixo":"Atenção Hospitalar","v":3000000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de cadastro no SIGCON","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Rio Casca","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Rio Casca","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Rio Doce","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":88150.29,"vp":88150.29,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Rio Doce","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.78,"vp":26315.78,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Rio Doce","bf":"","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Santa Cruz do Escalvado","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Santa Cruz do Escalvado","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.91,"vp":81791.91,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Santa Cruz do Escalvado","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Santana do Paraíso","bf":"AVENIDA EXPEDITO ANICIO DE OLIVEIRA, S/N, SÃO JOSÉ - SANTANA DO PARAÍSO/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Santana do Paraíso","bf":"RUA BELO HORIZONTE, S/N, BAIRRO VERANEIO - SANTANA DO PARAÍSO/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Santana do Paraíso","bf":"","t":"1 CAPS tipo I","i":"Resolução - Investimento","n":"6","eixo":"Atenção Especializada à Saúde","v":2506000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"[CAPS] Aguardando PAR da RAPS","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Santana do Paraíso","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.91,"vp":81791.91,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Santana do Paraíso","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"São Domingos do Prata","bf":"Hospital Nossa Senhora das Dores","t":"Custeio para o Hospital Nossa Senhora das Dores","i":"Resolução - Custeio","n":"","eixo":"Atenção Hospitalar","v":1500000.0,"vp":1500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-10","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Itabira"},{"m":"São José do Goiabal","bf":"","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Aguardando envio dos documentos","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"São Pedro dos Ferros","bf":"","t":"1 UBS tipo II","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2542000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Envio parcial dos documentos","se":"","sc":"","sct":"","du":"2026-09-03","urs":"Ponte Nova"},{"m":"São Domingos do Prata","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Itabira"},{"m":"São Domingos do Prata","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Itabira"},{"m":"São José do Goiabal","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":88150.29,"vp":88150.29,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"São José do Goiabal","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"São Pedro dos Ferros","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"São Pedro dos Ferros","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Sem-Peixe","bf":"","t":"1 Centro de Saúde ampliado","i":"Convênio","n":"","eixo":"Atenção Primária à Saúde","v":1055000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"","so":"","se":"","sc":"Solicitação de cadastro no SIGCON","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Sem-Peixe","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Sem-Peixe","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.78,"vp":26315.78,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"Sobrália","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"4","eixo":"Atenção Primária à Saúde","v":460000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"Aguardando atualização da Resolução","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Sobrália","bf":"","t":"Custeio para UBS","i":"Resolução - Custeio","n":"3","eixo":"Atenção Primária à Saúde","v":540000.0,"vp":0,"sr":"","sp":"","dp":"","ta":"Aguardando atualização da Resolução","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Sobrália","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Sobrália","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Timóteo","bf":"","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Aguardando envio dos documentos","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"R. Cento e Treze, Cruzeirinho, Timóteo/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"R. Quatro, Petropolis, Timóteo/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"Avenida Acesita, Primavera, Timóteo/MG","t":"1 UBS tipo I","i":"Resolução - Investimento","n":"1","eixo":"Atenção Primária à Saúde","v":2000000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"Em conferência - URS","se":"","sc":"","sct":"","du":"2026-09-02","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"","t":"Unidade Odontológica Móvel destinada às ações assistenciais de saúde bucal","i":"Resolução - Investimento","n":"4","eixo":"Atenção Primária à Saúde","v":379890.0,"vp":379890.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"","t":"1 CAPS tipo II","i":"Resolução - Investimento","n":"6","eixo":"Atenção Especializada à Saúde","v":2506000.0,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"[CAPS] Aguardando PAR da RAPS","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"Hospital e Maternidade Vital Brazil","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde","i":"Resolução - Investimento","n":"7","eixo":"Atenção Hospitalar","v":1850000.0,"vp":627500.0,"sr":"Empenhado","sp":"Liquidado/Pago PARCIAL","dp":"2026-07-03","ta":"Assinado","so":"","se":"Em análise - Nível Central","sc":"","sct":"","du":"2026-08-11","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"Hospital e Maternidade Vital Brazil","t":"Custeio para o Hospital Vital Brazil","i":"Resolução - Custeio","n":"","eixo":"Atenção Hospitalar","v":550000.0,"vp":550000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-10","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":81791.91,"vp":81791.91,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Timóteo","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"Tumiritinga","bf":"","t":"Equipamentos e materiais permanentes - APS","i":"Resolução - Investimento","n":"3","eixo":"Atenção Primária à Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Tumiritinga","bf":"","t":"Ampliação do VIGIAGUA","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":75433.53,"vp":75433.53,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Tumiritinga","bf":"","t":"Ampliação do VIGIAR e VIGIDESASTRES","i":"Resolução - Custeio","n":"","eixo":"Vigilância em Saúde","v":26315.79,"vp":26315.79,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-06-18","ta":"Assinado","so":"","se":"","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"Belo Horizonte","bf":"","t":"Equipamentos e mobiliários para os Centros de Referência em Saúde do Trabalhador","i":"Resolução - Investimento","n":"8","eixo":"Vigilância em Saúde","v":500000.0,"vp":500000.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-05-22","ta":"Assinado","so":"","se":"Não se aplica","sc":"","sct":"","du":"2026-07-19","urs":"Belo Horizonte"},{"m":"CISAMAPI","bf":"","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","i":"Resolução - Investimento","n":"9","eixo":"Consórcios Intermunicipais de Saúde","v":2173913.04,"vp":1254137.0,"sr":"Empenhado","sp":"Liquidado/Pago PARCIAL","dp":"2026-07-01","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Ponte Nova"},{"m":"CISDESLESTE","bf":"","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","i":"Resolução - Investimento","n":"9","eixo":"Consórcios Intermunicipais de Saúde","v":2173913.04,"vp":2173913.04,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-01","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Coronel Fabriciano"},{"m":"CISDOCE","bf":"","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","i":"Resolução - Investimento","n":"9","eixo":"Consórcios Intermunicipais de Saúde","v":1739130.44,"vp":0,"sr":"Empenhado","sp":"Empenhado","dp":"","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"},{"m":"CISMEPI","bf":"","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","i":"Resolução - Investimento","n":"9","eixo":"Consórcios Intermunicipais de Saúde","v":217391.3,"vp":217391.3,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-01","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Itabira"},{"m":"CONSAUDE","bf":"","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","i":"Resolução - Investimento","n":"9","eixo":"Consórcios Intermunicipais de Saúde","v":2826086.96,"vp":2018712.0,"sr":"Empenhado","sp":"Liquidado/Pago PARCIAL","dp":"2026-07-01","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-08-13","urs":"Coronel Fabriciano"},{"m":"ICISMEP","bf":"","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","i":"Resolução - Investimento","n":"9","eixo":"Consórcios Intermunicipais de Saúde","v":869565.22,"vp":265300.0,"sr":"Empenhado","sp":"Liquidado/Pago PARCIAL","dp":"2026-07-01","ta":"Assinado","so":"","se":"Em análise - Nível Central","sc":"","sct":"","du":"2026-08-05","urs":"Belo Horizonte"},{"m":"CONSURGE","bf":"","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","i":"Resolução - Investimento","n":"10","eixo":"Consórcios Intermunicipais de Saúde","v":4184317.0,"vp":4184317.0,"sr":"Pago","sp":"Liquidado/Pago","dp":"2026-07-03","ta":"Assinado","so":"","se":"Lista validada","sc":"","sct":"","du":"2026-07-19","urs":"Governador Valadares"}]};      // plano + situação financeira (aba Base Consolidada) — cópia
+const RETRATO = {"status":"ok","gerado_em":"2026-09-22T18:23:33Z","registros":[{"m":"Coronel Fabriciano","i":"RES_Investimento","t":"Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde","b":4,"a":2026,"dt":"","tm":"equipamento","sc":"","se":"","sm":"Em andamento","at":"","pa":0,"ve":0,"vc":0.0,"vp":7000000.0,"en":""},{"m":"Coronel Fabriciano","i":"RES_Investimento","t":"1 UBS tipo II","b":4,"a":2026,"dt":"","tm":"obra","sc":"Planejamento","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":2542000.0,"en":""},{"m":"Coronel Fabriciano","i":"RES_Investimento","t":"Equipamentos e materiais permanentes para serviços de atenção ambulatorial especializada - Geral \\> Ressonância, vídeo endoscopia, raios X","b":4,"a":2026,"dt":"","tm":"equipamento","sc":"","se":"","sm":"Em andamento","at":"","pa":0,"ve":0,"vc":0.0,"vp":6000000.0,"en":""},{"m":"Coronel Fabriciano","i":"RES_Custeio","t":"Ampliação do VIGIAGUA","b":4,"a":2026,"dt":"","tm":"servico","sc":"Planejamento","se":"Não iniciada","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":75433.53,"en":""},{"m":"Coronel Fabriciano","i":"RES_Custeio","t":"Ampliação do VIGIAR e VIGIDESASTRES","b":4,"a":2026,"dt":"","tm":"servico","sc":"Planejamento","se":"Não iniciada","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":26315.79,"en":""},{"m":"Bugre","i":"RES_Custeio","t":"Ampliação do VIGIAR e VIGIDESASTRES","b":4,"a":2026,"dt":"","tm":"servico","sc":"","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":26315.79,"en":""},{"m":"Bugre","i":"RES_Custeio","t":"Ampliação do VIGIAGUA","b":4,"a":2026,"dt":"","tm":"servico","sc":"","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":81791.9,"en":""},{"m":"Bugre","i":"RES_Investimento","t":"UBS de Apoio — Unidade 1 de 2","b":4,"a":2026,"dt":"","tm":"obra","sc":"Planejamento","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":1000000.0,"en":"Avenida Joaquim Lúcio, s/n Distrito São José"},{"m":"Bugre","i":"RES_Investimento","t":"UBS de Apoio — Unidade 2 de 2","b":4,"a":2026,"dt":"","tm":"obra","sc":"Planejamento","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":1000000.0,"en":"Praça São Lourenço, s/n Distrito São Lourenço"},{"m":"Sobrália","i":"RES_Custeio","t":"Ampliação do VIGIAGUA","b":4,"a":2026,"dt":"","tm":"servico","sc":"","se":"","sm":"Não iniciada","at":"","pa":0,"ve":1500.0,"vc":0.0,"vp":75433.53,"en":""},{"m":"Sobrália","i":"RES_Investimento","t":"Equipamentos e materiais permanentes - APS","b":4,"a":2026,"dt":"","tm":"equipamento","sc":"","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":460000.0,"en":""},{"m":"Sobrália","i":"RES_Custeio","t":"Ampliação do VIGIAR e VIGIDESASTRES","b":4,"a":2026,"dt":"","tm":"servico","sc":"Planejamento","se":"Não iniciada","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":26315.79,"en":""},{"m":"Sobrália","i":"RES_Custeio","t":"Custeio para UBS","b":4,"a":2026,"dt":"","tm":"servico","sc":"","se":"Não iniciada","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":540000.0,"en":""},{"m":"ICISMEP","i":"RES_Investimento","t":"Equipamentos assistenciais para sedes dos consórcios intermunicipais","b":4,"a":2026,"dt":"","tm":"equipamento","sc":"","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":869565.22,"en":""},{"m":"Ouro Preto","i":"RES_Custeio","t":"Ampliação do VIGIAGUA","b":4,"a":2026,"dt":"","tm":"servico","sc":"","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":75433.53,"en":""},{"m":"Ouro Preto","i":"RES_Custeio","t":"Ampliação do VIGIAR e VIGIDESASTRES","b":4,"a":2026,"dt":"","tm":"servico","sc":"","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0.0,"vc":0.0,"vp":26315.79,"en":""},{"m":"Ouro Preto","i":"Convenio","t":"Obras de expansão do Pronto Atendimento e Bloco Cirúrgico","b":4,"a":2026,"dt":"","tm":"obra","sc":"Planejamento","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":3616275.1,"en":"Rua José Moringa, 620 – Bairro Vila Itacolomy (Bauxita), Ouro Preto - MG, CEP 35400-000"},{"m":"Ouro Preto","i":"RES_Investimento","t":"UBS tipo I — Unidade 1 de 3","b":4,"a":2026,"dt":"","tm":"obra","sc":"Planejamento","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":2000000.0,"en":"Rua Engenheiro Corrêa, s/n° - 35402-105, e ou Rua Rodrigo Silva, 44 Bairro Vila Aparecida - Ouro Preto - MG 35402-066"},{"m":"Ouro Preto","i":"RES_Investimento","t":"UBS tipo I — Unidade 2 de 3","b":4,"a":2026,"dt":"","tm":"obra","sc":"Planejamento","se":"","sm":"Não iniciada","at":"","pa":0,"ve":0,"vc":0.0,"vp":2000000.0,"en":"Rua Antônio Muniz S/N° Distrito de Santa Rita de Ouro Preto - Ouro Preto - MG 35419-000"}],"recebido":{"Coronel Fabriciano":13101749.32,"Bugre":108107.69,"Sobrália":101749.32,"ICISMEP":265300.0,"Ouro Preto":101749.32},"enderecos":[{"m":"Bugre","i":"RES_Investimento","t":"UBS de Apoio — Unidade 1 de 2","e":"Avenida Joaquim Lúcio, s/n Distrito São José"},{"m":"Bugre","i":"RES_Investimento","t":"UBS de Apoio — Unidade 2 de 2","e":"Praça São Lourenço, s/n Distrito São Lourenço"},{"m":"Ouro Preto","i":"Convenio","t":"Obras de expansão do Pronto Atendimento e Bloco Cirúrgico","e":"Rua José Moringa, 620 – Bairro Vila Itacolomy (Bauxita), Ouro Preto - MG, CEP 35400-000"},{"m":"Ouro Preto","i":"RES_Investimento","t":"UBS tipo I — Unidade 1 de 3","e":"Rua Engenheiro Corrêa, s/n° - 35402-105, e ou Rua Rodrigo Silva, 44 Bairro Vila Aparecida - Ouro Preto - MG 35402-066"},{"m":"Ouro Preto","i":"RES_Investimento","t":"UBS tipo I — Unidade 2 de 3","e":"Rua Antônio Muniz S/N° Distrito de Santa Rita de Ouro Preto - Ouro Preto - MG 35419-000"},{"m":"Ouro Preto","i":"RES_Investimento","t":"UBS tipo I — Unidade 3 de 3","e":"Rua Desidério de Matos, 769 - Bairro Padre Faria, Ouro Preto - MG 35406-108"},{"m":"Ipatinga","i":"RES_Investimento","t":"1 UBS tipo IV","e":"Avenida Pedro Nolasco S/N, Bairro Ideal, Ipatinga/MG"},{"m":"Ipatinga","i":"Convenio","t":"Construção da Unidade 2 do hospital","e":"Rua Graciliano Ramos S/N, Bairro Cidade Nobre, Ipatinga/MG"},{"m":"Córrego Novo","i":"RES_Investimento","t":"1 UBS tipo I","e":"Ainda nao realizado deposito de recurso para inicio da Obra"},{"m":"Resplendor","i":"RES_Investimento","t":"1 UBS tipo I","e":"Rua Cutieira, Distrito de Campo Alegre de Minas, s/nº"},{"m":"Resplendor","i":"RES_Investimento","t":"1 CAPS tipo I","e":"Rua Jacob Schwenck s/nº, Bairro Nossa Senhora de Fátima,"},{"m":"Sem-Peixe","i":"Convenio","t":"1 Centro de Saúde ampliado","e":"Rua Jose Antonio do Nascimento, SN - Centro"},{"m":"Ponte Nova","i":"Convenio","t":"Obra no Hospital Nossa Senhora das Dores","e":"Rua Dr. Leonardo, 200, bairro Centro, CEP 35.430-004"},{"m":"Governador Valadares","i":"Convenio","t":"Polo de Fisioterapia — Unidade 1 de 4","e":"Av. Pres. Castelo Branco, 50- Santa Rita"},{"m":"Governador Valadares","i":"Convenio","t":"Construção de 1 Centro de Especialidades Odontológicas","e":"Rua São João, 340 - Esplanada."},{"m":"Governador Valadares","i":"Convenio","t":"Contrução de 1 unidade de saúde de Serviço de Atenção Especializada (SAE) ampliado","e":"Rua Martim de Souza, 523 - Morada do Vale."},{"m":"Governador Valadares","i":"Convenio","t":"Obra do CEAE","e":"Av. Presidente Tancredo Neves, s/n - Santa Efigênia"},{"m":"Governador Valadares","i":"Convenio","t":"Polo de Fisioterapia — Unidade 2 de 4","e":"Rua José Gonçalves Tiradentes, 28 - Universitário"},{"m":"Governador Valadares","i":"Convenio","t":"Polo de Fisioterapia — Unidade 3 de 4","e":"Rua Virgílio Vieira, 40 - São Raimundo"},{"m":"Governador Valadares","i":"Convenio","t":"Polo de Fisioterapia — Unidade 4 de 4","e":"Rua T, 249 - Nova Vila Bretas"},{"m":"Governador Valadares","i":"RES_Investimento","t":"1 CAPS tipo III Qualificação","e":"Rua José Dalflon Faria, s/n - Morada do Vale III"},{"m":"Itueta","i":"RES_Investimento","t":"1 UBS tipo I","e":"Vila Neitzel"}]};   // monitoramento bimestral — cópia usada se a planilha não responder
+const URS_FALLBACK = {"Aimorés": "Governador Valadares", "Alpercata": "Governador Valadares", "Barra Longa": "Ponte Nova", "Belo Horizonte": "Belo Horizonte", "Belo Oriente": "Coronel Fabriciano", "Bom Jesus do Galho": "Coronel Fabriciano", "Bugre": "Coronel Fabriciano", "CISAMAPI": "Ponte Nova", "CISDESLESTE": "Coronel Fabriciano", "CISDOCE": "Governador Valadares", "CISMEPI": "Itabira", "CONSAUDE": "Coronel Fabriciano", "CONSURGE": "Governador Valadares", "Caratinga": "Coronel Fabriciano", "Conselheiro Pena": "Governador Valadares", "Coronel Fabriciano": "Coronel Fabriciano", "Córrego Novo": "Coronel Fabriciano", "Dionísio": "Coronel Fabriciano", "Fernandes Tourinho": "Governador Valadares", "Galiléia": "Governador Valadares", "Governador Valadares": "Governador Valadares", "ICISMEP": "Belo Horizonte", "Iapu": "Coronel Fabriciano", "Ipaba": "Coronel Fabriciano", "Ipatinga": "Coronel Fabriciano", "Itueta": "Governador Valadares", "Mariana": "Belo Horizonte", "Marliéria": "Coronel Fabriciano", "Naque": "Coronel Fabriciano", "Ouro Preto": "Belo Horizonte", "Periquito": "Coronel Fabriciano", "Pingo D'água": "Coronel Fabriciano", "Ponte Nova": "Ponte Nova", "Raul Soares": "Ponte Nova", "Resplendor": "Governador Valadares", "Rio Casca": "Ponte Nova", "Rio Doce": "Ponte Nova", "Santa Cruz do Escalvado": "Ponte Nova", "Santana do Paraíso": "Coronel Fabriciano", "Sem-Peixe": "Ponte Nova", "Sobrália": "Governador Valadares", "São Domingos do Prata": "Itabira", "São José do Goiabal": "Ponte Nova", "São Pedro dos Ferros": "Ponte Nova", "Timóteo": "Coronel Fabriciano", "Tumiritinga": "Governador Valadares"};
+
+const INSTR = {
+  'Resolução - Investimento':{nome:'Investimento', nota:'Obras e equipamentos, com recurso repassado fundo a fundo pela resolução.', mon:'RES_Investimento'},
+  'Resolução - Custeio':{nome:'Custeio', nota:'Serviços e atividades, com recurso repassado fundo a fundo pela resolução.', mon:'RES_Custeio'},
+  'Convênio':{nome:'Convênio', nota:'O repasse acontece depois que o convênio é celebrado.', mon:'Convenio'}
+};
+const CONSORCIOS=['CISAMAPI','CISDESLESTE','CISDOCE','CISMEPI','CONSAUDE','CONSURGE','ICISMEP'];
+
+const SIT = {
+  concluida:   {rot:'Concluída',         ord:5, desc:'Obra entregue, equipamentos recebidos ou meta do serviço alcançada.'},
+  execucao:    {rot:'Em execução',       ord:4, desc:'Empresa contratada e a obra, entrega ou serviço já está acontecendo.'},
+  contratacao: {rot:'Em contratação',    ord:3, desc:'Processo de compra ou licitação aberto; ainda sem contrato assinado.'},
+  planejamento:{rot:'Em planejamento',   ord:2, desc:'Ação em preparação (projeto, termo de referência, orçamento), ainda sem processo de compra aberto.'},
+  seminfo:     {rot:'Sem monitoramento', ord:0, desc:'O município ou consórcio ainda não enviou informação sobre esta ação.'}
+};
+const ORDEM = ['concluida','execucao','contratacao','planejamento','seminfo'];
+const cor = k => `var(--s-${k})`, corBg = k => `var(--s-${k}-bg)`;
+const PIN = '<svg width="13" height="16" viewBox="0 0 13 16" aria-hidden="true"><path fill="currentColor" d="M6.5 0A6.5 6.5 0 0 0 0 6.5C0 11 6.5 16 6.5 16S13 11 13 6.5A6.5 6.5 0 0 0 6.5 0Zm0 9A2.5 2.5 0 1 1 6.5 4a2.5 2.5 0 0 1 0 5Z"/></svg>';
+
+// Status internos da planilha → frase para quem está do lado do município
+const ETAPA_PRE = {
+  'aguardando envio dos documentos':'Aguardando o envio dos documentos da obra',
+  'envio parcial dos documentos':'Documentos da obra enviados em parte',
+  'documentacao em ajuste':'Documentos da obra em ajuste',
+  'em conferencia - urs':'Documentos da obra em conferência na URS',
+  'em analise - dife':'Documentos da obra em análise técnica na SES-MG',
+  '[caps] aguardando par da raps':'Aguardando inclusão no PAR da RAPS',
+  'pleito em reavaliacao':'Pedido em reavaliação',
+  'lista validada':'Lista de equipamentos validada',
+  'lista parcialmente validada':'Lista de equipamentos validada em parte',
+  'em analise - nivel central':'Lista de equipamentos em análise na SES-MG',
+  'solicitacao de adequacao do plano de trabalho':'Plano de trabalho do convênio em ajuste',
+  'solicitacao de cadastro no sigcon':'Aguardando cadastro da proposta no SIGCON',
+  'analise area tecnica':'Proposta de convênio em análise técnica na SES-MG',
+  'analise tecnica de engenharia':'Proposta de convênio em análise de engenharia na SES-MG',
+  'aguardando atualizacao da resolucao':'Aguardando atualização da resolução'
+};
+
+// ── utilidades ─────────────────────────────────────────────
+const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+const brl = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
+function brlCurto(v){
+  v = Number(v||0);
+  if (v >= 1e6) return 'R$ ' + (v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:v>=1e7?1:2}) + ' mi';
+  if (v >= 1e3) return 'R$ ' + (v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0}) + ' mil';
+  return brl(v);
+}
+const pct = (a,b) => b>0 ? Math.max(0, Math.min(100, a/b*100)) : 0;
+const natureza = n => CONSORCIOS.includes(String(n).toUpperCase()) ? 'consórcio' : 'município';
+const semUnidade = t => String(t||'').replace(/\s*[—–-]\s*Unidade\s+\d+\s+de\s+\d+\s*$/i,'');
+const dataBR = s => { const m = String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+const plural = (n,s,p) => n+' '+(n===1?s:p);
+
+
+// ── Nomes em linguagem simples (só nesta página) ─────────────────────────
+// O plano usa siglas e nomes técnicos ("1 UBS tipo I", "Ampliação do
+// VIGIAGUA"). Aqui cada ação ganha um nome que qualquer pessoa entende e uma
+// linha curta dizendo para que serve. A sigla fica entre parênteses, porque é
+// como o município conhece a ação. Termo sem regra → mostra o nome original.
+const NOMES_SIMPLES = [
+  [/^\d*\s*ubs de apoio/, () => ['Unidade Básica de Saúde de Apoio (UBS de Apoio)', 'Posto de saúde de apoio, para atendimento perto de casa']],
+  [/^\d*\s*ubs tipo (i{1,3}|iv)\b/, m => ['Unidade Básica de Saúde (UBS) – tipo ' + m[1].toUpperCase(), 'Posto de saúde para consultas, vacinas e acompanhamento das famílias. O tipo indica o tamanho da unidade']],
+  [/^reforma de \d*\s*ubs/, () => ['Reforma de Unidade Básica de Saúde (UBS)', 'Obra de melhoria em posto de saúde que já existe']],
+  [/centro de saude ampliado/, () => ['Ampliação de Centro de Saúde', 'Obra para aumentar a unidade de saúde e o atendimento à população']],
+  [/(\d*)\s*pontos de apoio/, m => [(m[1] ? m[1] + ' ' : '') + 'Pontos de Apoio da Atenção Primária', 'Pequenas estruturas de apoio às equipes de saúde da família']],
+  [/caps tipo iii/, () => ['Qualificação do Centro de Atenção Psicossocial (CAPS III)', 'Melhoria do serviço de saúde mental que funciona 24 horas']],
+  [/caps tipo (i{1,2})\b/, m => ['Centro de Atenção Psicossocial (CAPS) – tipo ' + m[1].toUpperCase(), 'Atendimento em saúde mental para pessoas em sofrimento psíquico']],
+  [/caps ad/, () => ['Centro de Atenção Psicossocial Álcool e Drogas (CAPS AD)', 'Cuidado para pessoas com problemas pelo uso de álcool e outras drogas']],
+  [/caps infantil/, () => ['Centro de Atenção Psicossocial Infantojuvenil (CAPSi)', 'Atendimento em saúde mental para crianças e adolescentes']],
+  [/centro de convivencia/, () => ['Centro de Convivência', 'Espaço de convivência, cultura e inclusão ligado à rede de saúde mental']],
+  [/farmacia movel/, () => ['Farmácia Móvel', 'Veículo que leva medicamentos até a população']],
+  [/vigiagua/, () => ['Vigilância da Qualidade da Água (VIGIAGUA)', 'Monitoramento da água que a população consome']],
+  [/vigiar/, () => ['Vigilância do Ar e de Desastres (VIGIAR e VIGIDESASTRES)', 'Monitoramento da qualidade do ar e preparação para emergências e desastres']],
+  [/base descentralizada do samu/, () => ['Base do SAMU 192', 'Ponto de apoio das ambulâncias de urgência']],
+  [/centro de especialidades medicas/, () => ['Centro de Especialidades Médicas', 'Consultas com médicos especialistas']],
+  [/centro de especialidades odontologicas/, () => ['Centro de Especialidades Odontológicas (CEO)', 'Tratamentos de dentista mais complexos, como canal e prótese']],
+  [/(\d+) polos de fisioterapia/, m => [m[1] + ' Polos de Fisioterapia', 'Unidades de reabilitação e fisioterapia']],
+  [/centro de fisioterapia/, () => ['Centro de Fisioterapia', 'Unidade de reabilitação e fisioterapia']],
+  [/servico de atencao especializada \(sae\)/, () => ['Serviço de Atenção Especializada (SAE)', 'Acompanhamento especializado de doenças transmissíveis e crônicas']],
+  [/^custeio para ubs/, () => ['Manutenção das Unidades Básicas de Saúde', 'Recurso para o funcionamento dos postos de saúde']],
+  [/^custeio para o (hospital .+)$/, (m, t) => ['Manutenção do ' + t.replace(/^custeio para o /i, ''), 'Recurso para o funcionamento do hospital']],
+  [/equipamentos assistenciais para sedes dos consorcios/, () => ['Equipamentos para o consórcio de saúde', 'Equipamentos para o atendimento na sede do consórcio']],
+  [/atencao hospitalar.*arco cirurgico/, () => ['Equipamentos para o hospital', 'Arco cirúrgico e aparelho de vídeo-endoscopia']],
+  [/atencao hospitalar.*modulo hpp/, () => ['Equipamentos para o hospital', 'Hospital de Pequeno Porte do programa Valora Minas']],
+  [/atencao hospitalar.*valor em saude/, () => ['Equipamentos para o hospital', 'Hospital do programa Valora Minas']],
+  [/atencao hospitalar.*tomografo/, () => ['Equipamentos para o hospital', 'Tomógrafo (aparelho de tomografia)']],
+  [/atencao hospitalar/, () => ['Equipamentos para o hospital', 'Conforme o plano de trabalho aprovado']],
+  [/equipamentos e materiais permanentes - aps/, () => ['Equipamentos para as Unidades Básicas de Saúde', 'Aparelhos e móveis para os postos de saúde']],
+  [/atencao ambulatorial especializada.*>\s*(.+)$/, (m, t) => ['Equipamentos para atendimento especializado', t.split('>').pop().trim()]],
+  [/atencao ambulatorial especializada/, () => ['Equipamentos para atendimento especializado', 'Aparelhos para consultas e exames com especialistas']],
+  [/multissensorial/, () => ['Sala multissensorial', 'Espaço de estimulação sensorial para reabilitação, principalmente de crianças']],
+  [/saude do trabalhador/, () => ['Equipamentos para o Centro de Referência em Saúde do Trabalhador (CEREST)', 'Prevenção e cuidado de doenças e acidentes ligados ao trabalho']],
+  [/obra do ceae/, () => ['Obra do Centro Estadual de Atenção Especializada (CEAE)', 'Consultas e exames com especialistas']],
+  [/pronto atendimento e bloco cirurgico/, () => ['Ampliação do Pronto Atendimento e do Bloco Cirúrgico', 'Mais espaço para urgências e cirurgias']],
+  [/hemodialise/, () => ['Reforma e equipamentos do Centro de Hemodiálise', 'Tratamento de pessoas com doença nos rins']],
+  [/unidade odontologica movel/, () => ['Consultório Odontológico Móvel', 'Veículo com consultório de dentista que atende nas comunidades']],
+  [/^obra no (hospital .+)$/, (m, t) => ['Obra no ' + t.replace(/^obra no /i, ''), 'Obra de ampliação ou melhoria do hospital']],
+  [/unidade 2 do hospital/, () => ['Construção da Unidade 2 do Hospital', 'Nova unidade para ampliar o atendimento hospitalar']],
+];
+function nomeSimples(tipo){
+  const t = String(tipo||'').replace(/\n/g,' > ').replace(/ /g,' ').replace(/\s+/g,' ').replace(/^\s*>\s*/,'').trim();
+  const n = norm(t);
+  for (const [re, f] of NOMES_SIMPLES){
+    const m = n.match(re);
+    if (m) { const [tit, det] = f(m, t); return {tit, det}; }
+  }
+  return null;
+}
+
+function partesTipo(t){
+  const ls = String(t||'').split(/\n/).map(s=>s.replace(/^\s*>\s*/,'').replace(/ /g,' ').trim()).filter(Boolean);
+  let tit = (ls[0]||'').replace(/^1\s+(?=[A-ZÀ-Ú])/,''), det = ls.slice(1).join(' · ');
+  const m = tit.match(/^(.{12,}?)\s+-\s+(.+)$/);
+  if (m && !det) { tit = m[1]; det = m[2]; }
+  return {tit, det};
+}
+const PARADAS = new Set('de da do das dos e para a o em com no na ao aos as os um uma construcao contrucao unidade unidades'.split(' '));
+function fichas(s){
+  return new Set(norm(s).replace(/[^a-z0-9 ]/g,' ').split(' ')
+    .filter(w => w && !PARADAS.has(w) && !/^\d+$/.test(w))
+    .map(w => w.length>3 && w.endsWith('s') ? w.slice(0,-1) : w));
+}
+function semelhanca(a,b){
+  const A=fichas(a), B=fichas(b); if(!A.size||!B.size) return 0;
+  let n=0; A.forEach(w=>{ if(B.has(w)) n++; });
+  return n/Math.min(A.size,B.size);
+}
+function enderecoValido(e){
+  const n = norm(e);
+  return n.length > 4 && !/^(ainda|nao |sem |aguard|n\/a|-)/.test(n) && !/nao (realizad|informad|definid)/.test(n);
+}
+
+// ── situação de execução (monitoramento) ───────────────────
+function pctAcum(r){ let p = Number(r.pa||0); if (p>0 && p<=1 && !Number.isInteger(p)) p*=100; return Math.min(100, p); }
+function situacaoDoRegistro(r){
+  const sc=norm(r.sc), se=norm(r.se), sm=norm(r.sm), p=pctAcum(r);
+  let s='planejamento';
+  const sobe = k => { if (SIT[k].ord > SIT[s].ord) s=k; };
+  if (sc==='processo aberto') sobe('contratacao');
+  if (['contratado','em entrega','em execucao'].includes(sc)) sobe('execucao');
+  if (se.startsWith('parcial') || se==='em andamento' || se==='em execucao') sobe('execucao');
+  if (p>0 || Number(r.ve||0)>0) sobe('execucao');
+  if (['concluido','concluida','recebido'].includes(sc) || se.startsWith('total') || se==='concluida' || sm==='concluida' || sm.startsWith('meta alcancada') || p>=100) s='concluida';
+  return s;
+}
+
+// ── situação financeira (Base Consolidada) ─────────────────
+function financeiro(row){
+  const v = Number(row.v||0), vp = Number(row.vp||0);
+  const pago = norm(row.sp).startsWith('liquidado/pago') || norm(row.sr)==='pago';
+  const pre = [row.so, row.se, row.sc, row.sct].map(x=>String(x||'').trim()).find(x => x && norm(x)!=='nao se aplica');
+  const etapa = pre ? (ETAPA_PRE[norm(pre)] || pre) : '';
+  const conv = row.i==='Convênio';
+  if (vp > 0 && vp >= v - 1) return {tipo:'pago', valor:vp, data:row.dp};
+  if (vp > 0) return {tipo:'parcial', valor:vp, data:row.dp, etapa};
+  if (!conv && row.ta && norm(row.ta)!=='assinado') return {tipo:'espera', etapa: ETAPA_PRE[norm(row.ta)] || row.ta};
+  if (!conv && !row.ta) return {tipo:'espera', etapa:'Termo de adesão ainda não assinado'};
+  if (norm(row.sr)==='empenhado') return {tipo:'empenhado', etapa};
+  if (conv) return {tipo:'espera', etapa: etapa || 'Convênio em celebração'};
+  return {tipo:'espera', etapa: etapa || 'Repasse ainda não iniciado'};
+}
+
+// ── dados ──────────────────────────────────────────────────
+let DADOS = RETRATO, PLANO = BASE, AO_VIVO = false;
+const nomes = () => [...new Set(PLANO.linhas.map(r=>r.m))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+const ursDe = n => (PLANO.linhas.find(r=>r.m===n && r.urs)||{}).urs || URS_FALLBACK[n] || '';
+
+function ehObra(r){
+  return !!r.so || /\b(obra|obras|constru\w*|contru\w*|reforma|ampliacao da unidade)\b/.test(norm(r.t)) || /^\d+\s+(ubs|caps)\b/.test(norm(r.t));
+}
+
+function montar(nome){
+  const linhas = PLANO.linhas.filter(r => r.m === nome && INSTR[r.i]);
+  const regs = (DADOS.registros||[]).filter(r => r.m === nome);
+  const ends = (DADOS.enderecos||[]).filter(e => e.m === nome && enderecoValido(e.e));
+
+  const itens = linhas.map((r,idx) => {
+    const pt = nomeSimples(r.t) || partesTipo(r.t);
+    const obra = ehObra(r);
+    return {idx, row:r, inst:r.i, grupo: r.i+'|'+norm(r.t), tit:pt.tit, det:pt.det, eixo:r.eixo, valor:Number(r.v||0), obra,
+            endereco: obra && enderecoValido(r.bf) ? r.bf : '', local: !obra ? r.bf : '', regs:[], fin: financeiro(r)};
+  });
+
+  // registros do monitoramento → item (obras repetidas: casa pelo endereço, senão pela ordem)
+  regs.forEach(rec => {
+    const cand = itens.filter(it => INSTR[it.inst].mon === rec.i);
+    let nota = 0; cand.forEach(it => { let s = semelhanca(semUnidade(rec.t), it.row.t); if (norm(semUnidade(rec.t))===norm(it.tit)) s+=1; it._s=s; nota=Math.max(nota,s); });
+    if (nota < 0.5) return;
+    const top = cand.filter(it => it._s === nota);
+    const un = String(rec.t).match(/Unidade\s+(\d+)\s+de/i);
+    if (top.length === 1 || !un) { top.forEach(it => it.regs.push(rec)); return; }
+    const endRec = (ends.find(e => norm(e.t)===norm(rec.t)) || {}).e || rec.en || '';
+    let alvo = null;
+    if (enderecoValido(endRec)) {
+      let best = 0; top.forEach(it => { const s = semelhanca(endRec, it.endereco); if (s > best){ best=s; alvo=it; } });
+      if (best < 0.4) alvo = null;
+    }
+    if (!alvo) alvo = top[+un[1]-1] || null;
+    if (alvo) alvo.regs.push(rec);
+  });
+
+  itens.forEach(it => {
+    if (it.obra && !it.endereco){
+      const e = ends.find(x => semelhanca(semUnidade(x.t), it.row.t) >= 0.6 && !itens.some(o=>o.endereco && semelhanca(o.endereco,x.e)>=0.6));
+      if (e) it.endereco = e.e;
+    }
+    const sitRegs = it.regs.map(situacaoDoRegistro);
+    if (!it.regs.length) it.sit = 'seminfo';
+    else if (sitRegs.every(k=>k==='concluida')) it.sit = 'concluida';
+    else if (sitRegs.some(k=>k==='execucao'||k==='concluida')) it.sit = 'execucao';
+    else it.sit = sitRegs.reduce((m,k)=> SIT[k].ord < SIT[m].ord ? k : m, sitRegs[0]);
+    it.pct = it.regs.length ? Math.max(...it.regs.map(pctAcum)) : 0;
+    it.exec = it.regs.reduce((t,r)=>t+Number(r.ve||0),0);
+    it.contratado = it.regs.reduce((t,r)=>t+Number(r.vc||0),0);
+    it.atraso = it.regs.some(r=>norm(r.at)==='sim');
+  });
+
+  let ultEnvio=null;
+  regs.forEach(r=>{ if(!ultEnvio || r.a*10+r.b > ultEnvio.a*10+ultEnvio.b) ultEnvio=r; });
+  const total = itens.reduce((t,a)=>t+a.valor,0);
+  const pago = itens.reduce((t,a)=>t+(a.fin.valor||0),0);
+  return {nome, urs:ursDe(nome), itens, total, pago, ultEnvio};
+}
+
+// ── componentes ────────────────────────────────────────────
+function contagem(itens){ const c={}; ORDEM.forEach(k=>c[k]=0); itens.forEach(a=>c[a.sit]++); return c; }
+const miniBarra = c => `<div class="mini" role="img" aria-label="${ORDEM.filter(k=>c[k]).map(k=>c[k]+' '+SIT[k].rot.toLowerCase()).join(', ')}">`
+  + ORDEM.filter(k=>c[k]).map(k=>`<i style="flex:${c[k]};background:${cor(k)}" title="${c[k]} · ${SIT[k].rot}"></i>`).join('') + '</div>';
+const legenda = c => `<div class="legenda">${ORDEM.filter(k=>!c||c[k]).map(k=>`<span><i class="sw" style="background:${cor(k)}"></i>${SIT[k].rot}${c?` <b>${c[k]}</b>`:''}</span>`).join('')}</div>`;
+const pill = k => `<span class="pill" style="--c:${cor(k)};--bg:${corBg(k)}">${SIT[k].rot}</span>`;
+
+function blocoRepasse(a){
+  const f = a.fin, v = a.valor;
+  if (f.tipo==='pago'){
+    return `<div class="fin"><div class="rot">Repassado</div><div class="fv">${brl(f.valor)}</div>
+      <div class="fd">100% de ${brl(v)}${f.data?` · pago em ${dataBR(f.data)}`:''}</div>
+      <div class="barra"><i style="width:100%;background:var(--s-concluida)"></i></div></div>`;
+  }
+  if (f.tipo==='parcial'){
+    const p = pct(f.valor, v);
+    return `<div class="fin"><div class="rot">Repassado</div><div class="fv">${brl(f.valor)}</div>
+      <div class="fd">${p.toFixed(0)}% de ${brl(v)}${f.data?` · pago em ${dataBR(f.data)}`:''}</div>
+      <div class="barra"><i style="width:${p}%;background:var(--s-concluida)"></i></div>
+      ${f.etapa?`<div class="etapa">${esc(f.etapa)}</div>`:''}</div>`;
+  }
+  if (f.tipo==='empenhado'){
+    return `<div class="fin espera"><div class="rot">Repassado</div><div class="fv">R$ 0,00</div>
+      <div class="fd">Recurso reservado (empenhado)${f.etapa?'. O pagamento depende desta etapa:':', aguardando pagamento'}</div>
+      ${f.etapa?`<div class="etapa">${esc(f.etapa)}</div>`:''}</div>`;
+  }
+  return `<div class="fin espera"><div class="rot">Repassado</div><div class="fv">R$ 0,00</div>
+    <div class="fd">Antes do repasse:</div><div class="etapa">${esc(f.etapa)}</div></div>`;
+}
+
+function cardItem(a){
+  const extra = a.exec>0 ? `Executado ${brl(a.exec)}` : (a.contratado>0 ? `Contratado ${brl(a.contratado)}` : '');
+  const prog = a.pct>0 && a.pct<100 ? `<div class="prog"><span>Andamento</span><div class="barra"><i style="width:${a.pct}%;background:${cor('execucao')}"></i></div><b>${a.pct.toFixed(0)}%</b></div>` : '';
+  const end = a.obra ? (a.endereco
+      ? `<div class="end">${PIN}<span>${esc(a.endereco)}</span></div>`
+      : `<div class="end falta">${PIN}<span>Endereço ainda não informado</span></div>`)
+    : (a.local ? `<div class="det">${esc(a.local)}</div>` : '');
+  return `<article class="card" style="--cor:${cor(a.sit)}">
+    <div class="card-top">
+      <div><h4>${esc(a.tit)}</h4>${a.det?`<div class="det">${esc(a.det)}</div>`:''}</div>
+      ${pill(a.sit)}
+    </div>
+    ${end}
+    ${a.obra?'':`<div class="eixo">${esc(a.eixo)}</div>`}
+    <div class="card-val"><span class="v">${brl(a.valor)}</span>${extra?`<span class="x">${extra}</span>`:''}</div>
+    ${prog}
+    ${a.atraso?'<div class="alerta">⚠ Atraso informado no último monitoramento</div>':''}
+    ${blocoRepasse(a)}
+  </article>`;
+}
+
+// ── telas ──────────────────────────────────────────────────
+let filtroURS = '', filtroTxt = '';
+
+function telaGeral(){
+  const todos = nomes().map(montar);
+  const ursLista = [...new Set(todos.map(m=>m.urs).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  document.getElementById('main').innerHTML = `
+    <div class="filtros">
+      <input id="filtro" type="search" placeholder="Buscar município ou consórcio…" value="${esc(filtroTxt)}" aria-label="Buscar município ou consórcio">
+      <div class="chips" role="group" aria-label="Filtrar por Unidade Regional de Saúde">
+        <button class="chip" data-urs="" aria-pressed="${!filtroURS}">Todas as URS</button>
+        ${ursLista.map(u=>`<button class="chip" data-urs="${esc(u)}" aria-pressed="${filtroURS===u}">URS ${esc(u)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="leg-lista">${legenda()}</div>
+    <div class="lista" id="lista"></div>`;
+
+  const desenhaLista = () => {
+    const f = norm(filtroTxt);
+    const vis = todos.filter(m => (!filtroURS || m.urs===filtroURS) && (!f || norm(m.nome).includes(f)));
+    document.getElementById('lista').innerHTML = vis.length ? vis.map(m=>{
+      const cc = contagem(m.itens);
+      const resumo = ORDEM.filter(k=>cc[k]).map(k=>`${cc[k]} ${SIT[k].rot.toLowerCase()}`).join(' · ');
+      return `<button class="linha" data-nome="${esc(m.nome)}">
+        <div><div class="nome">${esc(m.nome)}</div><div class="urs">${natureza(m.nome)==='consórcio'?'Consórcio · ':''}URS ${esc(m.urs)}</div></div>
+        <div class="sit">${miniBarra(cc)}<div class="mini-d">${resumo}</div></div>
+        <div class="val">${brlCurto(m.total)}<small>${pct(m.pago,m.total).toFixed(0)}% repassado</small></div>
+        <span class="seta" aria-hidden="true">›</span>
+      </button>`;}).join('') : '<div class="vazio">Nenhum município ou consórcio encontrado.</div>';
+    document.querySelectorAll('.linha').forEach(b=>b.onclick=()=>abrir(b.dataset.nome));
+  };
+  desenhaLista();
+  document.getElementById('filtro').oninput = e => { filtroTxt = e.target.value; desenhaLista(); };
+  document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
+    filtroURS=b.dataset.urs;
+    document.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed', x===b));
+    desenhaLista();
+  });
+}
+
+function telaMunicipio(nome){
+  const m = montar(nome);
+  const c = contagem(m.itens);
+  const envio = m.ultEnvio
+    ? `<span class="envio">Último monitoramento: <b>${m.ultEnvio.b}º bimestre/${m.ultEnvio.a}</b></span>`
+    : `<span class="envio nao">Nenhum monitoramento enviado ainda</span>`;
+  const nEspera = m.itens.filter(a=>a.fin.tipo!=='pago').length;
+
+  const grupos = Object.keys(INSTR).map(inst=>{
+    const lista = m.itens.filter(a=>a.inst===inst);
+    if (!lista.length) return '';
+    const soma = lista.reduce((t,a)=>t+a.valor,0), pg = lista.reduce((t,a)=>t+(a.fin.valor||0),0);
+    const blocos = []; const vistos = new Set(); let soltos = [];
+    const fecha = () => { if (soltos.length){ blocos.push(`<div class="cards">${soltos.map(cardItem).join('')}</div>`); soltos=[]; } };
+    lista.forEach(it => {
+      const irmaos = lista.filter(x=>x.grupo===it.grupo);
+      if (irmaos.length < 2) { soltos.push(it); return; }
+      if (vistos.has(it.grupo)) return;
+      vistos.add(it.grupo); fecha();
+      blocos.push(`<div class="subgrupo">${esc(it.tit)} <span>· ${plural(irmaos.length,'obra','obras')} · ${brl(irmaos.reduce((t,x)=>t+x.valor,0))}</span></div>
+        <div class="cards">${irmaos.map(cardItem).join('')}</div>`);
+    });
+    fecha();
+    return `<section class="grupo">
+      <div class="grupo-cab"><h3>${INSTR[inst].nome}</h3><span class="soma">${brl(soma)} · ${pct(pg,soma).toFixed(0)}% repassado</span></div>
+      <p class="grupo-nota">${INSTR[inst].nota}</p>
+      ${blocos.join('<div style="height:14px"></div>')}
+    </section>`;
+  }).join('');
+
+  document.getElementById('main').innerHTML = `
+    <button class="voltar" id="voltar">‹ Todos os municípios e consórcios</button>
+    <div class="cab-det">
+      <div><div class="rot">${natureza(nome)==='consórcio'?'Consórcio':'Município'} · URS ${esc(m.urs)}</div><h2>${esc(nome)}</h2></div>
+      ${envio}
+    </div>
+    <div class="numeros">
+      <div class="num"><div class="rot">Previsto no plano</div><div class="v">${brl(m.total)}</div><div class="d">${plural(m.itens.length,'ação','ações')}</div></div>
+      <div class="num"><div class="rot">Já repassado</div><div class="v">${brl(m.pago)}</div>
+        <div class="d">${pct(m.pago,m.total).toFixed(0)}% de ${brl(m.total)}</div>
+        <div class="barra"><i style="width:${pct(m.pago,m.total)}%;background:var(--s-concluida)"></i></div></div>
+      <div class="num"><div class="rot">Ainda a repassar</div><div class="v">${brl(Math.max(0,m.total-m.pago))}</div>
+        <div class="d">${nEspera ? plural(nEspera,'ação aguardando alguma etapa','ações aguardando alguma etapa') : 'Tudo repassado'}</div></div>
+    </div>
+    <div class="sit-box">
+      <div class="rot">Execução das ações</div>
+      ${miniBarra(c)}
+      ${legenda(c)}
+    </div>
+    ${grupos}`;
+  document.getElementById('voltar').onclick = () => abrir('');
+}
+
+// ── navegação ──────────────────────────────────────────────
+function abrir(nome, semHistorico){
+  if (!semHistorico) history.replaceState(null,'', nome ? '#' + encodeURIComponent(nome) : location.pathname + location.search);
+  nome ? telaMunicipio(nome) : telaGeral();
+  if (!semHistorico) window.scrollTo({top:0, behavior:'smooth'});
+}
+const nomeAtual = () => { const h = decodeURIComponent(location.hash.replace(/^#/,'')); return nomes().includes(h) ? h : ''; };
+
+function faixa(){
+  const d = DADOS.gerado_em ? new Date(DADOS.gerado_em) : null;
+  const quando = d && !isNaN(d) ? d.toLocaleDateString('pt-BR') : '';
+  const fin = dataBR(PLANO.atualizado);
+  document.getElementById('ponto').className = 'ponto' + (AO_VIVO ? ' vivo' : '');
+  document.getElementById('faixa-txt').textContent =
+    `Repasses atualizados em ${fin} · monitoramento ${AO_VIVO ? 'atualizado em ' + quando : 'de ' + quando + ' (a atualização automática não respondeu agora)'}.`;
+}
+
+async function carregarAoVivo(){
+  try{
+    const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 15000);
+    const r = await fetch(API_URL + '?acao=painelPublico', {signal: ctl.signal});
+    clearTimeout(t);
+    const d = await r.json();
+    if (d && d.status==='ok' && Array.isArray(d.registros)){
+      if (!Array.isArray(d.enderecos)) d.enderecos = RETRATO.enderecos || [];
+      DADOS = d; AO_VIVO = true;
+      if (d.financeiro && Array.isArray(d.financeiro.linhas) && d.financeiro.linhas.length) PLANO = d.financeiro;
+      abrir(nomeAtual(), true);
+    }
+  }catch(e){ /* segue com a cópia */ }
+  faixa();
+}
+
+document.getElementById('ajuda-dl').innerHTML = ORDEM.map(k=>`<dt>${pill(k)}</dt><dd>${SIT[k].desc}</dd>`).join('');
+abrir(nomeAtual(), true);
+document.getElementById('faixa-txt').textContent = 'Atualizando dados…';
+window.addEventListener('hashchange', () => abrir(nomeAtual(), true));
+carregarAoVivo();
+</script>
+</body>
+</html>
