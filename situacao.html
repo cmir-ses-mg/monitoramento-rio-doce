@@ -559,7 +559,7 @@ function telaGeral(){
         <button class="chip" data-urs="" aria-pressed="${!filtroURS}">Todas as URS</button>
         ${ursLista.map(u=>`<button class="chip" data-urs="${esc(u)}" aria-pressed="${filtroURS===u}">URS ${esc(u)}</button>`).join('')}
       </div>
-      <p class="nota-urs"><b>URS</b> = Unidade Regional de Saúde: É uma unidade da Secretaria Estadual de Saúde que coordena e apoia as ações de saúde nos municípios de uma determinada região.</p>
+      <p class="nota-urs"><b>URS</b> = Unidade Regional de Saúde: escritório da SES-MG que acompanha os municípios de cada região do estado.</p>
     </div>
     <div class="leg-lista">${legenda()}</div>
     <div class="lista" id="lista"></div>`;
@@ -649,12 +649,15 @@ function abrir(nome, semHistorico){
 const nomeAtual = () => { const h = decodeURIComponent(location.hash.replace(/^#/,'')); return nomes().includes(h) ? h : ''; };
 
 function faixa(){
-  const d = DADOS.gerado_em ? new Date(DADOS.gerado_em) : null;
-  const quando = d && !isNaN(d) ? d.toLocaleDateString('pt-BR') : '';
-  const fin = dataBR(PLANO.atualizado);
+  // Último envio de município ou consórcio pelo formulário (maior Data/Hora dos registros)
+  let ult = 0;
+  (DADOS.registros||[]).forEach(r=>{ const t = r.dt ? Date.parse(r.dt) : 0; if (t > ult) ult = t; });
+  if (!ult && DADOS.gerado_em) ult = Date.parse(DADOS.gerado_em) || 0;
+  const quando = ult ? new Date(ult).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '';
   document.getElementById('ponto').className = 'ponto' + (AO_VIVO ? ' vivo' : '');
-  document.getElementById('faixa-txt').textContent =
-    `Repasses atualizados em ${fin} · monitoramento ${AO_VIVO ? 'atualizado em ' + quando : 'de ' + quando + ' (a atualização automática não respondeu agora)'}.`;
+  document.getElementById('faixa-txt').textContent = quando
+    ? `Último registro enviado por município ou consórcio em ${quando}.`
+    : 'Aguardando os primeiros registros dos municípios e consórcios.';
 }
 
 async function carregarAoVivo(){
