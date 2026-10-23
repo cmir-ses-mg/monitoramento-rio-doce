@@ -825,6 +825,7 @@ window.addEventListener('load', function(){
       <!-- Também aqui, antes de entrar: a dúvida mais comum ("como consigo
            acesso?") aparece justamente nesta tela, e a resposta está no manual. -->
       <button type="button" onclick="abrirManual()" style="padding:7px 20px;font-size:12px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:#fff;color:var(--g700);cursor:pointer;letter-spacing:.03em">Manual</button>
+      <button type="button" onclick="abrirTutorial()" style="padding:7px 20px;font-size:12px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:#fff;color:var(--g700);cursor:pointer;letter-spacing:.03em">▶ Tutorial em vídeo</button>
     </div>
     <!-- Recuperar -->
     <div id="painel-recuperar" style="display:none">
@@ -1572,6 +1573,45 @@ function abrirManual(){
   // `noopener` porque a aba nova não precisa (nem deve) manipular esta.
   window.open(MANUAL_URL,'_blank','noopener');
 }
+// ── TUTORIAL EM VÍDEO ───────────────────────────────────────────────────────
+// Vídeo curto (≈3 min) mostrando o preenchimento de ponta a ponta. Fica na
+// tela de aviso (antes de abrir), no rodapé do login e no topo, ao lado do
+// Manual. Abre num quadro por cima da tela, sem sair do formulário.
+const TUTORIAL_URL='tutorial.mp4', TUTORIAL_CAPA='tutorial-capa.jpg';
+function _videoTutorialHTML(autoplay){
+  return '<video src="'+TUTORIAL_URL+'" poster="'+TUTORIAL_CAPA+'" controls playsinline preload="metadata"'
+    +(autoplay?' autoplay':'')
+    +' style="width:100%;display:block;border-radius:12px;background:#0b3a2b;aspect-ratio:16/9"></video>';
+}
+function abrirTutorial(){
+  let m=document.getElementById('tutorial-modal');
+  if(!m){
+    m=document.createElement('div'); m.id='tutorial-modal';
+    m.style.cssText='position:fixed;inset:0;z-index:10050;background:rgba(4,24,17,.78);display:flex;align-items:center;justify-content:center;padding:20px';
+    m.onclick=function(e){ if(e.target===m) fecharTutorial(); };
+    document.body.appendChild(m);
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape') fecharTutorial(); });
+  }
+  m.innerHTML='<div style="width:min(960px,100%);background:#fff;border-radius:16px;padding:14px;box-shadow:0 30px 80px rgba(0,0,0,.45)">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin:2px 4px 10px">'
+      +'<strong style="font-size:14px;color:var(--ink)">Tutorial · Como preencher o monitoramento</strong>'
+      +'<button onclick="fecharTutorial()" style="border:none;background:var(--g100);color:var(--g900);border-radius:20px;padding:6px 14px;font-weight:700;font-family:var(--font);cursor:pointer">Fechar ✕</button>'
+    +'</div>'+_videoTutorialHTML(true)+'</div>';
+  m.style.display='flex';
+}
+function fecharTutorial(){
+  const m=document.getElementById('tutorial-modal'); if(!m)return;
+  const v=m.querySelector('video'); if(v) v.pause();
+  m.style.display='none'; m.innerHTML='';
+}
+function _botaoTutorialHTML(){
+  return '<button onclick="abrirTutorial()" title="Assistir ao tutorial em vídeo"'
+    +' onmouseover="this.style.background=\'var(--g200)\';this.style.color=\'var(--g900)\'"'
+    +' onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--g700)\'"'
+    +' style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;font-size:10px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:transparent;color:var(--g700);cursor:pointer">'
+    +'<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'
+    +'Tutorial</button>';
+}
 function _botaoManualHTML(){
   return '<button onclick="abrirManual()" title="Abrir o manual em uma nova aba"'
     +' onmouseover="this.style.background=\'var(--g200)\';this.style.color=\'var(--g900)\'"'
@@ -1591,6 +1631,7 @@ function renderBadge(){
     el.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px">'
       +'<span>'+(mun?(mun+(periodo?' · '+periodo:'')):(nome||''))+'</span>'
       +'<span style="width:1px;height:12px;background:var(--border2);display:inline-block"></span>'
+      +_botaoTutorialHTML()
       +_botaoManualHTML()
       +'<button onclick="doLogout()" onmouseover="this.style.background=\'var(--g200)\';this.style.color=\'var(--g900)\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--g700)\'" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;font-size:10px;font-weight:700;font-family:var(--font);border:1px solid var(--g300);border-radius:20px;background:transparent;color:var(--g700);cursor:pointer;transition:background .15s,color .15s">'
       +'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
@@ -1828,9 +1869,27 @@ function mostrarTelaFechado(sess){
   ls.style.display='flex';
   const box=ls.querySelector('.login-box');
   if(box)box.style.display='none';
+  let wrap=document.getElementById('aviso-fechado-wrap');
+  if(!wrap){
+    wrap=document.createElement('div'); wrap.id='aviso-fechado-wrap';
+    wrap.style.cssText='display:flex;gap:24px;align-items:stretch;justify-content:center;flex-wrap:wrap;width:min(1180px,100%);margin:auto;padding:24px 0';
+    ls.style.overflowY='auto';
+    ls.appendChild(wrap);
+  }
+  wrap.style.display='flex';
   let av=document.getElementById('aviso-fechado');
-  if(!av){ av=document.createElement('div'); av.id='aviso-fechado'; av.className='login-box'; ls.appendChild(av); }
+  if(!av){ av=document.createElement('div'); av.id='aviso-fechado'; av.className='login-box'; wrap.appendChild(av); }
   av.style.display='';
+  let vc=document.getElementById('aviso-video');
+  if(!vc){
+    vc=document.createElement('div'); vc.id='aviso-video'; vc.className='login-box';
+    vc.style.cssText='max-width:680px;flex:1 1 520px;padding:22px 22px 18px;display:flex;flex-direction:column;justify-content:center';
+    vc.innerHTML='<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--g700);text-transform:uppercase;margin-bottom:6px">Antes de preencher</div>'
+      +'<div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:12px">Assista ao tutorial: como preencher o monitoramento</div>'
+      +_videoTutorialHTML(false)
+      +'<div style="font-size:12px;color:var(--ink3);margin-top:10px;line-height:1.5">Cerca de 3 minutos, com legendas. Mostra o passo a passo, do login ao envio, e o que fazer com o PDF depois: assinatura e envio por ofício à URS e à CMIR.</div>';
+    wrap.appendChild(vc);
+  }
   const logo=(typeof LOGO_SRC!=='undefined'&&LOGO_SRC)?LOGO_SRC:'';
   const naoAdmin=sess&&modoPrevia()&&!isAdmin(sess);
   av.innerHTML=
@@ -1850,8 +1909,8 @@ function mostrarTelaFechado(sess){
 function sairDoAvisoFechado(){
   try{ localStorage.removeItem('rdoce_sessao'); }catch(e){}
   _sessaoUsuario=null;
-  const av=document.getElementById('aviso-fechado');
-  if(av)av.style.display='none';
+  const av=document.getElementById('aviso-fechado-wrap');
+  if(av){ av.style.display='none'; const v=av.querySelector('video'); if(v)v.pause(); }
   if(modoPrevia()){
     const box=document.querySelector('#login-screen .login-box:not(#aviso-fechado)');
     if(box)box.style.display='';
