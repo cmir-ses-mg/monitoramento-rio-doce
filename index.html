@@ -6240,7 +6240,7 @@ function _renderPanorama(d){
     else if(m.ultimo_acesso)etapa='acessou';
     return {municipio:b,etapa:etapa,total:total,ini:ini,concl:concl,executado:m.executado||0,
       responsavel:m.responsavel||'',ativ:m.ultima_atividade_txt||'',acesso:m.ultimo_acesso_txt||'',
-      enviadoEm:m.enviado_em||'',pdf:m.pdf_baixado_em||''};
+      enviadoEm:m.enviado_em||'',pdf:m.pdf_baixado_em||'',importado:!!m.envio_importado};
   });
 
   const ETAPAS={
@@ -6274,15 +6274,16 @@ function _renderPanorama(d){
       :(l.acesso?('<div style="font-size:11.5px;color:var(--ink2)">entrou '+esc(l.acesso)+'</div>'):'<span style="color:var(--ink3)">—</span>'));
     const pdf=l.etapa!=='enviado'?'<span style="color:var(--ink3)">—</span>'
       :(l.pdf?'<span title="Deu ciência e baixou o PDF em '+esc(l.pdf)+'" style="color:var(--g700);font-weight:700;white-space:nowrap">✓ baixou</span>'
+      :l.importado?'<span title="Enviado antes de o formulário registrar o download do PDF. Se o PDF assinado já chegou, escreva a data na coluna &quot;Ciência dada e PDF baixado em&quot; da aba Envios." style="color:var(--ink3);font-weight:600;white-space:nowrap">sem registro</span>'
              :'<span title="Enviou, mas ainda não deu ciência nem baixou o PDF" style="color:#D4820A;font-weight:700;white-space:nowrap">não baixou</span>');
     return '<tr>'
       +'<td style="'+td+'font-size:12.5px;font-weight:600">'+esc(l.municipio)+'</td>'
-      +'<td style="'+td+'">'+pill(ETAPAS[l.etapa])+'</td>'
-      +'<td style="'+td+'">'+barra(l)+'</td>'
+      +'<td style="'+td+'text-align:center">'+pill(ETAPAS[l.etapa])+'</td>'
+      +'<td style="'+td+'text-align:center">'+barra(l)+'</td>'
       +'<td style="'+td+'font-size:12px;color:var(--ink3);white-space:nowrap">'+(l.executado?fmt(l.executado):'—')+'</td>'
       +'<td style="'+td+'font-size:11.5px;color:var(--ink3)">'+esc(l.responsavel||'—')+'</td>'
       +'<td style="'+td+'">'+quando+'</td>'
-      +'<td style="'+td+'font-size:11.5px">'+pdf+'</td>'
+      +'<td style="'+td+'font-size:11.5px;text-align:center">'+pdf+'</td>'
     +'</tr>';
   }).join('');
 
@@ -6294,16 +6295,17 @@ function _renderPanorama(d){
     +'<p class="hint" style="margin:0 0 12px">'+esc(municipio.bimestre)+' / '+esc(municipio.ano)
       +' &middot; '+escopoLbl+' &middot; '+_rotuloQuantidade(doEscopo)+'. '
       +'Abra qualquer um no seletor acima para ver o preenchimento.</p>'
-    +'<div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--g50);border-radius:8px">'
+    +'<div style="display:flex;justify-content:space-around;gap:16px;flex-wrap:wrap;margin-bottom:12px;padding:12px;background:var(--g50);border-radius:8px;text-align:center">'
       +ordem.map(function(k){const e=ETAPAS[k];
-        return '<div title="'+(e.dica||'')+'"><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">'+e.caixa+'</div>'
-          +'<div style="font-size:18px;font-weight:700;color:'+e.num+'">'+conta[k]+'</div></div>';}).join('')
+        return '<div title="'+(e.dica||'')+'" style="flex:1;min-width:90px"><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">'+e.caixa+'</div>'
+          +'<div style="font-size:22px;font-weight:700;color:'+e.num+';margin-top:2px">'+conta[k]+'</div></div>';}).join('')
     +'</div>'
     +'<p class="hint" style="margin:-4px 0 10px;font-size:11px"><strong>Visualizado</strong>: entrou no sistema, mas não mexeu em nenhuma ação. <strong>Concluído</strong>: preencheu todas as ações, mas ainda não clicou em Enviar tudo. Na coluna Ações, "iniciadas" conta rascunho e ação salva.</p>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
       +'<tr style="background:var(--g50)">'
         +['Município / consórcio','Situação','Ações','Executado','Responsável','Última movimentação','PDF'].map(function(h){
-          return '<th style="padding:7px 9px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);white-space:nowrap">'+h+'</th>';
+          const c=(h==='Situação'||h==='Ações'||h==='PDF')?'center':'left';
+          return '<th style="padding:7px 9px;text-align:'+c+';font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);white-space:nowrap">'+h+'</th>';
         }).join('')
       +'</tr>'+corpo
     +'</table></div>'
