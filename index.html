@@ -1070,6 +1070,11 @@ const TIPOS_ANTERIORES={
   'Bom Jesus do Galho':{Convenio:{'Reforma de 1 UBS':['1 UBS']}},
   'Conselheiro Pena':{Convenio:{'Construção do Centro de Hemodiálise':['Reforma e equipamento para o Centro de Hemodiálise']}}
 };
+// Código da Ação → instrumento e nome com que cada ação já foi gravada na aba
+// Registros (1º ao 4º bimestre de 2026). É o que permite ao formulário ligar,
+// sozinho, uma ação renomeada no plano aos bimestres já enviados: o código não
+// muda, o nome pode mudar. Os três de-para acima também são gerados por aqui.
+const CODIGOS_REGISTRADOS={"RD-0001":[["Convenio","Construção de 1 Centro de Fisioterapia"]],"RD-0002":[["Convenio","Construção de 1 Centro de Especialidades Médicas"]],"RD-0003":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Arco cirúrgico, Sistema de Vídeo Endoscopia Rígida"]],"RD-0004":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0005":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0011":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0012":[["RES_Investimento","> Equipamentos e materiais permanentes para serviços de atenção ambulatorial especializada - Geral\n> Ultrassom, câmara de conservação, mesa ortostática"]],"RD-0013":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0014":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Tomógrafo Computadorizado"]],"RD-0015":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0016":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0017":[["Convenio","1 UBS"]],"RD-0018":[["RES_Investimento","Equipamentos e materiais permantes para parque/sala multissensorial"]],"RD-0019":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0020":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0021":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0022":[["RES_Investimento","UBS de Apoio — Unidade 1 de 2"]],"RD-0023":[["RES_Investimento","UBS de Apoio — Unidade 2 de 2"]],"RD-0024":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0025":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0026":[["Convenio","Obra no Hospital Nossa Senhora Auxiliadora"]],"RD-0027":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Plano de Trabalho"]],"RD-0028":[["RES_Investimento","UBS tipo I — Unidade 1 de 5"]],"RD-0029":[["RES_Investimento","UBS tipo I — Unidade 2 de 5"]],"RD-0030":[["RES_Investimento","UBS tipo I — Unidade 3 de 5"]],"RD-0031":[["RES_Investimento","UBS tipo I — Unidade 4 de 5"]],"RD-0032":[["RES_Investimento","UBS tipo I — Unidade 5 de 5"]],"RD-0033":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0034":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0035":[["Convenio","Reforma e equipamento para o Centro de Hemodiálise"]],"RD-0036":[["RES_Investimento","1 CAPS AD"]],"RD-0037":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0038":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0039":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde"]],"RD-0040":[["RES_Investimento","1 UBS tipo II"]],"RD-0041":[["RES_Investimento","> Equipamentos e materiais permanentes para serviços de atenção ambulatorial especializada - Geral\n> Ressonância, vídeo endoscopia, raios X"]],"RD-0042":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0043":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0044":[["RES_Investimento","1 UBS tipo I"]],"RD-0045":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0046":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0047":[["RES_Investimento","1 UBS tipo I"]],"RD-0048":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0049":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0050":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0051":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0052":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0053":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0054":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0055":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0056":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0057":[["Convenio","Obra do CEAE"]],"RD-0058":[["Convenio","Polo de Fisioterapia — Unidade 1 de 4"],["Convenio","Polo de Fisioterapia — Unidade 2 de 4"],["Convenio","Polo de Fisioterapia — Unidade 3 de 4"],["Convenio","Polo de Fisioterapia — Unidade 4 de 4"]],"RD-0059":[["RES_Investimento","1 CAPS tipo III Qualificação"]],"RD-0060":[["Convenio","Construção de 1 Centro de Especialidades Odontológicas"]],"RD-0061":[["RES_Investimento","Unidade Odontológica Móvel destinada às ações assistenciais de saúde bucal"]],"RD-0062":[["Convenio","Contrução de 1 unidade de saúde de Serviço de Atenção Especializada (SAE) ampliado"]],"RD-0063":[["Convenio","1 Farmácia móvel"]],"RD-0066":[["Convenio","Construção de 1 Base Descentralizada do SAMU"]],"RD-0067":[["RES_Investimento","Equipamentos e materiais permantes para parque/sala multissensorial"]],"RD-0068":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0069":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0070":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0071":[["RES_Investimento","> Equipamentos e materiais permanentes para serviços de atenção ambulatorial especializada - Geral\n> Foco cirúrgico, impressora, cadeira odontológica"]],"RD-0072":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0074":[["Convenio","Construção da Unidade 2 do hospital"]],"RD-0075":[["RES_Investimento","1 UBS tipo IV"]],"RD-0076":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0077":[["RES_Investimento","Equipamentos e mobiliários para os Centros de Referência em Saúde do Trabalhador"]],"RD-0078":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0079":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0080":[["RES_Investimento","1 UBS tipo I"]],"RD-0081":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0082":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0083":[["RES_Investimento","UBS tipo I"]],"RD-0084":[["RES_Investimento","UBS tipo II — Unidade 1 de 2"]],"RD-0085":[["RES_Investimento","UBS tipo II — Unidade 2 de 2"]],"RD-0086":[["RES_Investimento","UBS tipo III"]],"RD-0087":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0088":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde"]],"RD-0089":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0090":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0091":[["RES_Investimento","1 UBS tipo I"]],"RD-0092":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0093":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0094":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0095":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0096":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0097":[["RES_Investimento","UBS tipo I — Unidade 3 de 3"]],"RD-0098":[["RES_Investimento","UBS tipo I — Unidade 2 de 3"]],"RD-0099":[["RES_Investimento","UBS tipo I — Unidade 1 de 3"]],"RD-0100":[["Convenio","1 Centro de Convivência"]],"RD-0101":[["Convenio","Obras de expansão do Pronto Atendimento e Bloco Cirúrgico"]],"RD-0102":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0103":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0104":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0105":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0106":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0107":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0108":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0109":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0110":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Plano de Trabalho"]],"RD-0111":[["Convenio","Obra no Hospital Nossa Senhora das Dores"]],"RD-0112":[["Convenio","Ponto de apoio — Unidade 1 de 5"],["Convenio","Ponto de apoio — Unidade 2 de 5"],["Convenio","Ponto de apoio — Unidade 3 de 5"],["Convenio","Ponto de apoio — Unidade 4 de 5"],["Convenio","Ponto de apoio — Unidade 5 de 5"]],"RD-0113":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0114":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0115":[["RES_Investimento","1 UBS tipo I"]],"RD-0116":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo HPP"]],"RD-0117":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0118":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0119":[["RES_Investimento","1 UBS tipo I"]],"RD-0120":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde"]],"RD-0121":[["RES_Investimento","1 CAPS tipo I"]],"RD-0122":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0123":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0124":[["RES_Investimento","1 CAPS infantil"]],"RD-0125":[["Convenio","Obra no Hospital Nossa Senhora da Conceição"]],"RD-0126":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0127":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0128":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0129":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0130":[["RES_Investimento","1 UBS tipo I"]],"RD-0131":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0132":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0133":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0134":[["RES_Investimento","2 UBS tipo I"]],"RD-0136":[["RES_Investimento","1 CAPS tipo I"]],"RD-0137":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0138":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0139":[["RES_Custeio","Custeio para o Hospital Nossa Senhora das Dores"]],"RD-0140":[["RES_Investimento","1 UBS tipo I"]],"RD-0141":[["RES_Investimento","1 UBS tipo II"]],"RD-0142":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0143":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0144":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0145":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0146":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0147":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0148":[["Convenio","1 Centro de Saúde ampliado"]],"RD-0149":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0150":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0151":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0152":[["RES_Custeio","Custeio para UBS"]],"RD-0153":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0154":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0155":[["RES_Investimento","UBS tipo I — Unidade 1 de 4"]],"RD-0156":[["RES_Investimento","UBS tipo I — Unidade 2 de 4"]],"RD-0157":[["RES_Investimento","UBS tipo I — Unidade 3 de 4"]],"RD-0158":[["RES_Investimento","UBS tipo I — Unidade 4 de 4"]],"RD-0159":[["RES_Investimento","Unidade Odontológica Móvel destinada às ações assistenciais de saúde bucal"]],"RD-0160":[["RES_Investimento","1 CAPS tipo II"]],"RD-0161":[["RES_Investimento","Equipamentos e Materiais Permanentes para Atenção Hospitalar - Módulo Valor em Saúde"]],"RD-0162":[["RES_Custeio","Custeio para o Hospital Vital Brazil"]],"RD-0163":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0164":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0165":[["RES_Investimento","Equipamentos e materiais permanentes - APS"]],"RD-0166":[["RES_Custeio","Ampliação do VIGIAGUA"]],"RD-0167":[["RES_Custeio","Ampliação do VIGIAR e VIGIDESASTRES"]],"RD-0168":[["RES_Investimento","Equipamentos e mobiliários para os Centros de Referência em Saúde do Trabalhador"]],"RD-0169":[["RES_Investimento","Equipamentos assistenciais para sedes dos consórcios intermunicipais"]],"RD-0170":[["RES_Investimento","Equipamentos assistenciais para sedes dos consórcios intermunicipais"]],"RD-0171":[["RES_Investimento","Equipamentos assistenciais para sedes dos consórcios intermunicipais"]],"RD-0172":[["RES_Investimento","Equipamentos assistenciais para sedes dos consórcios intermunicipais"]],"RD-0173":[["RES_Investimento","Equipamentos assistenciais para sedes dos consórcios intermunicipais"]],"RD-0174":[["RES_Investimento","Equipamentos assistenciais para sedes dos consórcios intermunicipais"]],"RD-0175":[["RES_Investimento","Equipamentos assistenciais para sedes dos consórcios intermunicipais"]]};
 function _tiposAnteriores(instrumento,tipo){
   const m=TIPOS_ANTERIORES[municipio.municipio||'']||{};
   return ((m[instrumento]||{})[tipo]||[]).slice();
@@ -6601,7 +6606,7 @@ function getOrCreateAcqsParaItem(benef,item){
   const unidades=unidadesDoItem(benef,item);
   if(!unidades)return[getOrCreateAcq(item.instrumento,item.tipo,item)];
   return unidades.map(function(u){
-    return getOrCreateAcq(item.instrumento,u.tipo,{tipo:item.tipo,acao:item.acao,eixo:item.eixo,valor:u.valor,endereco:u.endereco||'',codigo:u.codigo||''});
+    return getOrCreateAcq(item.instrumento,u.tipo,{tipo:item.tipo,acao:item.acao,eixo:item.eixo,valor:u.valor,endereco:u.endereco||'',codigo:u.codigo||item.codigo||''});
   });
 }
 // Status agregado de um item do plano para exibição na lista (ETAPA 1):
@@ -6642,12 +6647,155 @@ function calcAcqStatusAgregado(benef,item){
   return{multi:true,status:status,total:statuses.length,concluidas:concluidas,iniciadas:iniciadas,idxs:idxs};
 }
 
+// ── PLANO VINDO DA PLANILHA ────────────────────────────────────────────────
+// O plano (ações, valores, eixos, unidades das obras) é lido da aba
+// "Plano (espelho)" pelo Apps Script (rota buscarPlanoData). Assim, quando o
+// CONSOLIDADO muda e o espelho é sincronizado, o formulário já abre com a
+// versão nova — sem precisar publicar um index.html novo.
+// Segurança: se a resposta não vier, vier incompleta ou com código repetido,
+// o formulário usa a última versão boa guardada no navegador e, na falta
+// dela, a cópia embutida neste arquivo (PLANO_DATA_FALLBACK).
+// A ligação com o que já foi enviado é pelo Código da Ação (RD-0001…).
+const _INSTRUMENTOS_PLANO=['RES_Investimento','RES_Custeio','Convenio','Contrato'];
+let PLANO_FONTE='embutido';
+function _normTipoPlano(t){
+  return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()
+    .replace(/^\s*1\s+/,'').replace(/\s+/g,' ').trim();
+}
+function _contarItensPlano(d){
+  let n=0;_INSTRUMENTOS_PLANO.forEach(function(i){Object.keys((d&&d[i])||{}).forEach(function(b){n+=(d[i][b]||[]).length;});});
+  return n;
+}
+function _montarPlanoDoServidor(sv){
+  if(!sv||typeof sv!=='object')return null;
+  for(const i of _INSTRUMENTOS_PLANO){ if(!sv[i]||typeof sv[i]!=='object')return null; }
+  const nFb=_contarItensPlano(PLANO_DATA_FALLBACK), nSv=_contarItensPlano(sv);
+  if(nSv<Math.floor(nFb*0.8)){console.warn('[plano] servidor trouxe só '+nSv+' ações (embutido tem '+nFb+') — mantendo a cópia embutida.');return null;}
+  const plano={
+    urs:Object.assign({},PLANO_DATA_FALLBACK.urs,sv.urs||{}),
+    valor_recebido:Object.assign({},PLANO_DATA_FALLBACK.valor_recebido,sv.valor_recebido||{}),
+    all_beneficiarios:Array.from(new Set([].concat(sv.all_beneficiarios||[],PLANO_DATA_FALLBACK.all_beneficiarios||[]))).sort(function(a,b){return a.localeCompare(b,'pt-BR');}),
+    unidades:{}
+  };
+  // Unidades das obras: as do espelho (com código e endereço) e, onde o
+  // espelho não detalha, as da cópia embutida — unidadesDoItem só desmembra
+  // se a soma das unidades bater com o valor da ação.
+  const uSv=sv.unidades||{}, uFb=PLANO_DATA_FALLBACK.unidades||{};
+  Array.from(new Set(Object.keys(uSv).concat(Object.keys(uFb)))).forEach(function(b){
+    plano.unidades[b]={};
+    _INSTRUMENTOS_PLANO.forEach(function(i){
+      const l=(uSv[b]&&uSv[b][i])||(uFb[b]&&uFb[b][i]);
+      if(l&&l.length)plano.unidades[b][i]=l.map(function(u){return Object.assign({},u);});
+    });
+  });
+  // Ordem das unidades: "Unidade 2 de 3" tem de continuar sendo a mesma obra
+  // (mesmo código) com que o município já preencheu. Se o espelho listar as
+  // unidades em outra ordem, reordena pelo código já gravado.
+  Object.keys(plano.unidades).forEach(function(b){
+    Object.keys(plano.unidades[b]).forEach(function(i){
+      const lista=plano.unidades[b][i], porLabel={};
+      lista.forEach(function(u){(porLabel[u.unidade]=porLabel[u.unidade]||[]).push(u);});
+      Object.keys(porLabel).forEach(function(label){
+        const g=porLabel[label], N=g.length; if(N<2)return;
+        const desejada=[];
+        for(let k=1;k<=N;k++){
+          const nome=label+' — Unidade '+k+' de '+N;
+          const u=g.find(function(x){return ((x.codigo&&CODIGOS_REGISTRADOS[x.codigo])||[]).some(function(h){return h[0]===i&&h[1]===nome;});});
+          if(!u||desejada.indexOf(u)>=0)return; // sem histórico completo: mantém a ordem do espelho
+          desejada.push(u);
+        }
+        let n=0; plano.unidades[b][i]=lista.map(function(u){return u.unidade===label?desejada[n++]:u;});
+      });
+    });
+  });
+  const vistos={};
+  for(const i of _INSTRUMENTOS_PLANO){
+    plano[i]={};
+    for(const b of Object.keys(sv[i])){
+      plano[i][b]=[];
+      for(const it0 of (sv[i][b]||[])){
+        const it=Object.assign({},it0);
+        if(!it.tipo){console.warn('[plano] ação sem nome em '+b+' — mantendo a cópia embutida.');return null;}
+        if(it.codigo){
+          if(vistos[it.codigo]){console.warn('[plano] código repetido '+it.codigo+' ('+vistos[it.codigo]+' e '+b+') — mantendo a cópia embutida.');return null;}
+          vistos[it.codigo]=b;
+        }
+        // Obra com várias unidades: o espelho tem uma linha por unidade e a
+        // rota soma as linhas sob o nome de uma delas ("1 UBS tipo I").
+        // Volta a mostrar a quantidade real ("5 UBS tipo I").
+        if(!it.codigo&&/^\s*1\s+/.test(it.tipo)){
+          const us=((plano.unidades[b]||{})[i]||[]).filter(function(u){return _tipoContemUnidade(it.tipo,u.unidade);});
+          if(us.length>1){
+            it.tipo=it.tipo.replace(/^\s*1\s+/,us.length+' ');
+            // Município que sempre preencheu essa obra como uma ação só (ex:
+            // "2 UBS tipo I" gravado com RD-0134): continua sem desmembrar,
+            // para não separar o que já foi enviado.
+            const h0=(us[0].codigo&&CODIGOS_REGISTRADOS[us[0].codigo])||[];
+            if(h0.some(function(h){return h[0]===i&&h[1]===it.tipo;})){
+              plano.unidades[b][i]=plano.unidades[b][i].filter(function(u){return us.indexOf(u)<0;});
+              it.codigo=us[0].codigo;
+            }
+          }
+        }
+        // Mesmo código, nome diferente do já gravado: se for só "1 " na frente
+        // ou acento/maiúscula, mantém o nome gravado; se o nome mudou de fato,
+        // mostra o novo e liga os bimestres anteriores ao nome antigo.
+        const gravados=((it.codigo&&CODIGOS_REGISTRADOS[it.codigo])||[])
+          .filter(function(h){return h[0]===i&&!/ — Unidade \d+ de \d+$/.test(h[1]);})
+          .map(function(h){return h[1];});
+        if(gravados.length&&gravados.indexOf(it.tipo)<0){
+          const igual=gravados.find(function(t){return _normTipoPlano(t)===_normTipoPlano(it.tipo);});
+          if(igual)it.tipo=igual;
+        }
+        gravados.forEach(function(antigo){
+          if(antigo===it.tipo)return;
+          const m=(TIPOS_ANTERIORES[b]=TIPOS_ANTERIORES[b]||{});
+          const mi=(m[i]=m[i]||{});
+          const lista=(mi[it.tipo]=mi[it.tipo]||[]);
+          if(lista.indexOf(antigo)<0)lista.push(antigo);
+        });
+        plano[i][b].push(it);
+      }
+    }
+  }
+  return plano;
+}
 async function carregarPlanoDataDoServidor(){
-  // Os dados do plano (ações, valores, eixos) não vêm de nenhuma planilha
-  // vinculada de verdade — vivem só aqui no arquivo (PLANO_DATA_FALLBACK).
-  // Qualquer resposta do servidor para essa rota pode estar desatualizada,
-  // então não é mais usada para não sobrescrever silenciosamente dados corretos.
-  PLANO_DATA=PLANO_DATA_FALLBACK;
+  PLANO_DATA=PLANO_DATA_FALLBACK; PLANO_FONTE='embutido';
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return;
+  const _get=async function(acao){
+    const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+    const timer=setTimeout(function(){if(ctrl)ctrl.abort();},10000);
+    try{ const r=await fetch(APPS_SCRIPT_URL+'?acao='+acao,ctrl?{signal:ctrl.signal}:{}); return await r.json(); }
+    finally{ clearTimeout(timer); }
+  };
+  const [rPlano,rCod]=await Promise.allSettled([_get('buscarPlanoData'),_get('buscarCodigosRegistrados')]);
+  const bruto=rPlano.status==='fulfilled'?rPlano.value:null;
+  if(!bruto)console.warn('[plano] não foi possível ler o plano da planilha:',rPlano.reason);
+  // Nomes com que cada código já foi gravado, lidos da aba Registros na hora
+  // (rota buscarCodigosRegistrados). Somam-se à lista embutida; sem a rota,
+  // vale só a embutida.
+  if(rCod.status==='fulfilled'&&rCod.value&&rCod.value.status==='ok'&&rCod.value.codigos){
+    const cs=rCod.value.codigos;
+    Object.keys(cs).forEach(function(c){
+      const l=(CODIGOS_REGISTRADOS[c]=CODIGOS_REGISTRADOS[c]||[]);
+      (cs[c]||[]).forEach(function(e){ if(e&&e.length===2&&!l.some(function(x){return x[0]===e[0]&&x[1]===e[1];}))l.push([e[0],e[1]]); });
+    });
+  }
+  let plano=null;
+  try{ plano=_montarPlanoDoServidor(bruto); }catch(e){console.error('[plano] erro ao montar o plano da planilha:',e);plano=null;}
+  if(plano){
+    PLANO_DATA=plano; PLANO_FONTE='planilha';
+    try{localStorage.setItem('rdoce_plano_cache',JSON.stringify({em:Date.now(),dados:bruto}));}catch(e){}
+  }else{
+    try{
+      const c=JSON.parse(localStorage.getItem('rdoce_plano_cache')||'null');
+      const p2=c&&_montarPlanoDoServidor(c.dados);
+      if(p2){PLANO_DATA=p2;PLANO_FONTE='cópia guardada em '+new Date(c.em).toLocaleString('pt-BR');}
+    }catch(e){}
+  }
+  for(const k in _unidadesCache)delete _unidadesCache[k];
+  console.log('%c[plano] fonte: '+PLANO_FONTE+' — '+_contarItensPlano(PLANO_DATA)+' ações','color:#1A6B49;font-weight:bold');
 }
 
 function initLogin(){
@@ -7532,7 +7680,7 @@ async function aplicarHistoricoNaAcao(registros, acqObj){
 carregarPlanoDataDoServidor().then(function(){
   initLogin();
   const nBenef=(PLANO_DATA&&PLANO_DATA.unidades)?Object.keys(PLANO_DATA.unidades).length:0;
-  console.log('%cRio Doce Monitoramento — versão v2026.07.14-61 (unidades sempre via front-end + logo recortada)','color:#1A6B49;font-weight:bold');
+  console.log('%cRio Doce Monitoramento — versão v2026.11.03-35 (plano lido da aba Plano (espelho), ligado pelo Código da Ação)','color:#1A6B49;font-weight:bold');
   console.log(nBenef>0
     ? '[PLANO_DATA] unidades (DEIXA_AQUI) carregadas para '+nBenef+' beneficiário(s) — desmembramento de obras disponível.'
     : '[PLANO_DATA] ATENÇÃO: nenhum dado de "unidades" (DEIXA_AQUI) encontrado — verifique se o arquivo index.html publicado é a versão mais recente (Ctrl+F5).');
