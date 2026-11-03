@@ -236,27 +236,23 @@ input:focus,select:focus,textarea:focus{transition:box-shadow .2s ease,border-co
 
 /* Farol da lista de ações: bolinha com brilho de vidro e halo da cor do
    status. Em preenchimento pulsa; concluída/enviada ganha um check. */
-.farol{position:relative;width:13px;height:13px;border-radius:50%;flex-shrink:0;margin-top:2px;
-  background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.95) 0 14%,transparent 15%),var(--fc);
-  box-shadow:0 0 0 3px var(--fh),0 0 10px var(--fg);transition:transform .2s ease}
-.farol::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 50% 120%,rgba(0,0,0,.18),transparent 60%)}
+.farol{position:relative;width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:4px;
+  background:var(--fc);box-shadow:0 0 0 2px var(--fh);transition:transform .2s ease}
 .sacq-item:hover .farol{transform:scale(1.15)}
 .farol-empty{--fc:#EF4444;--fh:rgba(239,68,68,.16);--fg:rgba(239,68,68,.45)}
 .farol-partial{--fc:#F5B400;--fh:rgba(245,180,0,.20);--fg:rgba(245,180,0,.6);animation:farolPulsa 1.8s ease-in-out infinite}
 .farol-complete,.farol-preenchida{--fc:#22C55E;--fh:rgba(34,197,94,.18);--fg:rgba(34,197,94,.55)}
 .farol-locked,.farol-enviada{--fc:#16A34A;--fh:rgba(22,163,74,.18);--fg:rgba(22,163,74,.5);
-  background:var(--fc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/9px no-repeat}
-.farol-locked::after,.farol-enviada::after{display:none}
-@keyframes farolPulsa{0%,100%{box-shadow:0 0 0 3px var(--fh),0 0 6px var(--fg)}50%{box-shadow:0 0 0 6px rgba(245,180,0,.10),0 0 16px var(--fg)}}
+  background:var(--fc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/7px no-repeat;width:11px;height:11px;margin-top:3px}
+@keyframes farolPulsa{0%,100%{box-shadow:0 0 0 2px var(--fh)}50%{box-shadow:0 0 0 4px rgba(245,180,0,.12)}}
 /* No escuro a página inteira passa por um filtro; estas cores já vêm
    "pré-invertidas" para sair do filtro no tom certo. */
 html[data-theme="dark"] .farol-partial{--fc:#C35A00;--fh:rgba(195,90,0,.22);--fg:rgba(195,90,0,.6)}
 html[data-theme="dark"] .farol-empty{--fc:#FF6E5F;--fh:rgba(255,110,95,.18);--fg:rgba(255,110,95,.5)}
 html[data-theme="dark"] .farol-complete,html[data-theme="dark"] .farol-preenchida{--fc:#009137;--fh:rgba(0,145,55,.18);--fg:rgba(0,145,55,.5)}
 html[data-theme="dark"] .farol-locked,html[data-theme="dark"] .farol-enviada{--fc:#18A54C}
-html[data-theme="dark"] .farol{background-image:radial-gradient(circle at 35% 30%,rgba(0,0,0,.85) 0 14%,transparent 15%)}
 html[data-theme="dark"] .farol-locked,html[data-theme="dark"] .farol-enviada{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E")}
-@keyframes farolPulsaE{0%,100%{box-shadow:0 0 0 3px var(--fh),0 0 6px var(--fg)}50%{box-shadow:0 0 0 6px rgba(195,90,0,.12),0 0 16px var(--fg)}}
+@keyframes farolPulsaE{0%,100%{box-shadow:0 0 0 2px var(--fh)}50%{box-shadow:0 0 0 4px rgba(195,90,0,.14)}}
 html[data-theme="dark"] .farol-partial{animation-name:farolPulsaE}
 /* Quem prefere menos movimento (configuração do sistema) não vê animação */
 @media (prefers-reduced-motion: reduce){
@@ -6221,39 +6217,72 @@ function _renderPanorama(d){
   const doEscopo=municipiosVisiveis();
   const porNome={};
   (d.municipios||[]).forEach(function(m){ porNome[m.municipio]=m; });
-
-  const linhas=doEscopo.map(function(b){
-    const m=porNome[b];
-    if(!m)return {municipio:b, enviou:false, acoes:0, concluidas:0, executado:0, responsavel:'', ultimo:''};
-    // "Enviou" = clicou em "Enviar tudo" (campo `enviado`, servidor v11).
-    // Servidor antigo não manda o campo: vale o critério anterior.
-    const _env=(typeof m.enviado==='boolean')?m.enviado:(m.concluidas>0);
-    return {municipio:b, enviou:_env, acoes:m.acoes, concluidas:m.concluidas,
-            executado:m.executado, responsavel:m.responsavel, ultimo:m.enviado_em?null:m.ultimo_envio,
-            ultimoTxt:m.enviado_em||'',
-            parcial:!_env&&(m.acoes>0)};
-  });
-
-  const enviaram=linhas.filter(function(l){return l.enviou;}).length;
-  const parciais=linhas.filter(function(l){return !l.enviou&&l.parcial;}).length;
-  const faltam=linhas.length-enviaram-parciais;
-
-  const pill=function(cor,fundo,txt){
-    return '<span style="display:inline-block;white-space:nowrap;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700;color:'+cor+';background:'+fundo+'">'+txt+'</span>';
+  const totalAcoes=function(ben){
+    try{return getAllPlanActions(ben).reduce(function(s,it){const u=unidadesDoItem(ben,it);return s+(u?u.length:1);},0);}catch(e){return 0;}
   };
 
+  // Etapas, da mais adiantada para a mais atrasada:
+  //   enviado      clicou em "Enviar tudo"
+  //   falta_enviar todas as ações concluídas, mas não clicou em "Enviar tudo"
+  //   preenchendo  começou pelo menos uma ação (rascunho ou ação salva)
+  //   acessou      entrou no sistema neste período, mas não mexeu em nada
+  //   nao_acessou  nem entrou
+  const linhas=doEscopo.map(function(b){
+    const m=porNome[b]||{};
+    const total=totalAcoes(b);
+    const ini=Number(m.acoes_iniciadas!=null?m.acoes_iniciadas:m.acoes)||0;
+    const concl=Number(m.concluidas)||0;
+    const env=(typeof m.enviado==='boolean')?m.enviado:(concl>0);
+    let etapa='nao_acessou';
+    if(env)etapa='enviado';
+    else if(total&&concl>=total)etapa='falta_enviar';
+    else if(ini>0)etapa='preenchendo';
+    else if(m.ultimo_acesso)etapa='acessou';
+    return {municipio:b,etapa:etapa,total:total,ini:ini,concl:concl,executado:m.executado||0,
+      responsavel:m.responsavel||'',ativ:m.ultima_atividade_txt||'',acesso:m.ultimo_acesso_txt||'',
+      enviadoEm:m.enviado_em||'',pdf:m.pdf_baixado_em||''};
+  });
+
+  const ETAPAS={
+    enviado:     {rot:'enviado',          cor:'#1B5E20',fundo:'#E8F5E9',caixa:'Enviado',         num:'var(--g700)',dica:'Clicou em Enviar tudo'},
+    falta_enviar:{rot:'concluído',cor:'#7C4A0A',fundo:'#FFF3E0',caixa:'Concluído',num:'#D4820A',dica:'Todas as ações preenchidas, mas ainda não clicou em Enviar tudo'},
+    preenchendo: {rot:'preenchendo',      cor:'#7A5B00',fundo:'#FFF8D6',caixa:'Preenchendo',      num:'#C79A00',dica:'Começou pelo menos uma ação'},
+    acessou:     {rot:'visualizado',      cor:'#1E4E8C',fundo:'#E8F0FB',caixa:'Visualizado',      num:'#2F6DB5',dica:'Entrou no sistema neste período, mas ainda não mexeu em nenhuma ação'},
+    nao_acessou: {rot:'não iniciado',     cor:'#B71C1C',fundo:'#FDEDEC',caixa:'Não iniciado',     num:'#C0392B',dica:'Ninguém do município entrou no sistema neste período'}
+  };
+  const conta={};Object.keys(ETAPAS).forEach(function(k){conta[k]=0;});
+  linhas.forEach(function(l){conta[l.etapa]++;});
+  const ordem=Object.keys(ETAPAS);
+  linhas.sort(function(x,y){return x.municipio.localeCompare(y.municipio,'pt-BR');});
+
+  const pill=function(e){
+    return '<span title="'+(e.dica||'')+'" style="display:inline-block;white-space:nowrap;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700;color:'+e.cor+';background:'+e.fundo+'">'+e.rot+'</span>';
+  };
+  const barra=function(l){
+    if(!l.total)return '—';
+    const pIni=Math.min(100,Math.round(l.ini/l.total*100)), pCon=Math.min(100,Math.round(l.concl/l.total*100));
+    return '<div style="min-width:120px"><div style="font-size:11.5px;color:var(--ink2);margin-bottom:3px;white-space:nowrap"><strong>'+l.ini+'</strong>/'+l.total+' iniciadas · '+l.concl+' concluídas</div>'
+      +'<div style="position:relative;height:6px;border-radius:4px;background:var(--border2);overflow:hidden">'
+        +'<div style="position:absolute;inset:0 auto 0 0;width:'+pIni+'%;background:var(--g200)"></div>'
+        +'<div style="position:absolute;inset:0 auto 0 0;width:'+pCon+'%;background:var(--g500)"></div>'
+      +'</div></div>';
+  };
+  const td='padding:8px 9px;border-top:1px solid var(--border2);vertical-align:middle;';
   const corpo=linhas.map(function(l){
-    const marca=l.enviou?pill('#1B5E20','#E8F5E9','enviado')
-              :(l.parcial?pill('#7C4A0A','#FFF8E1','falta Enviar tudo')
-                         :pill('#B71C1C','#FDEDEC','não iniciado'));
-    const dt=l.ultimoTxt?l.ultimoTxt.split(' ')[0]:(l.ultimo?new Date(l.ultimo).toLocaleDateString('pt-BR'):'—');
+    const quando=l.etapa==='enviado'?('<div style="font-size:11.5px;color:var(--ink2)">enviado '+esc(l.enviadoEm.split(' ')[0])+'</div>')
+      :(l.ativ?('<div style="font-size:11.5px;color:var(--ink2)">mexeu '+esc(l.ativ)+'</div>')
+      :(l.acesso?('<div style="font-size:11.5px;color:var(--ink2)">entrou '+esc(l.acesso)+'</div>'):'<span style="color:var(--ink3)">—</span>'));
+    const pdf=l.etapa!=='enviado'?'<span style="color:var(--ink3)">—</span>'
+      :(l.pdf?'<span title="Deu ciência e baixou o PDF em '+esc(l.pdf)+'" style="color:var(--g700);font-weight:700;white-space:nowrap">✓ baixou</span>'
+             :'<span title="Enviou, mas ainda não deu ciência nem baixou o PDF" style="color:#D4820A;font-weight:700;white-space:nowrap">não baixou</span>');
     return '<tr>'
-      +'<td style="padding:7px 9px;border-top:1px solid var(--border2);font-size:12.5px;font-weight:600">'+esc(l.municipio)+'</td>'
-      +'<td style="padding:7px 9px;border-top:1px solid var(--border2)">'+marca+'</td>'
-      +'<td style="padding:7px 9px;border-top:1px solid var(--border2);font-size:12px;color:var(--ink3)">'+(l.acoes||'—')+'</td>'
-      +'<td style="padding:7px 9px;border-top:1px solid var(--border2);font-size:12px;color:var(--ink3)">'+(l.executado?fmt(l.executado):'—')+'</td>'
-      +'<td style="padding:7px 9px;border-top:1px solid var(--border2);font-size:11.5px;color:var(--ink3)">'+esc(l.responsavel||'—')+'</td>'
-      +'<td style="padding:7px 9px;border-top:1px solid var(--border2);font-size:11.5px;color:var(--ink3)">'+dt+'</td>'
+      +'<td style="'+td+'font-size:12.5px;font-weight:600">'+esc(l.municipio)+'</td>'
+      +'<td style="'+td+'">'+pill(ETAPAS[l.etapa])+'</td>'
+      +'<td style="'+td+'">'+barra(l)+'</td>'
+      +'<td style="'+td+'font-size:12px;color:var(--ink3);white-space:nowrap">'+(l.executado?fmt(l.executado):'—')+'</td>'
+      +'<td style="'+td+'font-size:11.5px;color:var(--ink3)">'+esc(l.responsavel||'—')+'</td>'
+      +'<td style="'+td+'">'+quando+'</td>'
+      +'<td style="'+td+'font-size:11.5px">'+pdf+'</td>'
     +'</tr>';
   }).join('');
 
@@ -6265,18 +6294,16 @@ function _renderPanorama(d){
     +'<p class="hint" style="margin:0 0 12px">'+esc(municipio.bimestre)+' / '+esc(municipio.ano)
       +' &middot; '+escopoLbl+' &middot; '+_rotuloQuantidade(doEscopo)+'. '
       +'Abra qualquer um no seletor acima para ver o preenchimento.</p>'
-    +'<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--g50);border-radius:8px">'
-      +'<div><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">Enviaram</div>'
-        +'<div style="font-size:18px;font-weight:700;color:var(--g700)">'+enviaram+'</div></div>'
-      +'<div><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">Preencheram, falta enviar</div>'
-        +'<div style="font-size:18px;font-weight:700;color:#F9A825">'+parciais+'</div></div>'
-      +'<div><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">Não iniciaram</div>'
-        +'<div style="font-size:18px;font-weight:700;color:#C0392B">'+faltam+'</div></div>'
+    +'<div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--g50);border-radius:8px">'
+      +ordem.map(function(k){const e=ETAPAS[k];
+        return '<div title="'+(e.dica||'')+'"><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">'+e.caixa+'</div>'
+          +'<div style="font-size:18px;font-weight:700;color:'+e.num+'">'+conta[k]+'</div></div>';}).join('')
     +'</div>'
+    +'<p class="hint" style="margin:-4px 0 10px;font-size:11px"><strong>Visualizado</strong>: entrou no sistema, mas não mexeu em nenhuma ação. <strong>Concluído</strong>: preencheu todas as ações, mas ainda não clicou em Enviar tudo. Na coluna Ações, "iniciadas" conta rascunho e ação salva.</p>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
       +'<tr style="background:var(--g50)">'
-        +['Município / consórcio','Situação','Ações','Executado','Responsável','Último envio'].map(function(h){
-          return '<th style="padding:7px 9px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3)">'+h+'</th>';
+        +['Município / consórcio','Situação','Ações','Executado','Responsável','Última movimentação','PDF'].map(function(h){
+          return '<th style="padding:7px 9px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);white-space:nowrap">'+h+'</th>';
         }).join('')
       +'</tr>'+corpo
     +'</table></div>'
@@ -6616,6 +6643,13 @@ function aplicarSessao(sess){
     // os beneficiários. Antes o beneficiário pulava direto para phase=1 e, com
     // isso, nunca escolhia bimestre/ano nem preenchia responsável e rendimentos.
     if(!isAdmin(sess)&&sess.municipio)municipio.municipio=sess.municipio;
+    // Quem volta com a sessão salva não passa pelo login, e o "último acesso"
+    // ficava parado. Avisa o servidor que a pessoa abriu o formulário (só
+    // atualiza a data; servidor sem a rota simplesmente ignora).
+    try{
+      if(!isAdmin(sess)&&sess.email&&APPS_SCRIPT_URL&&!APPS_SCRIPT_URL.includes('PLACEHOLDER'))
+        fetch(APPS_SCRIPT_URL+'?acao=registrarAcesso&email='+encodeURIComponent(sess.email)).catch(function(){});
+    }catch(e){}
     phase=0;
     const ls=document.getElementById('login-screen');
     if(ls)ls.style.display='none';
