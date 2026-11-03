@@ -155,6 +155,27 @@ html[data-theme="dark"]{filter:invert(1) hue-rotate(180deg);background:#fff}
 html[data-theme="dark"] img,html[data-theme="dark"] video,html[data-theme="dark"] canvas,
 html[data-theme="dark"] iframe,html[data-theme="dark"] .no-invert{filter:invert(1) hue-rotate(180deg)}
 html[data-theme="dark"] #mapa-bg{opacity:.07}
+/* Escuro "grafite esverdeado", não preto: as cores claras são escurecidas um
+   pouco ANTES da inversão, para que virem cinzas-verdes em vez de quase preto.
+   Página < cartão < destaque, com texto um tom abaixo do branco puro. */
+html[data-theme="dark"]{--g50:#D9E5DE;--white:#C9D9D0;--g100:#BCD2C6;--g200:#A9C8B8;
+  --border:#A3BDB0;--border2:#B4CABF;--ink:#24342C;--ink2:#40564A;--ink3:#6A8578}
+html[data-theme="dark"] .card,html[data-theme="dark"] .instrumento-card,html[data-theme="dark"] .success-acqs,html[data-theme="dark"] .topbar,html[data-theme="dark"] .phase-bar,
+html[data-theme="dark"] .sidebar,html[data-theme="dark"] .nav,html[data-theme="dark"] .login-box,
+html[data-theme="dark"] [style*="background:#fff"],html[data-theme="dark"] [style*="background:#FFF;"],
+html[data-theme="dark"] [style*="background:#FFFFFF"],html[data-theme="dark"] [style*="background:rgba(255,255,255,.97)"]{background:var(--white)!important}
+html[data-theme="dark"] body{background:var(--g50)}
+/* Login: clareia o fundo para não ficar preto chapado */
+html[data-theme="dark"] #login-screen{box-shadow:inset 0 0 0 100vmax rgba(20,40,30,.15)}
+html[data-theme="dark"] .login-tab:not(.active){background:var(--white)}
+/* Lista lateral: no escuro a cor do status fica só na borda esquerda */
+html[data-theme="dark"] .sacq-item{background:var(--white)!important}
+html[data-theme="dark"] .sacq-item:hover{background:var(--g100)!important}
+/* Logo: o texto dele é escuro; fica sobre uma "plaquinha" clara */
+html[data-theme="dark"] .topbar-logo{background:#fff;border-radius:7px;padding:3px 6px;height:40px}
+html[data-theme="dark"] input[type=text],html[data-theme="dark"] input[type=email],html[data-theme="dark"] input[type=url],
+html[data-theme="dark"] input[type=date],html[data-theme="dark"] input[type=number],html[data-theme="dark"] input[type=tel],
+html[data-theme="dark"] input[type=password],html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#DFE9E3}
 
 /* Botão de tema */
 .tema-btn{position:relative;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--white);
