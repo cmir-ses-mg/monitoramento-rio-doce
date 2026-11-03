@@ -5755,6 +5755,32 @@ async function submitForm(){
 }
 
 
+async function registrarEnvioBimestre(rPdf,etapa){
+  if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')||APPS_SCRIPT_URL.includes('PLACEHOLDER'))return null;
+  const ben=municipio.municipio||'';
+  const total=getAllPlanActions(ben).reduce(function(s,item){const un=unidadesDoItem(ben,item);return s+(un?un.length:1);},0);
+  const preench=aquisicoes.filter(function(a){return a&&a.modalidade_objeto;});
+  const concl=preench.filter(function(a){const st=calcAcqStatus(a);return st==='complete'||st==='locked';}).length;
+  const q={
+    acao:'registrarEnvioBimestre',
+    sessao_email:(_sessaoUsuario&&_sessaoUsuario.email)||'',
+    municipio:ben, bimestre:municipio.bimestre||'', ano:municipio.ano||'',
+    responsavel:municipio.responsavel||'', email:municipio.email||'',
+    acoes_preenchidas:preench.length, acoes_concluidas:concl, total_acoes:total,
+    pdf_url:(rPdf&&rPdf.url)||'',
+    etapa:etapa||'enviar_tudo'
+  };
+  const url=APPS_SCRIPT_URL+'?'+Object.keys(q).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(q[k]);}).join('&');
+  // GET de propósito: servidor ainda sem a rota devolve HTML (ignorado aqui),
+  // em vez de gravar uma linha vazia em Registros.
+  const resp=await fetch(url);
+  const txt=await resp.text();
+  let d=null; try{d=JSON.parse(txt);}catch(e){console.warn('[envio] servidor ainda sem a rota registrarEnvioBimestre');return null;}
+  if(d&&d.status==='ok')console.log('[envio] registrado:',q.etapa,d.enviado_em||d.pdf_baixado_em||'');
+  else console.warn('[envio] não registrado:',d&&d.mensagem);
+  return d;
+}
+
 async function doSubmit(){
   const iS=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
   const btn=document.querySelector('.btn-send-nav');
@@ -5773,7 +5799,12 @@ async function doSubmit(){
     }
   }catch(e){console.warn('Sheets:',e);}
   // Enviar PDF ao Drive
-  try{ await enviarPDFDrive(); }catch(e){ console.warn('Drive PDF:', e); }
+  let _rPdf=null;
+  try{ _rPdf=await enviarPDFDrive(); }catch(e){ console.warn('Drive PDF:', e); }
+  // Registra na planilha que o bimestre foi ENVIADO (aba Envios + coluna
+  // "Envio do Bimestre"). Sem isto, só existia o "Conclusao" de cada ação, e
+  // não dava para saber se o município tinha clicado em "Enviar tudo".
+  try{ await registrarEnvioBimestre(_rPdf); }catch(e){ console.warn('registro do envio:', e); }
   hideLoading();
   // Reset button state
   if(btn){btn.disabled=false;btn.innerHTML=iS+' Enviar tudo';}
@@ -5815,6 +5846,8 @@ function exportPDF(){
     link.href='data:application/pdf;base64,'+b64;
     link.download='monitoramento_'+mun+'_'+bim+'_'+ano+'.pdf';
     link.click();
+    // Registra na aba Envios que deu ciência e baixou o PDF.
+    try{ registrarEnvioBimestre(null,'pdf_baixado'); }catch(e){}
   },50);
 }
 
