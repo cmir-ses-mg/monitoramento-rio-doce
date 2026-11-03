@@ -28,6 +28,17 @@
   }
 })();
 </script>
+<script>
+// Tema: escolha guardada no navegador; sem escolha, segue o sistema.
+(function(){var t=null;try{t=localStorage.getItem('rdoce_tema');}catch(e){}
+  if(!t){try{t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}catch(e){t='light';}}
+  document.documentElement.setAttribute('data-theme',t);})();
+function alternarTema(){
+  var novo=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',novo);
+  try{localStorage.setItem('rdoce_tema',novo);}catch(e){}
+}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -134,6 +145,78 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
   .rend-grid #rend-historico{margin:0!important}
 }
 @media(min-width:1500px){.main{max-width:1240px}.sidebar{width:320px}}
+/* ══ TOQUE FINAL (nov/2026): animações, brilho e tema claro/escuro ═══════════
+   Tema escuro por inversão de cor com rotação de matiz: o verde continua verde,
+   o claro vira escuro — e vale para TUDO, inclusive os estilos escritos direto
+   nos elementos (centenas deles), sem precisar reescrever cada cor. Imagens,
+   vídeo e o mapa de fundo são "desinvertidos" para manter as cores reais. */
+html{transition:filter .45s ease}
+html[data-theme="dark"]{filter:invert(1) hue-rotate(180deg);background:#fff}
+html[data-theme="dark"] img,html[data-theme="dark"] video,html[data-theme="dark"] canvas,
+html[data-theme="dark"] iframe,html[data-theme="dark"] .no-invert{filter:invert(1) hue-rotate(180deg)}
+html[data-theme="dark"] #mapa-bg{opacity:.07}
+
+/* Botão de tema */
+.tema-btn{position:relative;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--white);
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--g700);flex-shrink:0;margin-left:10px;
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .25s}
+.tema-btn:hover{transform:rotate(-18deg) scale(1.08);border-color:var(--g400);box-shadow:0 0 0 4px rgba(45,184,122,.15),0 0 18px rgba(45,184,122,.35)}
+.tema-btn svg{transition:transform .5s cubic-bezier(.34,1.56,.64,1),opacity .3s}
+.tema-btn .ic-lua{position:absolute;opacity:0;transform:rotate(-90deg) scale(.5)}
+html[data-theme="dark"] .tema-btn .ic-sol{opacity:0;transform:rotate(90deg) scale(.5)}
+html[data-theme="dark"] .tema-btn .ic-lua{opacity:1;transform:none}
+#login-screen .tema-btn{position:absolute;top:16px;right:16px;z-index:5;margin:0}
+.topbar-dir{display:flex;align-items:center}
+
+/* Brilho nos botões principais: um reflexo que atravessa no hover */
+.btn-send,.btn-primary,.login-btn-primary{position:relative;overflow:hidden;isolation:isolate}
+.btn-send::after,.btn-primary::after,.login-btn-primary::after{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);transform:translateX(-120%);transition:transform .7s ease}
+.btn-send:hover::after,.btn-primary:hover::after,.login-btn-primary:hover::after{transform:translateX(120%)}
+.btn-send:hover,.btn-primary:hover{box-shadow:0 6px 22px rgba(45,184,122,.38)}
+.btn{transition:all .22s ease,transform .15s ease}
+.btn:active{transform:scale(.97)}
+/* "Enviar tudo" respira devagar, chamando atenção sem gritar */
+.btn-send-nav{animation:respira 2.8s ease-in-out infinite}
+@keyframes respira{0%,100%{box-shadow:0 0 0 0 rgba(45,184,122,.0)}50%{box-shadow:0 0 0 6px rgba(45,184,122,.18),0 0 22px rgba(45,184,122,.35)}}
+
+/* Cartões: leve elevação e borda que acende */
+.card{transition:box-shadow .3s ease,border-color .3s ease,transform .3s ease}
+.card:hover{box-shadow:0 10px 30px rgba(6,31,22,.08),0 0 0 1px rgba(45,184,122,.18);border-color:var(--g300)}
+
+/* Lista lateral: entrada em cascata e item ativo com brilho */
+.sacq-item{animation:entraLado .35s ease both}
+.sacq-item:nth-child(2){animation-delay:.03s}.sacq-item:nth-child(3){animation-delay:.06s}.sacq-item:nth-child(4){animation-delay:.09s}
+.sacq-item:nth-child(5){animation-delay:.12s}.sacq-item:nth-child(6){animation-delay:.15s}.sacq-item:nth-child(n+7){animation-delay:.18s}
+@keyframes entraLado{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.sacq-item:hover{transform:translateX(2px)}
+.sacq-item.active{box-shadow:0 0 0 3px rgba(45,184,122,.12),0 4px 16px rgba(45,184,122,.18)}
+
+/* Etapas: a atual pulsa de leve */
+.phase-item.active .phase-dot{animation:pulsoEtapa 2.2s ease-in-out infinite}
+@keyframes pulsoEtapa{0%,100%{box-shadow:0 0 0 0 rgba(45,184,122,.45)}50%{box-shadow:0 0 0 5px rgba(45,184,122,0)}}
+.phase-item{position:relative}
+.phase-item::after{content:'';position:absolute;left:14px;right:14px;bottom:-2px;height:2px;background:linear-gradient(90deg,var(--g300),var(--g500));transform:scaleX(0);transform-origin:left;transition:transform .35s ease}
+.phase-item:hover::after{transform:scaleX(.6)}
+.phase-item.active::after{transform:scaleX(1)}
+
+/* Campos: foco com halo suave */
+input:focus,select:focus,textarea:focus{transition:box-shadow .2s ease,border-color .2s ease;box-shadow:0 0 0 4px rgba(45,184,122,.14),0 0 14px rgba(45,184,122,.18)}
+.chip{transition:all .2s ease}
+.chip:hover{transform:translateY(-1px)}
+.chip.on{box-shadow:0 0 0 3px rgba(45,184,122,.12)}
+.upload-zone:hover{box-shadow:inset 0 0 0 1px var(--g300),0 0 18px rgba(45,184,122,.15)}
+
+/* Tela de sucesso: o check entra com um "pop" e um brilho */
+.success-icon{animation:pop .6s cubic-bezier(.34,1.56,.64,1) both,brilhoCheck 2.6s ease-in-out .6s infinite}
+@keyframes pop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes brilhoCheck{0%,100%{box-shadow:0 0 0 0 rgba(45,184,122,.35)}50%{box-shadow:0 0 0 10px rgba(45,184,122,0),0 0 28px rgba(45,184,122,.35)}}
+
+/* Quem prefere menos movimento (configuração do sistema) não vê animação */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+
 .step-head{margin-bottom:24px;animation:fadeUp .3s ease}
 .step-head h2{font-size:19px;font-weight:700;color:var(--ink)}
 .step-head p{font-size:13px;color:var(--ink2);margin-top:4px}
@@ -715,7 +798,7 @@ window.onerror = function(msg, src, line, col, err) {
     <div class="topbar-divider"></div>
     <div class="topbar-sub"><strong>Plano de Ação em Saúde do Rio Doce · Monitoramento Bimestral</strong></div>
   </div>
-  <div class="topbar-badge" id="topBadge"></div>
+  <div class="topbar-dir"><div class="topbar-badge" id="topBadge"></div><button type="button" class="tema-btn" onclick="alternarTema()" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro"><svg class="ic-sol" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg><svg class="ic-lua" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a7 7 0 0 0 10.7 10.7z"/></svg></button></div>
 </header>
 <div class="phase-bar" id="phaseBarWrap"><div class="phase-inner" id="phaseBar"></div></div>
 <div class="app-layout">
@@ -768,6 +851,7 @@ window.addEventListener('load', function(){
 
 <!-- ══ TELA DE LOGIN ══════════════════════════════════════════════════════ -->
 <div id="login-screen" style="display:flex">
+  <button type="button" class="tema-btn" onclick="alternarTema()" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro"><svg class="ic-sol" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg><svg class="ic-lua" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a7 7 0 0 0 10.7 10.7z"/></svg></button>
   <div class="login-box">
     <div class="login-logo">
       <img id="login-logo-img" src="" style="width:64px;height:64px;border-radius:10px;object-fit:contain;flex-shrink:0;background:#fff;padding:2px" onerror="this.style.display='none'"/>
