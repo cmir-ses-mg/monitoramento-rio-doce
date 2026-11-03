@@ -120,6 +120,20 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
 .mode-card-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px}
 .mode-card-desc{font-size:11.5px;color:var(--ink3);line-height:1.4}
 .main{max-width:680px;margin:0 auto;padding:28px 20px 100px;position:relative;z-index:1}
+/* Layout horizontal (nov/2026): em tela larga o conteúdo usa o espaço
+   disponível em vez de ficar numa coluna de 680px no meio, e os blocos que
+   cabem lado a lado ficam lado a lado. Em tela estreita nada muda. */
+.capa-grid,.rend-grid{display:block}
+@media(min-width:1100px){
+  .main{max-width:1120px;padding:28px 32px 100px}
+  .sidebar{width:290px}
+  .capa-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .capa-grid>.card{margin-bottom:0;height:100%}
+  .capa-grid+*{margin-top:14px}
+  .rend-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+  .rend-grid #rend-historico{margin:0!important}
+}
+@media(min-width:1500px){.main{max-width:1240px}.sidebar{width:320px}}
 .step-head{margin-bottom:24px;animation:fadeUp .3s ease}
 .step-head h2{font-size:19px;font-weight:700;color:var(--ink)}
 .step-head p{font-size:13px;color:var(--ink2);margin-top:4px}
@@ -2771,6 +2785,7 @@ function renderCapaMunicipio(modoResumo){
       // repassados em CONTAS ESPECÍFICAS distintas, cada uma com seu extrato.
       // Somar os rendimentos num campo só impediria a prestação de contas
       // separada que as duas resoluções exigem.
+      +'<div class="rend-grid"><div>'
       +'<div class="row2">'
         +fldMun('Resolução SES/MG nº 10.962/2026 <br> Custeio (R$)','rendimentos_custeio','money','0,00')
         +fldMun('Resolução SES/MG nº 10.963/2026 <br> Investimento (R$)','rendimentos_investimento','money','0,00')
@@ -2784,7 +2799,9 @@ function renderCapaMunicipio(modoResumo){
         municipio.rendimentos_periodo=t?t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
         return '';
       })()
+      +'</div>'
       +'<div id="rend-historico" style="margin:8px 0 12px">'+renderRendimentosHistorico()+'</div>'
+      +'</div>'
       +'<p class="hint" style="margin:6px 0 6px">Preencha os rendimentos e anexe o extrato bancário do período — os dois são obrigatórios.</p>'
       +'<input type="file" style="display:none" id="file_extratos_municipio" multiple accept=".pdf,.jpg,.jpeg,.png" onchange="handleFilesMun(\'extratos_municipio\',this.files)"/>'
       +'<div class="upload-zone" onclick="triggerUpload(\'extratos_municipio\')" style="'+(_temExtrato?'':'border-color:#C0392B')+'">'
@@ -2867,6 +2884,7 @@ function contentHTML(){
         +'<strong>Acesso administrativo.</strong> Você pode abrir qualquer município ou consórcio para consultar o preenchimento e corrigir o que for necessário. Nenhum campo é obrigatório para você; as edições ficam registradas no seu nome.'
       +'</div>')
       : '')
+    +'<div class="capa-grid">'
     +'<div class="card"><div class="card-title">'+(_admin?'Município / consórcio e período':'Município e período')+'</div>'
     +_campoMunicipio
     // Período travado: só exibe, não deixa escolher (ver PERIODO_FIXO).
@@ -2889,6 +2907,7 @@ function contentHTML(){
         +fld('E-mail institucional','email','email','exemplo@municipio.mg.gov.br')
         +'</div>'
       : _cardResponsavelLeitura())
+    +'</div>'
     // Painel de acompanhamento: só para quem não preenche. Para o município
     // a tela é de preenchimento; para regional e leitura, de cobrança.
     +(_admin?'<div id="painel-panorama"></div>':'')
@@ -6076,9 +6095,13 @@ function _renderPanorama(d){
   const linhas=doEscopo.map(function(b){
     const m=porNome[b];
     if(!m)return {municipio:b, enviou:false, acoes:0, concluidas:0, executado:0, responsavel:'', ultimo:''};
-    return {municipio:b, enviou:m.concluidas>0, acoes:m.acoes, concluidas:m.concluidas,
-            executado:m.executado, responsavel:m.responsavel, ultimo:m.ultimo_envio,
-            parcial:(m.concluidas===0&&m.parciais>0)};
+    // "Enviou" = clicou em "Enviar tudo" (campo `enviado`, servidor v11).
+    // Servidor antigo não manda o campo: vale o critério anterior.
+    const _env=(typeof m.enviado==='boolean')?m.enviado:(m.concluidas>0);
+    return {municipio:b, enviou:_env, acoes:m.acoes, concluidas:m.concluidas,
+            executado:m.executado, responsavel:m.responsavel, ultimo:m.enviado_em?null:m.ultimo_envio,
+            ultimoTxt:m.enviado_em||'',
+            parcial:!_env&&(m.acoes>0)};
   });
 
   const enviaram=linhas.filter(function(l){return l.enviou;}).length;
@@ -6086,14 +6109,14 @@ function _renderPanorama(d){
   const faltam=linhas.length-enviaram-parciais;
 
   const pill=function(cor,fundo,txt){
-    return '<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700;color:'+cor+';background:'+fundo+'">'+txt+'</span>';
+    return '<span style="display:inline-block;white-space:nowrap;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700;color:'+cor+';background:'+fundo+'">'+txt+'</span>';
   };
 
   const corpo=linhas.map(function(l){
     const marca=l.enviou?pill('#1B5E20','#E8F5E9','enviado')
-              :(l.parcial?pill('#7C4A0A','#FFF8E1','em preenchimento')
+              :(l.parcial?pill('#7C4A0A','#FFF8E1','falta Enviar tudo')
                          :pill('#B71C1C','#FDEDEC','não iniciado'));
-    const dt=l.ultimo?new Date(l.ultimo).toLocaleDateString('pt-BR'):'—';
+    const dt=l.ultimoTxt?l.ultimoTxt.split(' ')[0]:(l.ultimo?new Date(l.ultimo).toLocaleDateString('pt-BR'):'—');
     return '<tr>'
       +'<td style="padding:7px 9px;border-top:1px solid var(--border2);font-size:12.5px;font-weight:600">'+esc(l.municipio)+'</td>'
       +'<td style="padding:7px 9px;border-top:1px solid var(--border2)">'+marca+'</td>'
@@ -6115,7 +6138,7 @@ function _renderPanorama(d){
     +'<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--g50);border-radius:8px">'
       +'<div><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">Enviaram</div>'
         +'<div style="font-size:18px;font-weight:700;color:var(--g700)">'+enviaram+'</div></div>'
-      +'<div><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">Em preenchimento</div>'
+      +'<div><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">Preencheram, falta enviar</div>'
         +'<div style="font-size:18px;font-weight:700;color:#F9A825">'+parciais+'</div></div>'
       +'<div><div style="font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em">Não iniciaram</div>'
         +'<div style="font-size:18px;font-weight:700;color:#C0392B">'+faltam+'</div></div>'
