@@ -6264,7 +6264,7 @@ function _renderPanorama(d){
   };
   const conta={};Object.keys(ETAPAS).forEach(function(k){conta[k]=0;});
   linhas.forEach(function(l){conta[l.etapa]++;});
-  const ordem=Object.keys(ETAPAS);
+  const ordem=Object.keys(ETAPAS).reverse(); // do mais atrasado (Não iniciado) para o mais adiantado (Enviado)
   linhas.sort(function(x,y){return x.municipio.localeCompare(y.municipio,'pt-BR');});
 
   const pill=function(e){
