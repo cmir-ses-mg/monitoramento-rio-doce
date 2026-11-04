@@ -145,6 +145,15 @@ body{font-family:var(--font);background:var(--g50);color:var(--ink);min-height:1
   .rend-grid #rend-historico{margin:0!important}
 }
 @media(min-width:1500px){.main{max-width:1240px}.sidebar{width:320px}}
+/* Chamado de suporte: em tela larga a caixa alarga e os campos ficam em duas
+   colunas (Nome | E-mail, Telefone | Município); assunto e descrição ocupam a
+   linha inteira. */
+.login-box{transition:max-width .35s ease}
+@media(min-width:760px){
+  .login-box.largo{max-width:720px}
+  .sup-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+  .sup-grid .sup-full{grid-column:1 / -1}
+}
 /* ══ TOQUE FINAL (nov/2026): animações, brilho e tema claro/escuro ═══════════
    Tema escuro por inversão de cor com rotação de matiz: o verde continua verde,
    o claro vira escuro — e vale para TUDO, inclusive os estilos escritos direto
@@ -176,6 +185,7 @@ html[data-theme="dark"] .topbar-logo{background:#fff;border-radius:7px;padding:3
 html[data-theme="dark"] input[type=text],html[data-theme="dark"] input[type=email],html[data-theme="dark"] input[type=url],
 html[data-theme="dark"] input[type=date],html[data-theme="dark"] input[type=number],html[data-theme="dark"] input[type=tel],
 html[data-theme="dark"] input[type=password],html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#DFE9E3}
+html[data-theme="dark"] #painel-suporte select{background:#DFE9E3!important}
 
 /* Botão de tema */
 .tema-btn{position:relative;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--white);
@@ -924,6 +934,7 @@ window.addEventListener('load', function(){
     <div id="painel-suporte" style="display:none">
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">Novo chamado</div>
       <p style="font-size:12.5px;color:var(--ink2);margin:0 0 16px">Descreva o problema. A CMIR responde no e-mail informado.</p>
+      <div class="sup-grid">
       <div class="login-field"><label>Nome</label><input type="text" id="sup-nome" placeholder="Seu nome completo"/></div>
       <div class="login-field"><label>E-mail</label><input type="email" id="sup-email" placeholder="seu@email.com"/></div>
       <!-- O telefone entra aqui porque é neste formulário que a pessoa pede
@@ -936,7 +947,7 @@ window.addEventListener('load', function(){
           <option value="">Selecione...</option>
         </select>
       </div>
-      <div class="login-field"><label>Assunto</label>
+      <div class="login-field sup-full"><label>Assunto</label>
         <select id="sup-assunto" style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;background:#fff">
           <option value="">Selecione o assunto</option>
           <option value="Problema com a senha">Problema com a senha</option>
@@ -947,8 +958,9 @@ window.addEventListener('load', function(){
           <option value="Outros">Outros</option>
         </select>
       </div>
-      <div class="login-field"><label>Descrição</label>
-        <textarea id="sup-descricao" rows="4" placeholder="Descreva o que aconteceu, em qual etapa e qual mensagem apareceu." style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;resize:vertical"></textarea>
+      <div class="login-field sup-full"><label>Descrição</label>
+        <textarea id="sup-descricao" rows="5" placeholder="Descreva o que aconteceu, em qual etapa e qual mensagem apareceu." style="width:100%;padding:10px 13px;font-size:13.5px;font-family:var(--font);border:1.5px solid var(--border);border-radius:8px;outline:none;resize:vertical"></textarea>
+      </div>
       </div>
       <button class="login-btn-primary" onclick="enviarChamadoSuporte()">Enviar chamado →</button>
       <span class="login-link" onclick="switchLoginTab('login')">← Voltar ao login</span>
@@ -6431,6 +6443,8 @@ function switchLoginTab(tab){
   const hint=document.getElementById('login-perfil-hint');
   if(hint)hint.style.display=tab==='login'?'':'none';
   if(tab==='suporte')_popularMunicipiosSuporte();
+  const lb=document.querySelector('.login-box');
+  if(lb)lb.classList.toggle('largo',tab==='suporte');
   if(tab==='recuperar'){
     document.getElementById('painel-rec-email').style.display='';
     document.getElementById('painel-rec-codigo').style.display='none';
